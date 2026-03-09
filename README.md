@@ -11,6 +11,16 @@
 
 The package does not start your dev server for you. If the target URL is unreachable or blocked by auth, expect `not_testable`.
 
+## Why n1
+
+Playwright MCP provides hands — it can click, type, and assert against the DOM. But it cannot *see* the page. A Playwright script can run cleanly on the wrong page, assert `modal.isVisible()` on a modal that rendered off-screen, or miss a layout that broke on mobile. It has no visual ground truth.
+
+n1 is a pixels-to-actions model trained with RL on live websites. The two capabilities that matter here:
+
+**Self-correcting navigation.** When a coding agent sends the tool to `localhost:3000/tasks` instead of `localhost:3000/tasks/123`, n1 sees a list view, recognizes it is not the task detail page, and navigates there autonomously. In testing, n1 started on the home page, clicked "Tasks" in the sidebar, then clicked a task row — arriving at the correct page in 2 steps with no human guidance. The result includes `wrong_page_recovered: true` so the coding agent knows what happened. A DOM-based tool would have run its assertions on the wrong page and reported success.
+
+**Rich visual state evaluation.** After clicking a single "Mark Complete" button, n1 reported three visual changes in its summary: the status badge changed from blue "In Progress" to green "Done" with a checkmark, the button label changed to "Completed", and a toast notification appeared confirming the action. Playwright MCP would need three separate hand-written assertions. n1 just saw it.
+
 ## Install locally
 
 ```bash

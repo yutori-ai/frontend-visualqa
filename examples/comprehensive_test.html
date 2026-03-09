@@ -1,0 +1,988 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Comprehensive QA Test Suite</title>
+    <style>
+        :root {
+            --bg: #f5f5f7;
+            --surface: #ffffff;
+            --ink: #1d1d1f;
+            --muted: #6e6e73;
+            --accent: #0071e3;
+            --accent-hover: #0060c0;
+            --green: #248a3d;
+            --green-bg: #e8f5e9;
+            --red: #d32f2f;
+            --red-bg: #fdecea;
+            --orange: #f57c00;
+            --yellow-bg: #fff8e1;
+            --gray-100: #f5f5f5;
+            --gray-200: #e8e8ed;
+            --gray-300: #d2d2d7;
+            --gray-500: #86868b;
+            --gray-700: #424245;
+            --line: #d2d2d7;
+            --radius: 12px;
+            --shadow-sm: 0 1px 3px rgba(0,0,0,0.08);
+            --shadow-md: 0 4px 12px rgba(0,0,0,0.1);
+            --sidebar-width: 240px;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            color: var(--ink);
+            background: var(--bg);
+            line-height: 1.5;
+        }
+
+        /* ── Alert Banner ── */
+        .alert-banner {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 24px;
+            background: #e3f2fd;
+            border-bottom: 1px solid #90caf9;
+            color: #1565c0;
+            font-size: 0.95rem;
+            font-weight: 500;
+        }
+        .alert-banner-content {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .alert-banner-icon {
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            background: #1565c0;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+        .alert-banner .close-btn {
+            min-height: 44px;
+            padding: 10px 20px;
+            border: 2px solid #fff;
+            background: rgba(255,255,255,0.25);
+            color: #0d47a1;
+            font-size: 0.95rem;
+            font-weight: 700;
+            font-family: inherit;
+            cursor: pointer;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            letter-spacing: 0.02em;
+        }
+        .alert-banner .close-btn:hover {
+            background: rgba(255,255,255,0.5);
+            border-color: #0d47a1;
+        }
+
+        /* ── Layout: Sidebar + Main ── */
+        .page-layout {
+            display: flex;
+            min-height: calc(100vh - 52px);
+        }
+
+        /* ── Sidebar ── */
+        .sidebar {
+            width: var(--sidebar-width);
+            background: var(--surface);
+            border-right: 1px solid var(--line);
+            padding: 24px 0;
+            flex-shrink: 0;
+        }
+        .sidebar-brand {
+            padding: 0 20px 20px;
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: var(--accent);
+            border-bottom: 1px solid var(--gray-200);
+            margin-bottom: 12px;
+        }
+        .sidebar-nav {
+            list-style: none;
+        }
+        .sidebar-nav li a {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 14px 20px;
+            min-height: 48px;
+            text-decoration: none;
+            color: var(--gray-700);
+            font-weight: 500;
+            font-size: 0.95rem;
+            transition: background 0.15s;
+        }
+        .sidebar-nav li a:hover,
+        .sidebar-nav li a.active {
+            background: var(--gray-100);
+            color: var(--accent);
+        }
+        .sidebar-nav li a .nav-icon {
+            width: 20px;
+            text-align: center;
+            font-size: 1.1rem;
+        }
+
+        /* ── Hamburger (mobile) ── */
+        .hamburger-btn {
+            display: none;
+            position: fixed;
+            top: 62px;
+            left: 12px;
+            z-index: 100;
+            width: 48px;
+            height: 48px;
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            background: var(--surface);
+            cursor: pointer;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+            box-shadow: var(--shadow-sm);
+        }
+        .hamburger-btn span {
+            display: block;
+            width: 22px;
+            height: 2px;
+            background: var(--ink);
+            border-radius: 2px;
+        }
+
+        /* ── Main Content ── */
+        .main-content {
+            flex: 1;
+            padding: 32px;
+            max-width: 960px;
+        }
+
+        .page-title {
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+        .page-subtitle {
+            color: var(--muted);
+            font-size: 1rem;
+            margin-bottom: 32px;
+        }
+
+        /* ── Section container ── */
+        .section {
+            background: var(--surface);
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius);
+            padding: 24px;
+            margin-bottom: 24px;
+            box-shadow: var(--shadow-sm);
+        }
+        .section-title {
+            font-size: 1.15rem;
+            font-weight: 700;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--gray-200);
+        }
+
+        /* ── Buttons ── */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 48px;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 10px;
+            font-family: inherit;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.15s, transform 0.1s;
+        }
+        .btn:active { transform: scale(0.97); }
+        .btn-green {
+            background: var(--green);
+            color: #fff;
+        }
+        .btn-green:hover { background: #1b6d30; }
+        .btn-gray {
+            background: var(--gray-200);
+            color: var(--gray-700);
+        }
+        .btn-gray:hover { background: var(--gray-300); }
+        .btn-accent {
+            background: var(--accent);
+            color: #fff;
+        }
+        .btn-accent:hover { background: var(--accent-hover); }
+        .btn-outline {
+            background: transparent;
+            color: var(--ink);
+            border: 1px solid var(--line);
+        }
+        .btn-outline:hover { background: var(--gray-100); }
+
+        /* ── 1. Todo List ── */
+        .todo-item {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 12px 16px;
+            min-height: 48px;
+            border: 1px solid var(--gray-200);
+            border-radius: 10px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            transition: background 0.15s;
+            user-select: none;
+        }
+        .todo-item:hover { background: var(--gray-100); }
+        .todo-checkbox {
+            width: 24px;
+            height: 24px;
+            border: 2px solid var(--gray-300);
+            border-radius: 6px;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.15s;
+        }
+        .todo-item.checked .todo-checkbox {
+            background: var(--green);
+            border-color: var(--green);
+        }
+        .todo-item.checked .todo-checkbox::after {
+            content: "\2713";
+            color: #fff;
+            font-size: 14px;
+            font-weight: 700;
+        }
+        .todo-item.checked .todo-label {
+            text-decoration: line-through;
+            color: var(--muted);
+        }
+        .todo-label {
+            font-size: 0.95rem;
+        }
+
+        /* ── 2. Form ── */
+        .form-group {
+            margin-bottom: 16px;
+        }
+        .form-group label {
+            display: block;
+            font-size: 0.9rem;
+            font-weight: 600;
+            margin-bottom: 6px;
+            color: var(--gray-700);
+        }
+        .form-input {
+            width: 100%;
+            padding: 12px 14px;
+            min-height: 48px;
+            border: 1px solid var(--gray-300);
+            border-radius: 10px;
+            font-family: inherit;
+            font-size: 0.95rem;
+            background: var(--surface);
+            transition: border-color 0.15s;
+        }
+        .form-input:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(0,113,227,0.15);
+        }
+        textarea.form-input {
+            min-height: 100px;
+            resize: vertical;
+        }
+        .form-actions {
+            display: flex;
+            gap: 12px;
+            margin-top: 8px;
+        }
+        .form-success {
+            display: none;
+            padding: 14px 18px;
+            background: var(--green-bg);
+            color: var(--green);
+            border-radius: 10px;
+            font-weight: 600;
+            margin-top: 16px;
+            font-size: 0.95rem;
+        }
+        .form-success.visible { display: block; }
+
+        /* ── 3. Dropdown ── */
+        .dropdown-wrapper {
+            position: relative;
+            display: inline-block;
+        }
+        .dropdown-trigger {
+            min-height: 48px;
+            padding: 12px 20px;
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            background: var(--surface);
+            font-family: inherit;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-width: 200px;
+            justify-content: space-between;
+        }
+        .dropdown-trigger:hover { background: var(--gray-100); }
+        .dropdown-arrow {
+            font-size: 12px;
+            color: var(--muted);
+            transition: transform 0.2s;
+        }
+        .dropdown-menu {
+            display: none;
+            position: absolute;
+            top: calc(100% + 6px);
+            left: 0;
+            min-width: 200px;
+            background: var(--surface);
+            border: 1px solid var(--gray-200);
+            border-radius: 10px;
+            box-shadow: var(--shadow-md);
+            z-index: 50;
+            overflow: hidden;
+        }
+        .dropdown-menu.open { display: block; }
+        .dropdown-option {
+            display: block;
+            width: 100%;
+            padding: 14px 20px;
+            min-height: 48px;
+            border: none;
+            background: transparent;
+            text-align: left;
+            font-family: inherit;
+            font-size: 0.95rem;
+            cursor: pointer;
+            transition: background 0.1s;
+        }
+        .dropdown-option:hover { background: var(--gray-100); }
+        .dropdown-option + .dropdown-option {
+            border-top: 1px solid var(--gray-200);
+        }
+
+        /* ── 4. Accordion ── */
+        .accordion-item {
+            border: 1px solid var(--gray-200);
+            border-radius: 10px;
+            margin-bottom: 8px;
+            overflow: hidden;
+        }
+        .accordion-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            width: 100%;
+            min-height: 56px;
+            padding: 16px 20px;
+            border: none;
+            background: var(--gray-100);
+            font-family: inherit;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            text-align: left;
+            transition: background 0.15s;
+        }
+        .accordion-header:hover { background: var(--gray-200); }
+        .accordion-icon {
+            font-size: 18px;
+            color: var(--muted);
+            transition: transform 0.25s;
+        }
+        .accordion-item.open .accordion-icon {
+            transform: rotate(180deg);
+        }
+        .accordion-body {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+        }
+        .accordion-item.open .accordion-body {
+            max-height: 200px;
+        }
+        .accordion-content {
+            padding: 16px 20px;
+            color: var(--muted);
+            font-size: 0.95rem;
+            line-height: 1.6;
+        }
+
+        /* ── 5. Counter ── */
+        .counter-display {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+        .counter-value {
+            font-size: 3.5rem;
+            font-weight: 800;
+            min-width: 100px;
+            text-align: center;
+            font-variant-numeric: tabular-nums;
+        }
+        .counter-btn {
+            width: 56px;
+            height: 56px;
+            border: 1px solid var(--line);
+            border-radius: 50%;
+            background: var(--surface);
+            font-size: 1.5rem;
+            font-weight: 700;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.15s, transform 0.1s;
+        }
+        .counter-btn:hover { background: var(--gray-100); }
+        .counter-btn:active { transform: scale(0.92); }
+
+        /* ── 6. Visibility Toggle ── */
+        .toggle-panel {
+            display: none;
+            margin-top: 16px;
+            padding: 20px;
+            background: linear-gradient(135deg, #e3f2fd, #f3e5f5);
+            border-radius: var(--radius);
+            color: var(--ink);
+            font-weight: 500;
+        }
+        .toggle-panel.visible { display: block; }
+
+        /* ── 7. Scrollable List ── */
+        .scroll-container {
+            height: 200px;
+            overflow-y: auto;
+            border: 1px solid var(--gray-200);
+            border-radius: 10px;
+        }
+        .scroll-item {
+            padding: 12px 16px;
+            min-height: 44px;
+            display: flex;
+            align-items: center;
+            font-size: 0.95rem;
+            border-bottom: 1px solid var(--gray-200);
+        }
+        .scroll-item:last-child { border-bottom: none; }
+        .scroll-item:nth-child(even) { background: var(--gray-100); }
+        .scroll-item-num {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            background: var(--accent);
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8rem;
+            font-weight: 700;
+            margin-right: 14px;
+            flex-shrink: 0;
+        }
+
+        /* ── 8. Badge/Notification ── */
+        .notification-area {
+            display: inline-flex;
+            align-items: center;
+            gap: 16px;
+        }
+        .bell-container {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 52px;
+            height: 52px;
+            border-radius: 50%;
+            background: var(--gray-100);
+            border: 1px solid var(--gray-200);
+        }
+        .bell-icon {
+            font-size: 24px;
+        }
+        .notification-badge {
+            position: absolute;
+            top: -2px;
+            right: -2px;
+            min-width: 22px;
+            height: 22px;
+            padding: 0 6px;
+            border-radius: 11px;
+            background: var(--red);
+            color: #fff;
+            font-size: 12px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 2px solid var(--surface);
+        }
+        .notification-label {
+            font-size: 0.95rem;
+            color: var(--muted);
+        }
+
+        /* ── 9. Progress Bar ── */
+        .progress-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        .progress-track {
+            flex: 1;
+            height: 28px;
+            background: var(--gray-200);
+            border-radius: 14px;
+            overflow: hidden;
+            position: relative;
+        }
+        .progress-fill {
+            height: 100%;
+            border-radius: 14px;
+            background: linear-gradient(90deg, var(--accent), #34c759);
+            transition: width 0.4s ease;
+        }
+        .progress-label {
+            font-size: 1rem;
+            font-weight: 700;
+            min-width: 48px;
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* ── 12. Card Grid ── */
+        .card-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+        .grid-card {
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius);
+            padding: 20px;
+            background: var(--surface);
+            transition: box-shadow 0.2s;
+        }
+        .grid-card:hover { box-shadow: var(--shadow-md); }
+        .grid-card-title {
+            font-size: 1.05rem;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+        .grid-card-desc {
+            color: var(--muted);
+            font-size: 0.9rem;
+            line-height: 1.5;
+            margin-bottom: 16px;
+        }
+
+        /* ── Two-column layout for smaller sections ── */
+        .two-col {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+        }
+
+        /* ── Responsive ── */
+        @media (max-width: 767px) {
+            .sidebar { display: none; }
+            .hamburger-btn { display: flex; }
+            .main-content {
+                padding: 20px;
+                padding-top: 72px;
+            }
+            .two-col { grid-template-columns: 1fr; }
+            .card-grid { grid-template-columns: 1fr; }
+            .page-layout { display: block; }
+        }
+        @media (min-width: 768px) {
+            .hamburger-btn { display: none; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ═══════ 11. Alert Banner ═══════ -->
+<div class="alert-banner" id="alert-banner" data-testid="alert-banner" role="alert">
+    <div class="alert-banner-content">
+        <div class="alert-banner-icon">i</div>
+        <span>Welcome to the Comprehensive QA Test Suite. This page exercises many common visual QA patterns.</span>
+    </div>
+    <button class="close-btn" id="dismiss-alert" data-testid="alert-dismiss" type="button" aria-label="Dismiss alert">Dismiss</button>
+</div>
+
+<!-- ═══════ Hamburger (mobile only) ═══════ -->
+<button class="hamburger-btn" id="hamburger-btn" data-testid="hamburger-menu" type="button" aria-label="Open navigation menu">
+    <span></span>
+    <span></span>
+    <span></span>
+</button>
+
+<div class="page-layout">
+    <!-- ═══════ 10. Responsive Sidebar ═══════ -->
+    <nav class="sidebar" id="sidebar" data-testid="sidebar">
+        <div class="sidebar-brand">QA Suite</div>
+        <ul class="sidebar-nav">
+            <li><a href="#" class="active" data-testid="nav-dashboard"><span class="nav-icon">&#9633;</span> Dashboard</a></li>
+            <li><a href="#" data-testid="nav-tasks"><span class="nav-icon">&#9745;</span> Tasks</a></li>
+            <li><a href="#" data-testid="nav-settings"><span class="nav-icon">&#9881;</span> Settings</a></li>
+        </ul>
+    </nav>
+
+    <!-- ═══════ Main Content ═══════ -->
+    <main class="main-content">
+        <h1 class="page-title" data-testid="page-title">Comprehensive QA Test Suite</h1>
+        <p class="page-subtitle">A self-contained page for exercising visual QA patterns. All interactions use plain JavaScript.</p>
+
+        <!-- ═══════ 1. Todo List ═══════ -->
+        <section class="section" data-testid="todo-section">
+            <h2 class="section-title">Todo List</h2>
+            <div id="todo-list" data-testid="todo-list">
+                <div class="todo-item" data-testid="todo-item-1" role="checkbox" aria-checked="false" tabindex="0">
+                    <div class="todo-checkbox"></div>
+                    <span class="todo-label">Write unit tests for authentication module</span>
+                </div>
+                <div class="todo-item" data-testid="todo-item-2" role="checkbox" aria-checked="false" tabindex="0">
+                    <div class="todo-checkbox"></div>
+                    <span class="todo-label">Review pull request for dashboard redesign</span>
+                </div>
+                <div class="todo-item" data-testid="todo-item-3" role="checkbox" aria-checked="false" tabindex="0">
+                    <div class="todo-checkbox"></div>
+                    <span class="todo-label">Update API documentation with new endpoints</span>
+                </div>
+                <div class="todo-item" data-testid="todo-item-4" role="checkbox" aria-checked="false" tabindex="0">
+                    <div class="todo-checkbox"></div>
+                    <span class="todo-label">Fix responsive layout bug on mobile devices</span>
+                </div>
+                <div class="todo-item" data-testid="todo-item-5" role="checkbox" aria-checked="false" tabindex="0">
+                    <div class="todo-checkbox"></div>
+                    <span class="todo-label">Deploy staging environment for QA testing</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- ═══════ 2. Form + 3. Dropdown (side by side) ═══════ -->
+        <div class="two-col">
+            <!-- Form -->
+            <section class="section" data-testid="form-section">
+                <h2 class="section-title">Contact Form</h2>
+                <form id="contact-form" data-testid="contact-form" autocomplete="off">
+                    <div class="form-group">
+                        <label for="form-name">Name</label>
+                        <input type="text" id="form-name" class="form-input" data-testid="form-name" placeholder="Enter your name" />
+                    </div>
+                    <div class="form-group">
+                        <label for="form-email">Email</label>
+                        <input type="email" id="form-email" class="form-input" data-testid="form-email" placeholder="Enter your email" />
+                    </div>
+                    <div class="form-group">
+                        <label for="form-message">Message</label>
+                        <textarea id="form-message" class="form-input" data-testid="form-message" placeholder="Enter your message"></textarea>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-green" data-testid="form-submit">Submit</button>
+                        <button type="button" class="btn btn-gray" id="form-cancel" data-testid="form-cancel">Cancel</button>
+                    </div>
+                    <div class="form-success" id="form-success" data-testid="form-success">Form submitted successfully!</div>
+                </form>
+            </section>
+
+            <!-- Dropdown + Badge + Progress stacked -->
+            <div>
+                <section class="section" data-testid="dropdown-section">
+                    <h2 class="section-title">Priority Selector</h2>
+                    <div class="dropdown-wrapper" id="dropdown-wrapper">
+                        <button class="dropdown-trigger" id="dropdown-trigger" data-testid="dropdown-trigger" type="button">
+                            <span id="dropdown-label">Select Priority</span>
+                            <span class="dropdown-arrow">&#9660;</span>
+                        </button>
+                        <div class="dropdown-menu" id="dropdown-menu" data-testid="dropdown-menu">
+                            <button class="dropdown-option" data-testid="dropdown-high" data-value="High" type="button">High</button>
+                            <button class="dropdown-option" data-testid="dropdown-medium" data-value="Medium" type="button">Medium</button>
+                            <button class="dropdown-option" data-testid="dropdown-low" data-value="Low" type="button">Low</button>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ═══════ 8. Badge/Notification ═══════ -->
+                <section class="section" data-testid="notification-section">
+                    <h2 class="section-title">Notifications</h2>
+                    <div class="notification-area">
+                        <div class="bell-container" data-testid="bell-icon">
+                            <span class="bell-icon">&#128276;</span>
+                            <span class="notification-badge" data-testid="notification-badge">3</span>
+                        </div>
+                        <span class="notification-label">You have <strong>3</strong> unread notifications</span>
+                    </div>
+                </section>
+
+                <!-- ═══════ 9. Progress Bar ═══════ -->
+                <section class="section" data-testid="progress-section">
+                    <h2 class="section-title">Project Progress</h2>
+                    <div class="progress-wrapper">
+                        <div class="progress-track" data-testid="progress-track" role="progressbar" aria-valuenow="65" aria-valuemin="0" aria-valuemax="100">
+                            <div class="progress-fill" data-testid="progress-fill" style="width: 65%;"></div>
+                        </div>
+                        <span class="progress-label" data-testid="progress-label">65%</span>
+                    </div>
+                </section>
+            </div>
+        </div>
+
+        <!-- ═══════ 4. Accordion ═══════ -->
+        <section class="section" data-testid="accordion-section">
+            <h2 class="section-title">Frequently Asked Questions</h2>
+            <div class="accordion-item" data-testid="accordion-item-1">
+                <button class="accordion-header" data-testid="accordion-header-1" type="button">
+                    <span>What is visual QA testing?</span>
+                    <span class="accordion-icon">&#9660;</span>
+                </button>
+                <div class="accordion-body">
+                    <div class="accordion-content">Visual QA testing involves automated verification of a web application's appearance and layout. It uses screenshots and visual comparisons to detect unintended changes in the user interface, ensuring that buttons, text, spacing, and colors render correctly across different browsers and devices.</div>
+                </div>
+            </div>
+            <div class="accordion-item" data-testid="accordion-item-2">
+                <button class="accordion-header" data-testid="accordion-header-2" type="button">
+                    <span>How do I write effective test claims?</span>
+                    <span class="accordion-icon">&#9660;</span>
+                </button>
+                <div class="accordion-body">
+                    <div class="accordion-content">Effective test claims should be specific, observable, and binary (true or false). For example, instead of "the page looks good," write "the Submit button has a green background and white text." This allows automated tools to make precise pass/fail determinations.</div>
+                </div>
+            </div>
+            <div class="accordion-item" data-testid="accordion-item-3">
+                <button class="accordion-header" data-testid="accordion-header-3" type="button">
+                    <span>Can I integrate this with CI/CD pipelines?</span>
+                    <span class="accordion-icon">&#9660;</span>
+                </button>
+                <div class="accordion-body">
+                    <div class="accordion-content">Yes, visual QA tests can be integrated into any CI/CD pipeline. You can run them as part of your test suite using headless browsers. The tests capture screenshots, compare them against baselines, and report any visual regressions as part of your build process.</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ═══════ 5. Counter + 6. Visibility Toggle (side by side) ═══════ -->
+        <div class="two-col">
+            <section class="section" data-testid="counter-section">
+                <h2 class="section-title">Counter</h2>
+                <div class="counter-display">
+                    <button class="counter-btn" id="counter-dec" data-testid="counter-decrement" type="button" aria-label="Decrease counter">&#8722;</button>
+                    <span class="counter-value" id="counter-value" data-testid="counter-value">0</span>
+                    <button class="counter-btn" id="counter-inc" data-testid="counter-increment" type="button" aria-label="Increase counter">+</button>
+                </div>
+            </section>
+
+            <section class="section" data-testid="toggle-section">
+                <h2 class="section-title">Visibility Toggle</h2>
+                <button class="btn btn-accent" id="toggle-btn" data-testid="toggle-panel-btn" type="button">Toggle Panel</button>
+                <div class="toggle-panel" id="toggle-panel" data-testid="toggle-panel">
+                    <p>This is a togglable panel. It can be shown or hidden by clicking the button above. Use it to verify visibility state changes in your QA tests.</p>
+                </div>
+            </section>
+        </div>
+
+        <!-- ═══════ 7. Scrollable List ═══════ -->
+        <section class="section" data-testid="scrollable-section">
+            <h2 class="section-title">Scrollable Item List</h2>
+            <div class="scroll-container" id="scroll-container" data-testid="scroll-container">
+            </div>
+        </section>
+
+        <!-- ═══════ 12. Card Grid ═══════ -->
+        <section class="section" data-testid="card-grid-section">
+            <h2 class="section-title">Feature Cards</h2>
+            <div class="card-grid" data-testid="card-grid">
+                <div class="grid-card" data-testid="card-1">
+                    <div class="grid-card-title">Visual Regression Testing</div>
+                    <p class="grid-card-desc">Automatically detect unintended visual changes by comparing screenshots against approved baselines.</p>
+                    <button class="btn btn-outline" data-testid="card-1-btn" type="button">View Details</button>
+                </div>
+                <div class="grid-card" data-testid="card-2">
+                    <div class="grid-card-title">Cross-Browser Validation</div>
+                    <p class="grid-card-desc">Ensure consistent rendering across Chrome, Firefox, Safari, and Edge with automated checks.</p>
+                    <button class="btn btn-outline" data-testid="card-2-btn" type="button">View Details</button>
+                </div>
+                <div class="grid-card" data-testid="card-3">
+                    <div class="grid-card-title">Accessibility Audits</div>
+                    <p class="grid-card-desc">Verify color contrast, focus indicators, ARIA labels, and keyboard navigation compliance.</p>
+                    <button class="btn btn-outline" data-testid="card-3-btn" type="button">View Details</button>
+                </div>
+                <div class="grid-card" data-testid="card-4">
+                    <div class="grid-card-title">Performance Monitoring</div>
+                    <p class="grid-card-desc">Track load times, layout shifts, and rendering performance across page interactions.</p>
+                    <button class="btn btn-outline" data-testid="card-4-btn" type="button">View Details</button>
+                </div>
+            </div>
+        </section>
+    </main>
+</div>
+
+<script>
+    // ── 1. Todo List ──
+    document.querySelectorAll('.todo-item').forEach(function(item) {
+        item.addEventListener('click', function() {
+            var isChecked = item.classList.toggle('checked');
+            item.setAttribute('aria-checked', String(isChecked));
+        });
+        item.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                item.click();
+            }
+        });
+    });
+
+    // ── 2. Form ──
+    var contactForm = document.getElementById('contact-form');
+    var formSuccess = document.getElementById('form-success');
+    var formCancel = document.getElementById('form-cancel');
+
+    contactForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        formSuccess.classList.add('visible');
+    });
+
+    formCancel.addEventListener('click', function() {
+        contactForm.reset();
+        formSuccess.classList.remove('visible');
+    });
+
+    // ── 3. Dropdown ──
+    var dropdownTrigger = document.getElementById('dropdown-trigger');
+    var dropdownMenu = document.getElementById('dropdown-menu');
+    var dropdownLabel = document.getElementById('dropdown-label');
+
+    dropdownTrigger.addEventListener('click', function(e) {
+        e.stopPropagation();
+        dropdownMenu.classList.toggle('open');
+    });
+
+    document.querySelectorAll('.dropdown-option').forEach(function(opt) {
+        opt.addEventListener('click', function() {
+            dropdownLabel.textContent = 'Priority: ' + opt.dataset.value;
+            dropdownMenu.classList.remove('open');
+        });
+    });
+
+    document.addEventListener('click', function() {
+        dropdownMenu.classList.remove('open');
+    });
+
+    // ── 4. Accordion ──
+    document.querySelectorAll('.accordion-header').forEach(function(header) {
+        header.addEventListener('click', function() {
+            var item = header.parentElement;
+            item.classList.toggle('open');
+        });
+    });
+
+    // ── 5. Counter ──
+    var counterValue = document.getElementById('counter-value');
+    var count = 0;
+
+    document.getElementById('counter-inc').addEventListener('click', function() {
+        count++;
+        counterValue.textContent = count;
+    });
+
+    document.getElementById('counter-dec').addEventListener('click', function() {
+        count--;
+        counterValue.textContent = count;
+    });
+
+    // ── 6. Visibility Toggle ──
+    var toggleBtn = document.getElementById('toggle-btn');
+    var togglePanel = document.getElementById('toggle-panel');
+
+    toggleBtn.addEventListener('click', function() {
+        togglePanel.classList.toggle('visible');
+    });
+
+    // ── 7. Scrollable List (generate 20 items) ──
+    var scrollContainer = document.getElementById('scroll-container');
+    var scrollItems = [
+        'Configure test environment',
+        'Set up CI/CD pipeline',
+        'Write smoke tests',
+        'Audit accessibility labels',
+        'Review error handling',
+        'Check responsive breakpoints',
+        'Test form validation',
+        'Verify navigation flow',
+        'Inspect network requests',
+        'Validate API responses',
+        'Test loading states',
+        'Check empty state views',
+        'Verify tooltip positioning',
+        'Test keyboard shortcuts',
+        'Check dark mode styles',
+        'Validate pagination',
+        'Test search functionality',
+        'Inspect animation timing',
+        'Verify data persistence',
+        'Run final regression suite'
+    ];
+
+    scrollItems.forEach(function(text, i) {
+        var div = document.createElement('div');
+        div.className = 'scroll-item';
+        div.setAttribute('data-testid', 'scroll-item-' + (i + 1));
+        div.innerHTML = '<span class="scroll-item-num">' + (i + 1) + '</span> ' + text;
+        scrollContainer.appendChild(div);
+    });
+
+    // ── 10. Hamburger menu (mobile sidebar toggle) ──
+    var hamburgerBtn = document.getElementById('hamburger-btn');
+    var sidebar = document.getElementById('sidebar');
+
+    hamburgerBtn.addEventListener('click', function() {
+        var isVisible = sidebar.style.display === 'block';
+        sidebar.style.display = isVisible ? 'none' : 'block';
+        if (!isVisible) {
+            sidebar.style.position = 'fixed';
+            sidebar.style.top = '0';
+            sidebar.style.left = '0';
+            sidebar.style.height = '100vh';
+            sidebar.style.zIndex = '200';
+            sidebar.style.boxShadow = '4px 0 24px rgba(0,0,0,0.15)';
+        }
+    });
+
+    // ── 11. Alert Banner dismiss ──
+    document.getElementById('dismiss-alert').addEventListener('click', function() {
+        document.getElementById('alert-banner').style.display = 'none';
+    });
+</script>
+</body>
+</html>

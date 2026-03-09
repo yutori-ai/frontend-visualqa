@@ -535,6 +535,92 @@ async def test_claim_verifier_converts_inconclusive_full_visibility_button_claim
 
 
 @pytest.mark.asyncio
+async def test_claim_verifier_fuzzy_matches_button_with_decorative_chars_and_quotes(tmp_path: Path) -> None:
+    """Fuzzy matching passes when claim label has quotes/descriptors and button text has decorative chars."""
+    module = _import_claim_verifier_module()
+    verifier, _, _ = _build_claim_verifier(
+        module,
+        tmp_path,
+        responses=[
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-1",
+                        function=FakeFunction(
+                            name="record_claim_result",
+                            arguments=json.dumps({"status": "pass", "summary": "Button visible."}),
+                        ),
+                    )
+                ]
+            )
+        ],
+    )
+
+    result = await _call_verify(
+        verifier,
+        page=EvaluatingPage(
+            url="http://fixture.local/page",
+            visual_state={
+                "visibleHeadings": ["Page Title"],
+                "visibleButtons": ["Select Priority \u25bc"],
+                "buttonStates": [{"text": "Select Priority \u25bc", "fullyVisible": True}],
+                "dialogTitles": [],
+            },
+        ),
+        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+        claim="The 'Select Priority' dropdown button is visible",
+        url="http://fixture.local/page",
+        navigation_hint=None,
+    )
+
+    assert _field(result, "status") == "pass"
+    assert "Select Priority" in _field(result, "summary")
+
+
+@pytest.mark.asyncio
+async def test_claim_verifier_skips_grounding_for_compound_claims(tmp_path: Path) -> None:
+    """Compound claims with verbs in the label should not be caught by button grounding."""
+    module = _import_claim_verifier_module()
+    verifier, _, _ = _build_claim_verifier(
+        module,
+        tmp_path,
+        responses=[
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-1",
+                        function=FakeFunction(
+                            name="record_claim_result",
+                            arguments=json.dumps({"status": "pass", "summary": "Both conditions met."}),
+                        ),
+                    )
+                ]
+            )
+        ],
+    )
+
+    result = await _call_verify(
+        verifier,
+        page=EvaluatingPage(
+            url="http://fixture.local/page",
+            visual_state={
+                "visibleHeadings": [],
+                "visibleButtons": [],
+                "buttonStates": [],
+                "dialogTitles": [],
+            },
+        ),
+        viewport=ViewportConfig(width=375, height=812, device_scale_factor=1),
+        claim="The sidebar is hidden and a hamburger menu button is visible",
+        url="http://fixture.local/page",
+        navigation_hint=None,
+    )
+
+    # n1 said pass; grounding should NOT override because claim is compound
+    assert _field(result, "status") == "pass"
+
+
+@pytest.mark.asyncio
 async def test_claim_verifier_reuses_trimmed_history_across_requests(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

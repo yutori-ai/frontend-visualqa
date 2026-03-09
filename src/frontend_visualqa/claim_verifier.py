@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import unicodedata
 from typing import Any
 
 from frontend_visualqa.actions import BROWSER_ACTION_TOOLS, ActionExecutor
@@ -26,7 +27,7 @@ FALLBACK_VERDICT_PATTERN = re.compile(
     re.IGNORECASE,
 )
 BUTTON_VISIBLE_PATTERN = re.compile(
-    r"""^The\s+(?P<label>.+?)\s+button\s+is\s+visible(?:\s+without\s+scrolling)?\.?$""",
+    r"""^The\s+(?P<label>(?:(?!\b(?:is|are|was|were|has|have|does|do|should|can)\b).)+?)\s+button\s+is\s+visible(?:\s+without\s+scrolling)?\.?$""",
     re.IGNORECASE,
 )
 BUTTON_FULLY_VISIBLE_PATTERN = re.compile(
@@ -646,6 +647,28 @@ class ClaimVerifier:
     def _normalize_text(value: str) -> str:
         return " ".join(value.split()).strip().casefold()
 
+    @staticmethod
+    def _normalize_label_for_match(value: str) -> str:
+        """Normalize a label for fuzzy button matching.
+
+        Strips surrounding quotes, common decorative characters (▼▶✕×…),
+        and trailing descriptor words like 'dropdown', 'menu', 'icon'.
+        """
+        text = " ".join(value.split()).strip().casefold()
+        # Remove all quote characters (surrounding and embedded)
+        for q in ("'", '"', "\u2018", "\u2019", "\u201c", "\u201d"):
+            text = text.replace(q, "")
+        # Remove common trailing descriptors that don't appear in button text
+        for suffix in (" dropdown", " menu", " icon", " button"):
+            if text.endswith(suffix):
+                text = text[: -len(suffix)]
+        # Category "S" catches Symbol chars (▼▶▾▸◀◂✕×); the explicit set also
+        # includes punctuation quote-marks (›‹«») that fall under Pi/Pf.
+        text = "".join(
+            ch for ch in text if unicodedata.category(ch)[0] not in ("S",) and ch not in "▼▶▾▸◀◂✕×›‹«»"
+        )
+        return " ".join(text.split()).strip()
+
     def _check_heading_match(
         self,
         visual_state: dict[str, list[str]],
@@ -691,10 +714,17 @@ class ClaimVerifier:
             )
 
         label = self._normalize_text(groups["label"])
+        fuzzy_label = self._normalize_label_for_match(groups["label"])
         visible_buttons = visual_state.get("visibleButtons", [])
         for candidate in visible_buttons:
             normalized_candidate = self._normalize_text(candidate)
-            if normalized_candidate == label or normalized_candidate.startswith(f"{label} "):
+            fuzzy_candidate = self._normalize_label_for_match(candidate)
+            if (
+                normalized_candidate == label
+                or normalized_candidate.startswith(f"{label} ")
+                or (fuzzy_label and fuzzy_candidate == fuzzy_label)
+                or (fuzzy_label and fuzzy_candidate.startswith(f"{fuzzy_label} "))
+            ):
                 return "pass", f"Visible button label matched {groups['label']!r}: {candidate!r}."
         return (
             "fail",
@@ -728,10 +758,17 @@ class ClaimVerifier:
 
     def _matching_button_states(self, visual_state: dict[str, list[str]], label: str) -> list[dict[str, Any]]:
         normalized_label = self._normalize_text(label)
+        fuzzy_label = self._normalize_label_for_match(label)
         matched_states: list[dict[str, Any]] = []
         for state in visual_state.get("buttonStates", []):
             text = str(state.get("text", ""))
             normalized_candidate = self._normalize_text(text)
-            if normalized_candidate == normalized_label or normalized_candidate.startswith(f"{normalized_label} "):
+            fuzzy_candidate = self._normalize_label_for_match(text)
+            if (
+                normalized_candidate == normalized_label
+                or normalized_candidate.startswith(f"{normalized_label} ")
+                or (fuzzy_label and fuzzy_candidate == fuzzy_label)
+                or (fuzzy_label and fuzzy_candidate.startswith(f"{fuzzy_label} "))
+            ):
                 matched_states.append(state)
         return matched_states
