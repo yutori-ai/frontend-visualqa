@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Modal Title Regression Fixture</title>
+    <style>
+        :root {
+            color-scheme: light;
+            font-family: Georgia, "Times New Roman", serif;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background: radial-gradient(circle at top, #f4f2fb 0%, #fdfaf3 52%, #f4efe5 100%);
+            color: #1f1f24;
+        }
+
+        main {
+            width: min(920px, calc(100% - 48px));
+            margin: 64px auto;
+            padding: 40px;
+            border-radius: 30px;
+            background: rgba(255, 255, 255, 0.9);
+            box-shadow: 0 24px 60px rgba(28, 21, 48, 0.12);
+        }
+
+        h1 {
+            margin: 0 0 14px;
+            font-size: 44px;
+        }
+
+        .task-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 28px;
+            padding: 18px 22px;
+            border-radius: 18px;
+            background: #f1ede3;
+            cursor: pointer;
+        }
+
+        .task-row strong {
+            font-size: 20px;
+        }
+
+        .task-row span {
+            color: #6d6456;
+        }
+
+        .backdrop {
+            position: fixed;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            background: rgba(26, 22, 34, 0.42);
+        }
+
+        .backdrop[data-open="true"] {
+            display: flex;
+        }
+
+        .modal {
+            width: min(560px, calc(100% - 32px));
+            padding: 28px;
+            border-radius: 24px;
+            background: white;
+            box-shadow: 0 22px 48px rgba(25, 18, 45, 0.24);
+        }
+
+        .modal h2 {
+            margin: 0 0 10px;
+            font-size: 34px;
+        }
+
+        .modal p {
+            margin: 0 0 18px;
+            color: #5c5862;
+            font-size: 18px;
+            line-height: 1.5;
+        }
+
+        .modal button {
+            border: 0;
+            border-radius: 14px;
+            padding: 12px 18px;
+            background: #d35d55;
+            color: white;
+            font-size: 16px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <main>
+        <h1>Task Workspace</h1>
+        <p>Click the task row to open the editor.</p>
+        <div class="task-row" id="open-modal" role="button" tabindex="0" aria-label="Task list row">
+            <div>
+                <strong>Task list row</strong>
+                <span>Open the task editor modal</span>
+            </div>
+            <span>Pending</span>
+        </div>
+    </main>
+
+    <div class="backdrop" id="backdrop" data-open="false">
+        <section class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+            <h2 id="modal-title">Create Task</h2>
+            <p>This page is intentionally wrong. The modal title should have been “Edit Task”.</p>
+            <button id="close-modal" type="button">Close</button>
+        </section>
+    </div>
+
+    <script>
+        const backdrop = document.getElementById("backdrop");
+        const openModal = document.getElementById("open-modal");
+        const closeModal = document.getElementById("close-modal");
+
+        function showModal() {
+            backdrop.dataset.open = "true";
+        }
+
+        function hideModal() {
+            backdrop.dataset.open = "false";
+        }
+
+        openModal.addEventListener("click", showModal);
+        openModal.addEventListener("keydown", (event) => {
+            if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                showModal();
+            }
+        });
+        closeModal.addEventListener("click", hideModal);
+    </script>
+</body>
+</html>

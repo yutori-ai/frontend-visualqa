@@ -1,0 +1,686 @@
+from __future__ import annotations
+
+import inspect
+import json
+from dataclasses import dataclass
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
+
+import pytest
+
+from frontend_visualqa.artifacts import RunArtifacts
+from frontend_visualqa.schemas import ViewportConfig
+
+
+def _import_claim_verifier_module():
+    import importlib
+
+    try:
+        return importlib.import_module("frontend_visualqa.claim_verifier")
+    except ModuleNotFoundError as exc:
+        if exc.name and exc.name.startswith("frontend_visualqa"):
+            pytest.skip("frontend_visualqa.claim_verifier is not implemented in this worktree yet")
+        raise
+
+
+def _instantiate_with_supported_kwargs(factory: Any, **candidates: Any) -> Any:
+    signature = inspect.signature(factory)
+    kwargs = {
+        name: value
+        for name, value in candidates.items()
+        if name in signature.parameters
+        and signature.parameters[name].kind in {inspect.Parameter.KEYWORD_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD}
+    }
+    return factory(**kwargs)
+
+
+def _field(result: Any, name: str) -> Any:
+    if isinstance(result, dict):
+        return result[name]
+    return getattr(result, name)
+
+
+@dataclass
+class FakePage:
+    url: str
+
+
+class EvaluatingPage(FakePage):
+    def __init__(self, url: str, visual_state: dict[str, list[str]]) -> None:
+        super().__init__(url=url)
+        self.visual_state = visual_state
+
+    async def evaluate(self, _: str) -> dict[str, list[str]]:
+        return self.visual_state
+
+
+@dataclass
+class FakeSession:
+    page: FakePage
+    viewport: ViewportConfig
+
+
+class FakeBrowserManager:
+    def __init__(self) -> None:
+        self.capture_calls = 0
+
+    async def capture_screenshot(self, session: Any) -> bytes:
+        del session
+        self.capture_calls += 1
+        return b"RIFFfakeWEBP"
+
+
+class FakeActionExecutor:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, dict[str, Any]]] = []
+
+    async def execute_tool_call(self, session: FakeSession, tool_call: Any) -> Any:
+        resolved_name = tool_call.function.name
+        resolved_args = json.loads(tool_call.function.arguments or "{}")
+        self.calls.append((resolved_name, resolved_args))
+        if resolved_name == "goto_url":
+            session.page.url = resolved_args["url"]
+        return SimpleNamespace(
+            trace=f"{resolved_name}({resolved_args})",
+            output_text=f"Executed {resolved_name}",
+            current_url=session.page.url,
+            success=True,
+        )
+
+
+class FakeArtifactManager:
+    def __init__(self, base_dir: Path) -> None:
+        self.base_dir = base_dir
+        self.run = RunArtifacts(run_id="run-test", run_dir=base_dir / "run-test")
+        self.run.run_dir.mkdir(parents=True, exist_ok=True)
+
+    def create_run(self, prefix: str = "run", run_id: str | None = None) -> RunArtifacts:
+        del prefix, run_id
+        return self.run
+
+    def save_screenshot(self, run: RunArtifacts, claim_index: int, label: str, image_bytes: bytes) -> str:
+        claim_dir = run.run_dir / f"claim-{claim_index:02d}"
+        claim_dir.mkdir(parents=True, exist_ok=True)
+        path = claim_dir / f"{label}.webp"
+        path.write_bytes(image_bytes)
+        return str(path)
+
+    def save_trace(self, run: RunArtifacts, claim_index: int, action_trace: list[str]) -> str:
+        claim_dir = run.run_dir / f"claim-{claim_index:02d}"
+        claim_dir.mkdir(parents=True, exist_ok=True)
+        path = claim_dir / "action_trace.json"
+        path.write_text(json.dumps(action_trace))
+        return str(path)
+
+
+@dataclass
+class FakeFunction:
+    name: str
+    arguments: str
+
+
+@dataclass
+class FakeToolCall:
+    id: str
+    function: FakeFunction
+
+
+@dataclass
+class FakeMessage:
+    role: str = "assistant"
+    tool_calls: list[FakeToolCall] | None = None
+    content: str | None = None
+
+    def model_dump(self, exclude_none: bool = True) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "role": self.role,
+            "content": self.content,
+        }
+        if self.tool_calls is not None:
+            payload["tool_calls"] = [
+                {
+                    "id": tool_call.id,
+                    "type": "function",
+                    "function": {
+                        "name": tool_call.function.name,
+                        "arguments": tool_call.function.arguments,
+                    },
+                }
+                for tool_call in self.tool_calls
+            ]
+        if exclude_none:
+            return {key: value for key, value in payload.items() if value is not None}
+        return payload
+
+
+class FakeN1Client:
+    def __init__(self, responses: list[FakeMessage]) -> None:
+        self.responses = list(responses)
+        self.calls: list[dict[str, Any]] = []
+
+    async def create(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]]) -> FakeMessage:
+        self.calls.append({"messages": messages, "tools": tools})
+        return self.responses.pop(0)
+
+
+def _build_claim_verifier(
+    module: Any,
+    tmp_path: Path,
+    responses: list[FakeMessage],
+    *,
+    browser_manager: Any | None = None,
+    action_executor: Any | None = None,
+    artifact_manager: Any | None = None,
+) -> tuple[Any, FakeN1Client, FakeActionExecutor]:
+    browser = browser_manager or FakeBrowserManager()
+    action_executor = action_executor or FakeActionExecutor()
+    artifacts = artifact_manager or FakeArtifactManager(tmp_path)
+    n1_client = FakeN1Client(responses)
+
+    verifier = _instantiate_with_supported_kwargs(
+        module.ClaimVerifier,
+        browser_manager=browser,
+        browser=browser,
+        action_executor=action_executor,
+        artifact_manager=artifacts,
+        artifacts=artifacts,
+        n1_client=n1_client,
+        client=n1_client,
+    )
+
+    for attribute_name, value in {
+        "browser_manager": browser,
+        "browser": browser,
+        "action_executor": action_executor,
+        "artifact_manager": artifacts,
+        "artifacts": artifacts,
+        "n1_client": n1_client,
+        "client": n1_client,
+    }.items():
+        setattr(verifier, attribute_name, value)
+
+    return verifier, n1_client, action_executor
+
+
+async def _call_verify(
+    verifier: Any,
+    *,
+    page: FakePage,
+    viewport: ViewportConfig,
+    claim: str,
+    url: str,
+    navigation_hint: str | None,
+) -> Any:
+    signature = inspect.signature(verifier.verify)
+    kwargs: dict[str, Any] = {}
+    run_dir = Path("/tmp/frontend-visualqa-test")
+    run_dir.mkdir(parents=True, exist_ok=True)
+    run = RunArtifacts(run_id="run-test", run_dir=run_dir)
+
+    if "page" in signature.parameters:
+        kwargs["page"] = page
+    if "session" in signature.parameters:
+        kwargs["session"] = FakeSession(page=page, viewport=viewport)
+    if "claim" in signature.parameters:
+        kwargs["claim"] = claim
+    if "url" in signature.parameters:
+        kwargs["url"] = url
+    if "max_steps" in signature.parameters:
+        kwargs["max_steps"] = 2
+    if "navigation_hint" in signature.parameters:
+        kwargs["navigation_hint"] = navigation_hint
+    if "viewport" in signature.parameters:
+        kwargs["viewport"] = viewport
+    if "claim_index" in signature.parameters:
+        kwargs["claim_index"] = 1
+    if "run" in signature.parameters:
+        kwargs["run"] = run
+    if "run_artifacts" in signature.parameters:
+        kwargs["run_artifacts"] = run
+
+    return await verifier.verify(**kwargs)
+
+
+@pytest.mark.asyncio
+async def test_claim_verifier_returns_structured_verdict_from_record_claim_result(tmp_path: Path) -> None:
+    module = _import_claim_verifier_module()
+    verifier, n1_client, _ = _build_claim_verifier(
+        module,
+        tmp_path,
+        responses=[
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-1",
+                        function=FakeFunction(
+                            name="record_claim_result",
+                            arguments=json.dumps(
+                                {
+                                    "status": "pass",
+                                    "summary": "The red button is visible in the hero panel.",
+                                }
+                            ),
+                        ),
+                    )
+                ]
+            )
+        ],
+    )
+
+    result = await _call_verify(
+        verifier,
+        page=FakePage(url="http://fixture.local/page"),
+        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+        claim="The page has a red button",
+        url="http://fixture.local/page",
+        navigation_hint=None,
+    )
+
+    assert _field(result, "claim") == "The page has a red button"
+    assert _field(result, "status") == "pass"
+    assert "red button" in _field(result, "summary")
+    assert _field(result, "final_url") == "http://fixture.local/page"
+    assert n1_client.calls
+    assert any(tool["function"]["name"] == "record_claim_result" for tool in n1_client.calls[0]["tools"])
+
+
+@pytest.mark.asyncio
+async def test_claim_verifier_executes_actions_before_final_verdict(tmp_path: Path) -> None:
+    module = _import_claim_verifier_module()
+    verifier, _, action_executor = _build_claim_verifier(
+        module,
+        tmp_path,
+        responses=[
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-1",
+                        function=FakeFunction(
+                            name="goto_url",
+                            arguments=json.dumps({"url": "http://fixture.local/modal"}),
+                        ),
+                    )
+                ]
+            ),
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-2",
+                        function=FakeFunction(
+                            name="record_claim_result",
+                            arguments=json.dumps(
+                                {
+                                    "status": "pass",
+                                    "summary": "The modal is now visible and titled Edit Task.",
+                                }
+                            ),
+                        ),
+                    )
+                ]
+            ),
+        ],
+    )
+    page = FakePage(url="http://fixture.local/start")
+
+    result = await _call_verify(
+        verifier,
+        page=page,
+        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+        claim="The modal opens on click",
+        url="http://fixture.local/modal",
+        navigation_hint="Open the modal before deciding.",
+    )
+
+    assert action_executor.calls == [("goto_url", {"url": "http://fixture.local/modal"})]
+    assert _field(result, "status") == "pass"
+    assert _field(result, "final_url") == "http://fixture.local/modal"
+    assert _field(result, "steps_taken") >= 1
+    assert _field(result, "wrong_page_recovered") is True
+
+
+@pytest.mark.asyncio
+async def test_claim_verifier_preserves_tool_call_order_when_action_and_verdict_share_a_turn(tmp_path: Path) -> None:
+    module = _import_claim_verifier_module()
+    verifier, _, action_executor = _build_claim_verifier(
+        module,
+        tmp_path,
+        responses=[
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-1",
+                        function=FakeFunction(
+                            name="goto_url",
+                            arguments=json.dumps({"url": "http://fixture.local/modal"}),
+                        ),
+                    ),
+                    FakeToolCall(
+                        id="tool-2",
+                        function=FakeFunction(
+                            name="record_claim_result",
+                            arguments=json.dumps({"status": "pass", "summary": "The modal is visible."}),
+                        ),
+                    ),
+                ]
+            )
+        ],
+    )
+    page = FakePage(url="http://fixture.local/start")
+
+    result = await _call_verify(
+        verifier,
+        page=page,
+        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+        claim="The modal opens on click",
+        url="http://fixture.local/modal",
+        navigation_hint="Open the modal before deciding.",
+    )
+
+    assert action_executor.calls == [("goto_url", {"url": "http://fixture.local/modal"})]
+    assert _field(result, "status") == "pass"
+    assert _field(result, "final_url") == "http://fixture.local/modal"
+
+
+@pytest.mark.asyncio
+async def test_claim_verifier_downgrades_pass_when_button_grounding_disagrees(tmp_path: Path) -> None:
+    module = _import_claim_verifier_module()
+    verifier, _, _ = _build_claim_verifier(
+        module,
+        tmp_path,
+        responses=[
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-1",
+                        function=FakeFunction(
+                            name="record_claim_result",
+                            arguments=json.dumps(
+                                {
+                                    "status": "pass",
+                                    "summary": "The Show Save Confirmation button is visible in the header.",
+                                }
+                            ),
+                        ),
+                    )
+                ]
+            )
+        ],
+    )
+
+    result = await _call_verify(
+        verifier,
+        page=EvaluatingPage(
+            url="http://fixture.local/page",
+            visual_state={
+                "visibleHeadings": ["Frontend Visual QA Playground"],
+                "visibleButtons": ["Open Edit Task Modal", "Show Save Confirmation"],
+                "dialogTitles": [],
+            },
+        ),
+        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+        claim="The Save button is visible without scrolling",
+        url="http://fixture.local/page",
+        navigation_hint=None,
+    )
+
+    assert _field(result, "status") == "fail"
+    assert "No visible button label matched" in _field(result, "summary")
+
+
+@pytest.mark.asyncio
+async def test_claim_verifier_reuses_trimmed_history_across_requests(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _import_claim_verifier_module()
+    verifier, n1_client, _ = _build_claim_verifier(
+        module,
+        tmp_path,
+        responses=[
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-1",
+                        function=FakeFunction(
+                            name="goto_url",
+                            arguments=json.dumps({"url": "http://fixture.local/modal"}),
+                        ),
+                    )
+                ]
+            ),
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-2",
+                        function=FakeFunction(
+                            name="record_claim_result",
+                            arguments=json.dumps(
+                                {
+                                    "status": "pass",
+                                    "summary": "The modal is now visible and titled Edit Task.",
+                                }
+                            ),
+                        ),
+                    )
+                ]
+            ),
+        ],
+    )
+    trim_calls: list[dict[str, Any]] = []
+    trimmed_payload = [{"role": "user", "content": [{"type": "text", "text": "trimmed"}]}]
+
+    def fake_trim_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        trim_calls.append({"messages": messages})
+        return trimmed_payload
+
+    n1_client.trim_messages = fake_trim_messages  # type: ignore[attr-defined]
+
+    result = await _call_verify(
+        verifier,
+        page=FakePage(url="http://fixture.local/start"),
+        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+        claim="The modal opens on click",
+        url="http://fixture.local/modal",
+        navigation_hint="Open the modal before deciding.",
+    )
+
+    assert _field(result, "status") == "pass"
+    assert len(trim_calls) >= 2
+    assert trim_calls[0]["messages"][0]["content"][0]["text"] != "trimmed"
+    assert trim_calls[1]["messages"][0]["content"][0]["text"] == "trimmed"
+    assert n1_client.calls[0]["messages"][0]["content"][0]["text"] == "trimmed"
+    assert n1_client.calls[1]["messages"][0]["content"][0]["text"] == "trimmed"
+
+
+@pytest.mark.asyncio
+async def test_claim_verifier_treats_stop_tool_call_as_a_final_inconclusive_verdict(tmp_path: Path) -> None:
+    module = _import_claim_verifier_module()
+    verifier, _, action_executor = _build_claim_verifier(
+        module,
+        tmp_path,
+        responses=[
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-1",
+                        function=FakeFunction(
+                            name="stop",
+                            arguments=json.dumps({"reason": "Need a human to decide from this screenshot."}),
+                        ),
+                    )
+                ]
+            )
+        ],
+    )
+
+    result = await _call_verify(
+        verifier,
+        page=FakePage(url="http://fixture.local/page"),
+        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+        claim="The promotion banner feels too crowded",
+        url="http://fixture.local/page",
+        navigation_hint=None,
+    )
+
+    assert _field(result, "status") == "inconclusive"
+    assert "Need a human" in _field(result, "summary")
+    assert action_executor.calls == []
+
+
+def test_parse_fallback_verdict_requires_explicit_status_markers() -> None:
+    module = _import_claim_verifier_module()
+
+    assert module.ClaimVerifier._parse_fallback_verdict("The screenshot seems verified.") is None
+    assert module.ClaimVerifier._parse_fallback_verdict("Status: pass\nThe header matches.") == (
+        "pass",
+        "Status: pass\nThe header matches.",
+    )
+    assert module.ClaimVerifier._parse_fallback_verdict('{"verdict":"not_testable","summary":"Auth wall"}') == (
+        "not_testable",
+        '{"verdict":"not_testable","summary":"Auth wall"}',
+    )
+
+
+def test_wrong_page_recovered_requires_a_return_to_the_target_url() -> None:
+    module = _import_claim_verifier_module()
+
+    assert module.ClaimVerifier._wrong_page_recovered(["http://fixture.local/page"], "http://fixture.local/page") is False
+    assert (
+        module.ClaimVerifier._wrong_page_recovered(
+            ["http://fixture.local/start", "http://fixture.local/page"],
+            "http://fixture.local/page",
+        )
+        is True
+    )
+    assert (
+        module.ClaimVerifier._wrong_page_recovered(
+            ["http://fixture.local/page"],
+            "http://fixture.local/page",
+            ["refresh()"],
+        )
+        is False
+    )
+
+
+def test_extract_structured_verdict_returns_none_for_empty_tool_calls() -> None:
+    module = _import_claim_verifier_module()
+
+    assert module.ClaimVerifier._extract_structured_verdict([]) is None
+
+
+class FailingBrowserManager(FakeBrowserManager):
+    def __init__(self, *, fail_on_capture_call: int) -> None:
+        super().__init__()
+        self.fail_on_capture_call = fail_on_capture_call
+
+    async def capture_screenshot(self, session: Any) -> bytes:
+        del session
+        self.capture_calls += 1
+        if self.capture_calls == self.fail_on_capture_call:
+            raise RuntimeError("page crashed while capturing screenshot")
+        return b"RIFFfakeWEBP"
+
+
+@pytest.mark.asyncio
+async def test_claim_verifier_normalizes_initial_screenshot_failures_to_not_testable(tmp_path: Path) -> None:
+    module = _import_claim_verifier_module()
+    verifier, _, _ = _build_claim_verifier(
+        module,
+        tmp_path,
+        responses=[],
+        browser_manager=FailingBrowserManager(fail_on_capture_call=1),
+    )
+
+    result = await _call_verify(
+        verifier,
+        page=FakePage(url="http://fixture.local/page"),
+        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+        claim="The page has a red button",
+        url="http://fixture.local/page",
+        navigation_hint=None,
+    )
+
+    assert _field(result, "status") == "not_testable"
+    assert "Failed to capture screenshot for step-00-initial" in _field(result, "summary")
+
+
+@pytest.mark.asyncio
+async def test_claim_verifier_normalizes_post_action_screenshot_failures_to_not_testable(tmp_path: Path) -> None:
+    module = _import_claim_verifier_module()
+    verifier, _, action_executor = _build_claim_verifier(
+        module,
+        tmp_path,
+        responses=[
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-1",
+                        function=FakeFunction(
+                            name="goto_url",
+                            arguments=json.dumps({"url": "http://fixture.local/modal"}),
+                        ),
+                    )
+                ]
+            )
+        ],
+        browser_manager=FailingBrowserManager(fail_on_capture_call=2),
+    )
+
+    result = await _call_verify(
+        verifier,
+        page=FakePage(url="http://fixture.local/start"),
+        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+        claim="The modal opens on click",
+        url="http://fixture.local/modal",
+        navigation_hint=None,
+    )
+
+    assert action_executor.calls == [("goto_url", {"url": "http://fixture.local/modal"})]
+    assert _field(result, "status") == "not_testable"
+    assert "Failed to capture screenshot for step-01" in _field(result, "summary")
+
+
+@pytest.mark.asyncio
+async def test_claim_verifier_uses_stop_reason_in_force_stop_path(tmp_path: Path) -> None:
+    module = _import_claim_verifier_module()
+    verifier, _, action_executor = _build_claim_verifier(
+        module,
+        tmp_path,
+        responses=[
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-1",
+                        function=FakeFunction(
+                            name="goto_url",
+                            arguments=json.dumps({"url": "http://fixture.local/modal"}),
+                        ),
+                    )
+                ]
+            ),
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-2",
+                        function=FakeFunction(
+                            name="stop",
+                            arguments=json.dumps({"reason": "Reached the step limit without enough evidence."}),
+                        ),
+                    )
+                ]
+            ),
+        ],
+    )
+
+    result = await _call_verify(
+        verifier,
+        page=FakePage(url="http://fixture.local/start"),
+        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+        claim="The modal opens on click",
+        url="http://fixture.local/modal",
+        navigation_hint=None,
+    )
+
+    assert action_executor.calls == [("goto_url", {"url": "http://fixture.local/modal"})]
+    assert _field(result, "status") == "inconclusive"
+    assert "Reached the step limit" in _field(result, "summary")

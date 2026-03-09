@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Frontend Visual QA Regression Fixture</title>
+    <style>
+        :root {
+            color-scheme: light;
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background: linear-gradient(180deg, #fbf7f1 0%, #eef4f9 100%);
+            color: #152235;
+        }
+
+        main {
+            width: min(960px, calc(100% - 48px));
+            margin: 56px auto;
+            padding: 40px;
+            border-radius: 28px;
+            background: rgba(255, 255, 255, 0.92);
+            box-shadow: 0 22px 56px rgba(18, 30, 46, 0.14);
+        }
+
+        .eyebrow {
+            display: inline-flex;
+            padding: 8px 14px;
+            border-radius: 999px;
+            background: #dde8f5;
+            color: #315b84;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .hero {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 24px;
+            margin-top: 24px;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 46px;
+            line-height: 1.05;
+        }
+
+        p {
+            max-width: 620px;
+            font-size: 18px;
+            line-height: 1.6;
+            color: #40556d;
+        }
+
+        .button-row {
+            display: flex;
+            gap: 16px;
+            margin-top: 32px;
+        }
+
+        button {
+            border: 0;
+            border-radius: 16px;
+            padding: 14px 20px;
+            font-size: 16px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .primary {
+            background: #3569b6;
+            color: white;
+        }
+
+        .secondary {
+            background: #eef3f8;
+            color: #244160;
+        }
+    </style>
+</head>
+<body>
+    <main>
+        <span class="eyebrow">Regression Build</span>
+        <section class="hero">
+            <div>
+                <h1>Frontend Visual QA Playground Beta</h1>
+                <p>
+                    This fixture intentionally drifts from the expected product copy and button styling so
+                    live visual verification can detect the regression.
+                </p>
+            </div>
+        </section>
+        <div class="button-row">
+            <button class="primary" type="button">Launch Modal</button>
+            <button class="secondary" type="button">Show Confirmation</button>
+        </div>
+    </main>
+</body>
+</html>

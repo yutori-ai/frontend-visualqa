@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Frontend Visual QA Playground</title>
+    <style>
+        :root {
+            color-scheme: light;
+            --bg: #f4efe4;
+            --panel: rgba(255, 255, 255, 0.88);
+            --ink: #1c2430;
+            --muted: #667085;
+            --accent: #c83b31;
+            --accent-dark: #8f1d1d;
+            --line: rgba(28, 36, 48, 0.12);
+            --ok: #1f8f63;
+            --shadow: 0 20px 48px rgba(28, 36, 48, 0.12);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: "Avenir Next", "Segoe UI", sans-serif;
+            color: var(--ink);
+            background:
+                radial-gradient(circle at top left, rgba(200, 59, 49, 0.18), transparent 30%),
+                radial-gradient(circle at top right, rgba(31, 143, 99, 0.14), transparent 24%),
+                linear-gradient(180deg, #faf6ef 0%, var(--bg) 100%);
+        }
+
+        .shell {
+            width: min(1100px, calc(100% - 48px));
+            margin: 32px auto;
+            padding: 32px;
+            border: 1px solid rgba(255, 255, 255, 0.65);
+            border-radius: 28px;
+            background: rgba(255, 250, 242, 0.82);
+            box-shadow: var(--shadow);
+            backdrop-filter: blur(16px);
+        }
+
+        .masthead {
+            display: flex;
+            justify-content: space-between;
+            gap: 24px;
+            align-items: start;
+            margin-bottom: 28px;
+        }
+
+        .eyebrow {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 12px;
+            border-radius: 999px;
+            background: rgba(31, 143, 99, 0.12);
+            color: var(--ok);
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+
+        .eyebrow::before {
+            content: "";
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            background: currentColor;
+        }
+
+        h1 {
+            margin: 18px 0 8px;
+            font-size: clamp(2rem, 3vw, 3.3rem);
+            line-height: 1.05;
+        }
+
+        .subtitle {
+            max-width: 54ch;
+            margin: 0;
+            color: var(--muted);
+            font-size: 1.05rem;
+            line-height: 1.6;
+        }
+
+        .hero-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            min-width: 280px;
+            padding: 20px;
+            border-radius: 22px;
+            border: 1px solid var(--line);
+            background: var(--panel);
+        }
+
+        .red-button {
+            border: none;
+            border-radius: 18px;
+            padding: 16px 18px;
+            font: inherit;
+            font-weight: 700;
+            color: #fff8ef;
+            background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dark) 100%);
+            cursor: pointer;
+            box-shadow: 0 10px 24px rgba(200, 59, 49, 0.32);
+        }
+
+        .ghost-button {
+            border: 1px solid var(--line);
+            border-radius: 16px;
+            padding: 12px 14px;
+            font: inherit;
+            font-weight: 600;
+            background: #fffdf9;
+            cursor: pointer;
+        }
+
+        .layout {
+            display: grid;
+            grid-template-columns: minmax(0, 1.6fr) minmax(260px, 0.9fr);
+            gap: 24px;
+        }
+
+        .card {
+            padding: 22px;
+            border-radius: 24px;
+            border: 1px solid var(--line);
+            background: var(--panel);
+        }
+
+        .card h2 {
+            margin-top: 0;
+            margin-bottom: 16px;
+            font-size: 1.25rem;
+        }
+
+        .task-list {
+            display: grid;
+            gap: 14px;
+        }
+
+        .task-row {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 16px;
+            align-items: center;
+            padding: 16px;
+            border-radius: 18px;
+            border: 1px solid var(--line);
+            background: #fffdf9;
+            cursor: pointer;
+        }
+
+        .task-title {
+            margin: 0 0 4px;
+            font-size: 1rem;
+        }
+
+        .task-meta {
+            margin: 0;
+            color: var(--muted);
+            font-size: 0.95rem;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 7px 12px;
+            border-radius: 999px;
+            background: rgba(28, 36, 48, 0.06);
+            color: var(--ink);
+            font-size: 0.82rem;
+            font-weight: 700;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+
+        .tab {
+            border: 1px solid var(--line);
+            border-radius: 999px;
+            padding: 10px 16px;
+            background: transparent;
+            font: inherit;
+            cursor: pointer;
+        }
+
+        .tab[aria-selected="true"] {
+            background: rgba(200, 59, 49, 0.1);
+            border-color: rgba(200, 59, 49, 0.3);
+            color: var(--accent-dark);
+        }
+
+        .panel[hidden] {
+            display: none;
+        }
+
+        .field {
+            display: grid;
+            gap: 8px;
+            margin-top: 18px;
+        }
+
+        label {
+            font-size: 0.92rem;
+            font-weight: 700;
+        }
+
+        input {
+            width: 100%;
+            padding: 12px 14px;
+            border: 1px solid rgba(28, 36, 48, 0.18);
+            border-radius: 14px;
+            font: inherit;
+            background: #fffdf9;
+        }
+
+        .query-chip {
+            display: inline-flex;
+            align-items: center;
+            min-height: 40px;
+            padding: 10px 14px;
+            border-radius: 14px;
+            background: rgba(28, 36, 48, 0.06);
+            color: var(--muted);
+            font-weight: 600;
+        }
+
+        .side-note {
+            display: grid;
+            gap: 14px;
+        }
+
+        .side-note p {
+            margin: 0;
+            color: var(--muted);
+            line-height: 1.6;
+        }
+
+        .metrics {
+            display: grid;
+            gap: 12px;
+        }
+
+        .metric {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--line);
+        }
+
+        .metric:last-child {
+            border-bottom: none;
+            padding-bottom: 0;
+        }
+
+        .metric strong {
+            font-size: 1.8rem;
+        }
+
+        .toast {
+            position: fixed;
+            right: 24px;
+            bottom: 24px;
+            padding: 14px 18px;
+            border-radius: 16px;
+            background: rgba(28, 36, 48, 0.94);
+            color: #ffffff;
+            box-shadow: var(--shadow);
+            opacity: 0;
+            transform: translateY(18px);
+            pointer-events: none;
+            transition: opacity 140ms ease, transform 140ms ease;
+        }
+
+        .toast[data-visible="true"] {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .modal-backdrop {
+            position: fixed;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            background: rgba(28, 36, 48, 0.55);
+        }
+
+        .modal-backdrop[data-open="true"] {
+            display: flex;
+        }
+
+        .modal {
+            width: min(560px, 100%);
+            padding: 24px;
+            border-radius: 24px;
+            background: #fffdf9;
+            border: 1px solid rgba(255, 255, 255, 0.72);
+            box-shadow: var(--shadow);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            gap: 18px;
+        }
+
+        .modal h3 {
+            margin: 0 0 6px;
+            font-size: 1.45rem;
+        }
+
+        .modal p {
+            margin: 0;
+            color: var(--muted);
+            line-height: 1.5;
+        }
+
+        .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+            margin-top: 24px;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        @media (max-width: 820px) {
+            .shell {
+                width: min(100% - 24px, 100%);
+                padding: 22px;
+                margin: 16px auto;
+            }
+
+            .masthead,
+            .layout {
+                grid-template-columns: 1fr;
+                display: grid;
+            }
+
+            .hero-actions {
+                min-width: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <main class="shell">
+        <section class="masthead">
+            <div>
+                <span class="eyebrow" data-testid="status-badge">QA Ready</span>
+                <h1>Frontend Visual QA Playground</h1>
+                <p class="subtitle">
+                    A local fixture with a red button, task rows, modal dialog, tabs, and toast state for deterministic browser tests.
+                </p>
+            </div>
+            <div class="hero-actions">
+                <button class="red-button" id="open-primary-modal" data-testid="primary-red-button" type="button">
+                    Open Edit Task Modal
+                </button>
+                <button class="ghost-button" id="show-toast" type="button">
+                    Show Save Confirmation
+                </button>
+            </div>
+        </section>
+
+        <section class="layout">
+            <article class="card">
+                <h2>Task Queue</h2>
+                <div class="task-list" role="list">
+                    <button class="task-row" data-testid="task-row" type="button">
+                        <span>
+                            <strong class="task-title">Landing page polish</strong>
+                            <span class="task-meta">Owner: Visual QA · Status: Needs review</span>
+                        </span>
+                        <span class="badge">Open</span>
+                    </button>
+                    <div class="task-row" role="listitem">
+                        <span>
+                            <strong class="task-title">Mobile nav regressions</strong>
+                            <span class="task-meta">Owner: Frontend · Status: In progress</span>
+                        </span>
+                        <span class="badge">Watch</span>
+                    </div>
+                </div>
+
+                <div class="field">
+                    <label for="search-input">Search preview</label>
+                    <input id="search-input" data-testid="search-input" placeholder="Type to update the preview chip" />
+                    <span class="query-chip" data-testid="query-chip">
+                        Current query:
+                        <strong id="current-query">none</strong>
+                    </span>
+                </div>
+            </article>
+
+            <aside class="card side-note">
+                <div>
+                    <div class="tabs" role="tablist" aria-label="Preview panels">
+                        <button class="tab" id="tab-overview" type="button" role="tab" aria-selected="true" aria-controls="panel-overview">
+                            Overview
+                        </button>
+                        <button class="tab" id="tab-details" type="button" role="tab" aria-selected="false" aria-controls="panel-details">
+                            Details
+                        </button>
+                    </div>
+
+                    <section class="panel" id="panel-overview" role="tabpanel" aria-labelledby="tab-overview">
+                        <p>The overview panel is visible by default and keeps the fixture stable for screenshot assertions.</p>
+                    </section>
+
+                    <section class="panel" id="panel-details" role="tabpanel" aria-labelledby="tab-details" hidden>
+                        <p>The details panel appears when the Details tab is selected.</p>
+                    </section>
+                </div>
+
+                <div class="metrics">
+                    <div class="metric">
+                        <span>Open issues</span>
+                        <strong>4</strong>
+                    </div>
+                    <div class="metric">
+                        <span>Passing checks</span>
+                        <strong>12</strong>
+                    </div>
+                    <div class="metric">
+                        <span>Saved views</span>
+                        <strong>3</strong>
+                    </div>
+                </div>
+            </aside>
+        </section>
+    </main>
+
+    <div class="modal-backdrop" id="modal-backdrop" data-open="false">
+        <section class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" data-testid="task-modal">
+            <div class="modal-header">
+                <div>
+                    <h3 id="modal-title">Edit Task</h3>
+                    <p>Update the task details and keep the save button visible without scrolling.</p>
+                </div>
+                <button class="ghost-button" id="close-modal" type="button" aria-label="Close dialog">Close</button>
+            </div>
+
+            <div class="field">
+                <label for="task-title-input">Task title</label>
+                <input id="task-title-input" value="Landing page polish" />
+            </div>
+
+            <div class="modal-actions">
+                <button class="ghost-button" id="cancel-modal" type="button">Cancel</button>
+                <button class="red-button" id="save-task" data-testid="save-task" type="button">Save Task</button>
+            </div>
+        </section>
+    </div>
+
+    <div class="toast" id="toast" data-visible="false" role="status" aria-live="polite">
+        Changes saved
+    </div>
+
+    <script>
+        const modalBackdrop = document.getElementById("modal-backdrop");
+        const taskRows = document.querySelectorAll("[data-testid='task-row']");
+        const primaryModalButton = document.getElementById("open-primary-modal");
+        const closeModalButton = document.getElementById("close-modal");
+        const cancelModalButton = document.getElementById("cancel-modal");
+        const saveTaskButton = document.getElementById("save-task");
+        const showToastButton = document.getElementById("show-toast");
+        const toast = document.getElementById("toast");
+        const searchInput = document.getElementById("search-input");
+        const currentQuery = document.getElementById("current-query");
+        const tabOverview = document.getElementById("tab-overview");
+        const tabDetails = document.getElementById("tab-details");
+        const panelOverview = document.getElementById("panel-overview");
+        const panelDetails = document.getElementById("panel-details");
+
+        function openModal() {
+            modalBackdrop.dataset.open = "true";
+        }
+
+        function closeModal() {
+            modalBackdrop.dataset.open = "false";
+        }
+
+        function showToast(message) {
+            toast.textContent = message;
+            toast.dataset.visible = "true";
+            window.clearTimeout(showToast.timeoutId);
+            showToast.timeoutId = window.setTimeout(() => {
+                toast.dataset.visible = "false";
+            }, 1800);
+        }
+
+        function activateTab(tab) {
+            const isDetails = tab === tabDetails;
+            tabOverview.setAttribute("aria-selected", String(!isDetails));
+            tabDetails.setAttribute("aria-selected", String(isDetails));
+            panelOverview.hidden = isDetails;
+            panelDetails.hidden = !isDetails;
+        }
+
+        primaryModalButton.addEventListener("click", openModal);
+        taskRows.forEach((row) => row.addEventListener("click", openModal));
+        closeModalButton.addEventListener("click", closeModal);
+        cancelModalButton.addEventListener("click", closeModal);
+        saveTaskButton.addEventListener("click", () => {
+            closeModal();
+            showToast("Changes saved");
+        });
+        showToastButton.addEventListener("click", () => showToast("Changes saved"));
+        searchInput.addEventListener("input", (event) => {
+            const value = event.target.value.trim();
+            currentQuery.textContent = value || "none";
+        });
+        tabOverview.addEventListener("click", () => activateTab(tabOverview));
+        tabDetails.addEventListener("click", () => activateTab(tabDetails));
+    </script>
+</body>
+</html>

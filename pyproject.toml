@@ -1,0 +1,41 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "frontend-visualqa"
+version = "0.1.0"
+description = "Visual QA for local frontends with a shared CLI and FastMCP server."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "httpx>=0.26.0",
+    "mcp>=1.1.2",
+    "pillow>=10.0.0",
+    "playwright>=1.40.0",
+    "pydantic>=2.7.0",
+    "yutori>=0.4.3",
+]
+
+[[project.authors]]
+name = "Yutori"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+    "ruff>=0.9.0",
+]
+
+[project.scripts]
+frontend-visualqa = "frontend_visualqa.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/frontend_visualqa"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 120
