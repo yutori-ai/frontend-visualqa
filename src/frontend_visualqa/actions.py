@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from typing import Any
 
 from frontend_visualqa.browser import BrowserSession, DEFAULT_NAVIGATION_TIMEOUT_MS as BROWSER_NAVIGATION_TIMEOUT_MS
@@ -36,6 +37,251 @@ ACTION_NAME_ALIASES: dict[str, str] = {
     "goto": "goto_url",
     "key": "key_press",
 }
+
+BROWSER_ACTION_TOOLS: list[dict[str, Any]] = [
+    {
+        "type": "function",
+        "function": {
+            "name": "goto_url",
+            "description": "Navigate directly to a URL.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string", "description": "Absolute URL to open."},
+                },
+                "required": ["url"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "left_click",
+            "description": "Click once at normalized [x, y] coordinates in the current viewport.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "coordinates": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "minItems": 2,
+                        "maxItems": 2,
+                        "description": "Normalized [x, y] coordinates on a 0-1000 grid.",
+                    },
+                },
+                "required": ["coordinates"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "double_click",
+            "description": "Double-click at normalized [x, y] coordinates in the current viewport.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "coordinates": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "minItems": 2,
+                        "maxItems": 2,
+                        "description": "Normalized [x, y] coordinates on a 0-1000 grid.",
+                    },
+                },
+                "required": ["coordinates"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "triple_click",
+            "description": "Triple-click at normalized [x, y] coordinates in the current viewport.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "coordinates": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "minItems": 2,
+                        "maxItems": 2,
+                        "description": "Normalized [x, y] coordinates on a 0-1000 grid.",
+                    },
+                },
+                "required": ["coordinates"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "right_click",
+            "description": "Right-click at normalized [x, y] coordinates in the current viewport.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "coordinates": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "minItems": 2,
+                        "maxItems": 2,
+                        "description": "Normalized [x, y] coordinates on a 0-1000 grid.",
+                    },
+                },
+                "required": ["coordinates"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "hover",
+            "description": "Move the mouse over normalized [x, y] coordinates.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "coordinates": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "minItems": 2,
+                        "maxItems": 2,
+                        "description": "Normalized [x, y] coordinates on a 0-1000 grid.",
+                    },
+                },
+                "required": ["coordinates"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "drag",
+            "description": "Drag from one point to another using normalized viewport coordinates.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "start_coordinates": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "minItems": 2,
+                        "maxItems": 2,
+                        "description": "Normalized [x, y] start coordinates on a 0-1000 grid.",
+                    },
+                    "coordinates": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "minItems": 2,
+                        "maxItems": 2,
+                        "description": "Normalized [x, y] end coordinates on a 0-1000 grid.",
+                    },
+                },
+                "required": ["start_coordinates", "coordinates"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "scroll",
+            "description": "Scroll from a point in a direction by a relative amount.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "coordinates": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "minItems": 2,
+                        "maxItems": 2,
+                        "description": "Normalized [x, y] coordinates on a 0-1000 grid. Defaults to the viewport center.",
+                    },
+                    "direction": {
+                        "type": "string",
+                        "enum": ["up", "down", "left", "right"],
+                        "description": "Scroll direction.",
+                    },
+                    "amount": {
+                        "type": "number",
+                        "description": "Relative scroll multiplier. 1 means about 10% of the viewport.",
+                    },
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "type",
+            "description": "Type text into the currently focused input.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "text": {"type": "string", "description": "Text to type."},
+                    "clear_before_typing": {
+                        "type": "boolean",
+                        "description": "Whether to clear the focused field before typing.",
+                    },
+                    "press_enter_after": {
+                        "type": "boolean",
+                        "description": "Whether to press Enter after typing.",
+                    },
+                },
+                "required": ["text"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "key_press",
+            "description": "Press a key or key combination such as Enter, Tab, or Control+L.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "key_comb": {"type": "string", "description": "Key or key combination to press."},
+                },
+                "required": ["key_comb"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "wait",
+            "description": "Pause briefly to wait for the page to settle after an interaction.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "seconds": {"type": "number", "description": "Seconds to wait."},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "refresh",
+            "description": "Reload the current page.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "go_back",
+            "description": "Go back in browser history.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "go_forward",
+            "description": "Go forward in browser history.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+]
 
 KEY_MAP: dict[str, str] = {
     "alt": "Alt",
@@ -96,6 +342,8 @@ KEY_COMBINATION_ACTIONS: dict[str, str] = {
     "F5": "refresh",
 }
 
+DISALLOWED_ZOOM_KEYS = {"-", "=", "0", "Minus", "Plus"}
+
 
 def map_key_to_playwright(key: str) -> str:
     """Map a single key token to Playwright's naming."""
@@ -114,6 +362,30 @@ def map_key_combination_to_playwright(key_text: str) -> str:
 
     parts = [map_key_to_playwright(part) for part in key_text.split("+") if part.strip()]
     return "+".join(parts)
+
+
+def expand_key_sequence(key_text: str) -> list[str]:
+    """Expand a keyboard input into one or more Playwright key presses."""
+
+    stripped = key_text.strip()
+    if not stripped:
+        return []
+
+    if "+" in stripped:
+        return [map_key_combination_to_playwright(stripped)]
+
+    token_candidates = [token for token in re.split(r"[\s,]+", stripped) if token]
+    if len(token_candidates) > 1 and all(token == token_candidates[0] for token in token_candidates):
+        return [map_key_to_playwright(token) for token in token_candidates]
+
+    return [map_key_combination_to_playwright(stripped)]
+
+
+def is_disallowed_zoom_shortcut(key_text: str) -> bool:
+    """Return true when the key chord would change the browser zoom level."""
+
+    parts = [part for part in key_text.split("+") if part]
+    return "ControlOrMeta" in parts and any(part in DISALLOWED_ZOOM_KEYS for part in parts[1:])
 
 
 def scale_coordinates(coordinates: list[int] | tuple[int, int], width: int, height: int) -> tuple[int, int]:
@@ -171,7 +443,12 @@ def render_action_trace(
 
     if canonical_name == "key_press":
         key_comb = str(arguments.get("key_comb") or arguments.get("key") or "")
-        return f"key_press({map_key_combination_to_playwright(key_comb)})"
+        key_sequence = expand_key_sequence(key_comb)
+        if not key_sequence:
+            return "key_press()"
+        if len(key_sequence) == 1:
+            return f"key_press({key_sequence[0]})"
+        return f"key_press_sequence({', '.join(key_sequence)})"
 
     if canonical_name == "goto_url":
         return f"goto_url({json.dumps(str(arguments.get('url') or arguments.get('href') or ''))})"
@@ -291,12 +568,18 @@ class ActionExecutor:
                 key_comb = str(raw_arguments.get("key_comb") or raw_arguments.get("key") or "")
                 if not key_comb:
                     raise BrowserActionError("key_press requires key_comb")
-                normalized = map_key_combination_to_playwright(key_comb)
-                semantic_action = KEY_COMBINATION_ACTIONS.get(normalized)
-                if semantic_action is not None:
-                    await self.execute_action(session, semantic_action, {})
-                    return trace
-                await page.keyboard.press(normalized)
+                key_sequence = expand_key_sequence(key_comb)
+                if not key_sequence:
+                    raise BrowserActionError("key_press requires key_comb")
+                if len(key_sequence) == 1:
+                    semantic_action = KEY_COMBINATION_ACTIONS.get(key_sequence[0])
+                    if semantic_action is not None:
+                        await self.execute_action(session, semantic_action, {})
+                        return trace
+                for key_name in key_sequence:
+                    if is_disallowed_zoom_shortcut(key_name):
+                        continue
+                    await page.keyboard.press(key_name)
 
             elif canonical_name == "goto_url":
                 url = raw_arguments.get("url") or raw_arguments.get("href")

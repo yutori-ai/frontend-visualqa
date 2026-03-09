@@ -282,6 +282,7 @@ async def test_claim_verifier_returns_structured_verdict_from_record_claim_resul
     assert "red button" in _field(result, "summary")
     assert _field(result, "final_url") == "http://fixture.local/page"
     assert n1_client.calls
+    assert any(tool["function"]["name"] == "goto_url" for tool in n1_client.calls[0]["tools"])
     assert any(tool["function"]["name"] == "record_claim_result" for tool in n1_client.calls[0]["tools"])
 
 
@@ -337,6 +338,60 @@ async def test_claim_verifier_executes_actions_before_final_verdict(tmp_path: Pa
     assert _field(result, "final_url") == "http://fixture.local/modal"
     assert _field(result, "steps_taken") >= 1
     assert _field(result, "wrong_page_recovered") is True
+
+
+@pytest.mark.asyncio
+async def test_claim_verifier_reprompts_after_plain_text_thought_and_continues(tmp_path: Path) -> None:
+    module = _import_claim_verifier_module()
+    verifier, n1_client, action_executor = _build_claim_verifier(
+        module,
+        tmp_path,
+        responses=[
+            FakeMessage(content="I should open the task detail page before deciding."),
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-1",
+                        function=FakeFunction(
+                            name="goto_url",
+                            arguments=json.dumps({"url": "http://fixture.local/tasks/123"}),
+                        ),
+                    )
+                ]
+            ),
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-2",
+                        function=FakeFunction(
+                            name="record_claim_result",
+                            arguments=json.dumps({"status": "pass", "summary": "The Task Details heading is visible."}),
+                        ),
+                    )
+                ]
+            ),
+        ],
+    )
+
+    result = await _call_verify(
+        verifier,
+        page=FakePage(url="http://fixture.local/tasks"),
+        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+        claim="The page title reads 'Task Details'",
+        url="http://fixture.local/tasks",
+        navigation_hint="Open the task detail page before deciding.",
+    )
+
+    assert _field(result, "status") == "pass"
+    assert action_executor.calls == [("goto_url", {"url": "http://fixture.local/tasks/123"})]
+    assert len(n1_client.calls) == 3
+    reminder_message = next(
+        message
+        for message in reversed(n1_client.calls[1]["messages"])
+        if message.get("role") == "user" and isinstance(message.get("content"), list)
+    )
+    reminder_text = reminder_message["content"][0]["text"]
+    assert "Do not narrate your intent in plain text." in reminder_text
 
 
 @pytest.mark.asyncio
@@ -415,6 +470,10 @@ async def test_claim_verifier_downgrades_pass_when_button_grounding_disagrees(tm
             visual_state={
                 "visibleHeadings": ["Frontend Visual QA Playground"],
                 "visibleButtons": ["Open Edit Task Modal", "Show Save Confirmation"],
+                "buttonStates": [
+                    {"text": "Open Edit Task Modal", "fullyVisible": True},
+                    {"text": "Show Save Confirmation", "fullyVisible": True},
+                ],
                 "dialogTitles": [],
             },
         ),
@@ -426,6 +485,53 @@ async def test_claim_verifier_downgrades_pass_when_button_grounding_disagrees(tm
 
     assert _field(result, "status") == "fail"
     assert "No visible button label matched" in _field(result, "summary")
+
+
+@pytest.mark.asyncio
+async def test_claim_verifier_converts_inconclusive_full_visibility_button_claim_to_fail(tmp_path: Path) -> None:
+    module = _import_claim_verifier_module()
+    verifier, _, _ = _build_claim_verifier(
+        module,
+        tmp_path,
+        responses=[
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-1",
+                        function=FakeFunction(
+                            name="record_claim_result",
+                            arguments=json.dumps(
+                                {
+                                    "status": "inconclusive",
+                                    "summary": "I could not tell whether the button was fully visible.",
+                                }
+                            ),
+                        ),
+                    )
+                ]
+            )
+        ],
+    )
+
+    result = await _call_verify(
+        verifier,
+        page=EvaluatingPage(
+            url="http://fixture.local/settings",
+            visual_state={
+                "visibleHeadings": ["Workspace Settings"],
+                "visibleButtons": ["Save"],
+                "buttonStates": [{"text": "Save", "fullyVisible": False}],
+                "dialogTitles": [],
+            },
+        ),
+        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+        claim="The Save button is fully visible within its container",
+        url="http://fixture.local/settings",
+        navigation_hint=None,
+    )
+
+    assert _field(result, "status") == "fail"
+    assert "not fully visible" in _field(result, "summary")
 
 
 @pytest.mark.asyncio
@@ -541,7 +647,7 @@ def test_parse_fallback_verdict_requires_explicit_status_markers() -> None:
     )
 
 
-def test_wrong_page_recovered_requires_a_return_to_the_target_url() -> None:
+def test_wrong_page_recovered_handles_reaching_or_leaving_the_starting_url() -> None:
     module = _import_claim_verifier_module()
 
     assert module.ClaimVerifier._wrong_page_recovered(["http://fixture.local/page"], "http://fixture.local/page") is False
@@ -549,6 +655,13 @@ def test_wrong_page_recovered_requires_a_return_to_the_target_url() -> None:
         module.ClaimVerifier._wrong_page_recovered(
             ["http://fixture.local/start", "http://fixture.local/page"],
             "http://fixture.local/page",
+        )
+        is True
+    )
+    assert (
+        module.ClaimVerifier._wrong_page_recovered(
+            ["http://fixture.local/tasks", "http://fixture.local/tasks/123"],
+            "http://fixture.local/tasks",
         )
         is True
     )

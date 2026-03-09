@@ -7,12 +7,17 @@ import logging
 import re
 from typing import Any
 
-from frontend_visualqa.actions import ActionExecutor
+from frontend_visualqa.actions import BROWSER_ACTION_TOOLS, ActionExecutor
 from frontend_visualqa.artifacts import ArtifactManager, RunArtifacts
 from frontend_visualqa.browser import BrowserManager, BrowserSession, image_bytes_to_data_url
 from frontend_visualqa.errors import BrowserActionError, N1ClientError
 from frontend_visualqa.n1_client import N1Client
-from frontend_visualqa.prompts import RECORD_CLAIM_RESULT_TOOL, build_force_stop_prompt, build_verification_task
+from frontend_visualqa.prompts import (
+    RECORD_CLAIM_RESULT_TOOL,
+    build_action_or_verdict_prompt,
+    build_force_stop_prompt,
+    build_verification_task,
+)
 from frontend_visualqa.schemas import ClaimResult, ClaimStatus
 
 
@@ -24,11 +29,17 @@ BUTTON_VISIBLE_PATTERN = re.compile(
     r"""^The\s+(?P<label>.+?)\s+button\s+is\s+visible(?:\s+without\s+scrolling)?\.?$""",
     re.IGNORECASE,
 )
+BUTTON_FULLY_VISIBLE_PATTERN = re.compile(
+    r"""^The\s+(?P<label>.+?)\s+button\s+is\s+fully\s+visible(?:\s+within\s+its\s+container)?\.?$""",
+    re.IGNORECASE,
+)
 HEADING_READS_PATTERN = re.compile(r"""^The\s+heading\s+reads\s+["'](?P<text>.+?)["']\.?$""", re.IGNORECASE)
 PAGE_TITLE_READS_PATTERN = re.compile(r"""^The\s+page\s+title\s+reads\s+["'](?P<text>.+?)["']\.?$""", re.IGNORECASE)
 MODAL_TITLE_READS_PATTERN = re.compile(r"""^The\s+modal\s+title\s+reads\s+["'](?P<text>.+?)["']\.?$""", re.IGNORECASE)
 
 logger = logging.getLogger(__name__)
+
+MAX_NON_ACTION_REPROMPTS = 2
 
 
 class ClaimVerifier:
@@ -67,6 +78,7 @@ class ClaimVerifier:
         screenshot_paths: list[str] = []
         messages: list[dict[str, Any]] = []
         step_count = 0
+        non_action_reprompts = 0
 
         try:
             initial_bytes, initial_path = await self._capture_evidence_screenshot(
@@ -93,7 +105,7 @@ class ClaimVerifier:
 
             while step_count < max_steps:
                 messages = self._prepare_messages_for_request(messages)
-                response = await self.n1_client.create(messages, tools=[RECORD_CLAIM_RESULT_TOOL])
+                response = await self.n1_client.create(messages, tools=self._model_tools())
                 assistant_message = self._coerce_assistant_message(response)
                 messages.append(self._message_to_dict(assistant_message))
 
@@ -113,6 +125,15 @@ class ClaimVerifier:
                             run_artifacts=run_artifacts,
                             claim_index=claim_index,
                         )
+                    if non_action_reprompts < MAX_NON_ACTION_REPROMPTS:
+                        non_action_reprompts += 1
+                        messages.append(
+                            {
+                                "role": "user",
+                                "content": [{"type": "text", "text": build_action_or_verdict_prompt(claim)}],
+                            }
+                        )
+                        continue
                     break
 
                 for tool_call in tool_calls:
@@ -155,6 +176,7 @@ class ClaimVerifier:
                     trace = execution["trace"]
                     action_trace.append(trace)
                     step_count += 1
+                    non_action_reprompts = 0
                     screenshot_bytes, screenshot_path = await self._capture_evidence_screenshot(
                         session=session,
                         run_artifacts=run_artifacts,
@@ -268,7 +290,7 @@ class ClaimVerifier:
             }
         )
         messages = self._prepare_messages_for_request(messages)
-        assistant_message = await self.n1_client.create(messages, tools=[RECORD_CLAIM_RESULT_TOOL])
+        assistant_message = await self.n1_client.create(messages, tools=self._model_tools())
         messages.append(self._message_to_dict(assistant_message))
 
         verdict = self._extract_structured_verdict(getattr(assistant_message, "tool_calls", []) or [])
@@ -329,6 +351,10 @@ class ClaimVerifier:
         if callable(trim_messages):
             return trim_messages(messages)
         return messages
+
+    @staticmethod
+    def _model_tools() -> list[dict[str, Any]]:
+        return [*BROWSER_ACTION_TOOLS, RECORD_CLAIM_RESULT_TOOL]
 
     @staticmethod
     def _build_tool_result_text(trace: str, current_url: str, output_text: str | None = None) -> str:
@@ -434,13 +460,14 @@ class ClaimVerifier:
     @staticmethod
     def _wrong_page_recovered(url_history: list[str], target_url: str, action_trace: list[str] | None = None) -> bool:
         del action_trace
-        seen_other = False
-        for current_url in url_history:
-            if current_url != target_url:
-                seen_other = True
-            if seen_other and current_url == target_url:
-                return True
-        return False
+        if not url_history:
+            return False
+
+        starting_url = url_history[0]
+        if starting_url != target_url:
+            return any(current_url == target_url for current_url in url_history[1:])
+
+        return any(current_url != target_url for current_url in url_history[1:])
 
     async def _finalize_result(
         self,
@@ -485,7 +512,7 @@ class ClaimVerifier:
         status: ClaimStatus,
         summary: str,
     ) -> tuple[ClaimStatus, str]:
-        if status != "pass":
+        if status == "not_testable":
             return status, summary
 
         try:
@@ -496,6 +523,7 @@ class ClaimVerifier:
 
         normalized_claim = self._normalize_text(claim)
         for pattern, checker in (
+            (BUTTON_FULLY_VISIBLE_PATTERN, self._check_button_fully_visible),
             (MODAL_TITLE_READS_PATTERN, self._check_dialog_title_match),
             (HEADING_READS_PATTERN, self._check_heading_match),
             (PAGE_TITLE_READS_PATTERN, self._check_heading_match),
@@ -557,6 +585,39 @@ class ClaimVerifier:
                     .filter(isVisible)
                     .map(elementText)
                     .filter(Boolean);
+                const buttonStates = Array.from(
+                    document.querySelectorAll("button, [role='button'], input[type='button'], input[type='submit']")
+                )
+                    .filter(isVisible)
+                    .map((element) => {
+                        const text = elementText(element);
+                        if (!text) return null;
+                        const rect = element.getBoundingClientRect();
+                        let fullyVisible =
+                            rect.top >= 0 &&
+                            rect.left >= 0 &&
+                            rect.bottom <= window.innerHeight &&
+                            rect.right <= window.innerWidth;
+                        for (let ancestor = element.parentElement; ancestor && fullyVisible; ancestor = ancestor.parentElement) {
+                            const style = window.getComputedStyle(ancestor);
+                            const clips =
+                                ["hidden", "clip", "scroll", "auto"].includes(style.overflow) ||
+                                ["hidden", "clip", "scroll", "auto"].includes(style.overflowX) ||
+                                ["hidden", "clip", "scroll", "auto"].includes(style.overflowY);
+                            if (!clips) continue;
+                            const ancestorRect = ancestor.getBoundingClientRect();
+                            if (
+                                rect.top < ancestorRect.top ||
+                                rect.left < ancestorRect.left ||
+                                rect.bottom > ancestorRect.bottom ||
+                                rect.right > ancestorRect.right
+                            ) {
+                                fullyVisible = false;
+                            }
+                        }
+                        return { text, fullyVisible };
+                    })
+                    .filter(Boolean);
                 const dialogTitles = Array.from(document.querySelectorAll("[role='dialog'], dialog, [aria-modal='true']"))
                     .filter(isVisible)
                     .flatMap((dialog) => {
@@ -577,7 +638,7 @@ class ClaimVerifier:
                         return titles;
                     })
                     .filter(Boolean);
-                return { visibleHeadings, visibleButtons, dialogTitles };
+                return { visibleHeadings, visibleButtons, buttonStates, dialogTitles };
             }"""
         )
 
@@ -618,6 +679,17 @@ class ClaimVerifier:
         visual_state: dict[str, list[str]],
         groups: dict[str, str],
     ) -> tuple[ClaimStatus, str] | None:
+        matched_states = self._matching_button_states(visual_state, groups["label"])
+        if matched_states:
+            if any(state.get("fullyVisible", False) for state in matched_states):
+                candidate = matched_states[0].get("text", groups["label"])
+                return "pass", f"Visible button label matched {groups['label']!r}: {candidate!r}."
+            candidate = matched_states[0].get("text", groups["label"])
+            return (
+                "fail",
+                f"Visible button label matched {groups['label']!r}, but {candidate!r} is clipped or only partially visible.",
+            )
+
         label = self._normalize_text(groups["label"])
         visible_buttons = visual_state.get("visibleButtons", [])
         for candidate in visible_buttons:
@@ -628,3 +700,38 @@ class ClaimVerifier:
             "fail",
             f"No visible button label matched {groups['label']!r}. Visible buttons: {visible_buttons or ['<none>']}.",
         )
+
+    def _check_button_fully_visible(
+        self,
+        visual_state: dict[str, list[str]],
+        groups: dict[str, str],
+    ) -> tuple[ClaimStatus, str] | None:
+        matched_states = self._matching_button_states(visual_state, groups["label"])
+        if not matched_states:
+            visible_buttons = visual_state.get("visibleButtons", [])
+            return (
+                "fail",
+                f"No visible button label matched {groups['label']!r}. Visible buttons: {visible_buttons or ['<none>']}.",
+            )
+
+        if any(state.get("fullyVisible", False) for state in matched_states):
+            candidate = next(
+                state.get("text", groups["label"]) for state in matched_states if state.get("fullyVisible", False)
+            )
+            return "pass", f"Visible button label matched {groups['label']!r} and is fully visible: {candidate!r}."
+
+        candidate = matched_states[0].get("text", groups["label"])
+        return (
+            "fail",
+            f"Visible button label matched {groups['label']!r}, but {candidate!r} is clipped or not fully visible.",
+        )
+
+    def _matching_button_states(self, visual_state: dict[str, list[str]], label: str) -> list[dict[str, Any]]:
+        normalized_label = self._normalize_text(label)
+        matched_states: list[dict[str, Any]] = []
+        for state in visual_state.get("buttonStates", []):
+            text = str(state.get("text", ""))
+            normalized_candidate = self._normalize_text(text)
+            if normalized_candidate == normalized_label or normalized_candidate.startswith(f"{normalized_label} "):
+                matched_states.append(state)
+        return matched_states

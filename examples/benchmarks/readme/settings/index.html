@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Settings</title>
+    <style>
+        :root {
+            color-scheme: light;
+            --bg: #fbf4ef;
+            --ink: #1e2430;
+            --muted: #69717d;
+            --line: rgba(30, 36, 48, 0.12);
+            --warn: #a2471f;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: "Avenir Next", "Segoe UI", sans-serif;
+            background: linear-gradient(180deg, #fffdf9 0%, var(--bg) 100%);
+            color: var(--ink);
+        }
+
+        .shell {
+            width: min(860px, calc(100% - 32px));
+            margin: 32px auto;
+            padding: 28px;
+            border-radius: 28px;
+            background: rgba(255, 255, 255, 0.94);
+            box-shadow: 0 22px 56px rgba(30, 36, 48, 0.12);
+        }
+
+        h1 {
+            margin: 0 0 12px;
+            font-size: clamp(2rem, 5vw, 3rem);
+        }
+
+        p {
+            margin: 0;
+            color: var(--muted);
+            line-height: 1.6;
+        }
+
+        .notice {
+            margin-top: 18px;
+            padding: 14px 16px;
+            border-radius: 18px;
+            background: rgba(162, 71, 31, 0.1);
+            color: var(--warn);
+            font-weight: 700;
+        }
+
+        .card {
+            margin-top: 24px;
+            padding: 22px;
+            border-radius: 22px;
+            border: 1px solid var(--line);
+            background: #fffdfa;
+        }
+
+        .save-shell {
+            margin-top: 18px;
+            height: 58px;
+            overflow: hidden;
+            border-radius: 18px;
+            border: 1px dashed rgba(162, 71, 31, 0.4);
+            padding-top: 26px;
+        }
+
+        .save-button {
+            width: 100%;
+            border: none;
+            border-radius: 16px;
+            padding: 16px 18px;
+            background: #c9602d;
+            color: white;
+            font: inherit;
+            font-weight: 800;
+            transform: translateY(12px);
+        }
+    </style>
+</head>
+<body>
+    <main class="shell">
+        <h1>Settings</h1>
+        <p>This page intentionally contains a clipped save button for visual failure testing.</p>
+        <div class="notice">The save control is partially cut off by its container.</div>
+
+        <section class="card">
+            <strong>Workspace preferences</strong>
+            <p>The button below is technically present, but a visual QA tool should treat this as broken.</p>
+            <div class="save-shell">
+                <button class="save-button" type="button">Save</button>
+            </div>
+        </section>
+    </main>
+</body>
+</html>

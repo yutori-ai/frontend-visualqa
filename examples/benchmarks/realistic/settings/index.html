@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Workspace Settings</title>
+    <style>
+        :root {
+            color-scheme: light;
+            --bg: #f3f6fb;
+            --shell: #ffffff;
+            --panel: #fbfcff;
+            --ink: #182231;
+            --muted: #687487;
+            --line: rgba(24, 34, 49, 0.1);
+            --accent: #1d5fd3;
+            --accent-strong: #143d88;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: "Avenir Next", "Segoe UI", sans-serif;
+            color: var(--ink);
+            background:
+                radial-gradient(circle at top right, rgba(29, 95, 211, 0.16), transparent 22%),
+                linear-gradient(180deg, #fbfdff 0%, var(--bg) 100%);
+        }
+
+        .shell {
+            width: min(1160px, calc(100% - 40px));
+            margin: 26px auto;
+            padding: 24px;
+            border-radius: 30px;
+            background: rgba(255, 255, 255, 0.9);
+            box-shadow: 0 24px 60px rgba(24, 34, 49, 0.12);
+            backdrop-filter: blur(16px);
+        }
+
+        .layout {
+            display: grid;
+            grid-template-columns: 260px minmax(0, 1fr);
+            gap: 22px;
+        }
+
+        .sidebar,
+        .panel {
+            border: 1px solid var(--line);
+            border-radius: 24px;
+            background: var(--panel);
+        }
+
+        .sidebar {
+            padding: 22px;
+            display: grid;
+            gap: 12px;
+            align-content: start;
+        }
+
+        .sidebar a {
+            display: block;
+            padding: 12px 14px;
+            border-radius: 16px;
+            text-decoration: none;
+            color: var(--ink);
+            font-weight: 700;
+            background: rgba(24, 34, 49, 0.04);
+        }
+
+        .panel {
+            display: grid;
+            grid-template-rows: auto 1fr auto;
+            min-height: 720px;
+        }
+
+        .panel-header {
+            padding: 26px 28px 12px;
+            border-bottom: 1px solid var(--line);
+        }
+
+        h1 {
+            margin: 0 0 10px;
+            font-size: clamp(2rem, 4vw, 3rem);
+        }
+
+        p {
+            margin: 0;
+            color: var(--muted);
+            line-height: 1.6;
+        }
+
+        .content {
+            display: grid;
+            gap: 18px;
+            padding: 24px 28px;
+            align-content: start;
+        }
+
+        .card {
+            padding: 20px;
+            border-radius: 20px;
+            border: 1px solid var(--line);
+            background: white;
+        }
+
+        .fields {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 16px;
+            margin-top: 18px;
+        }
+
+        label {
+            display: grid;
+            gap: 8px;
+            font-size: 0.95rem;
+            font-weight: 700;
+        }
+
+        input,
+        select {
+            width: 100%;
+            padding: 14px 16px;
+            border: 1px solid var(--line);
+            border-radius: 16px;
+            font: inherit;
+            background: #fffdfd;
+        }
+
+        .panel-footer {
+            border-top: 1px solid var(--line);
+            padding: 0 28px 20px;
+            background: linear-gradient(180deg, rgba(251, 252, 255, 0) 0%, rgba(251, 252, 255, 1) 35%);
+        }
+
+        .footer-inner {
+            margin-top: 18px;
+            height: 34px;
+            overflow: hidden;
+            border-radius: 18px;
+            padding-top: 18px;
+            background: rgba(24, 34, 49, 0.03);
+        }
+
+        .save-button {
+            width: 100%;
+            border: none;
+            border-radius: 16px;
+            padding: 16px 20px;
+            color: white;
+            font: inherit;
+            font-weight: 800;
+            background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
+            transform: translateY(20px);
+        }
+
+        @media (max-width: 920px) {
+            .layout {
+                grid-template-columns: 1fr;
+            }
+
+            .fields {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <main class="shell">
+        <div class="layout">
+            <nav class="sidebar" aria-label="Settings sections">
+                <a href="#workspace">Workspace</a>
+                <a href="#notifications">Notifications</a>
+                <a href="#security">Security</a>
+                <a href="#billing">Billing</a>
+            </nav>
+
+            <section class="panel">
+                <header class="panel-header">
+                    <h1>Workspace Settings</h1>
+                    <p>Keep billing contacts, notification defaults, and editor preferences aligned across the team.</p>
+                </header>
+
+                <div class="content">
+                    <section class="card">
+                        <strong>Workspace profile</strong>
+                        <div class="fields">
+                            <label>
+                                Workspace name
+                                <input value="Frontend QA Lab">
+                            </label>
+                            <label>
+                                Default locale
+                                <select>
+                                    <option selected>English (US)</option>
+                                </select>
+                            </label>
+                        </div>
+                    </section>
+
+                    <section class="card">
+                        <strong>Notifications</strong>
+                        <div class="fields">
+                            <label>
+                                Release updates
+                                <select>
+                                    <option selected>Weekly digest</option>
+                                </select>
+                            </label>
+                            <label>
+                                Incident alerts
+                                <select>
+                                    <option selected>Immediate</option>
+                                </select>
+                            </label>
+                        </div>
+                    </section>
+                </div>
+
+                <footer class="panel-footer">
+                    <div class="footer-inner">
+                        <button class="save-button" type="button">Save</button>
+                    </div>
+                </footer>
+            </section>
+        </div>
+    </main>
+</body>
+</html>

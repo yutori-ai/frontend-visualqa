@@ -52,6 +52,7 @@ def build_verification_task(claim: str, url: str, navigation_hint: str | None = 
         "4. Report your final verdict by calling the record_claim_result tool.",
         "5. Treat the claim literally: do not substitute similar controls, nearby text, or adjacent UI for the element named in the claim.",
         "6. A pass requires exact grounding in the current screenshot. If the claim references text, title, heading, tab, or button label, verify that exact wording or a direct prefix match is visible.",
+        "7. Do not change browser zoom or device scale. Judge the page at the provided viewport.",
         "",
         "Use one of these statuses:",
         "- pass: the claim is visually true",
@@ -77,5 +78,19 @@ def build_force_stop_prompt(claim: str) -> str:
             "Do not take any more browser actions.",
             "Call record_claim_result now with your best verdict and a short evidence summary.",
             "Use inconclusive if you truly cannot tell, or not_testable if the environment blocked you.",
+        ]
+    )
+
+
+def build_action_or_verdict_prompt(claim: str) -> str:
+    """Prompt appended when the model responds with free text instead of a tool call."""
+
+    return "\n".join(
+        [
+            "You have not finished this claim yet.",
+            f'Claim: "{claim}"',
+            "Do not narrate your intent in plain text.",
+            "Either take exactly one browser action next, or call record_claim_result now if you already have enough evidence.",
+            "A plain-text response without a tool call will be treated as a failure to follow instructions.",
         ]
     )

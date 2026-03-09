@@ -293,6 +293,40 @@ async def test_execute_action_key_press_supports_shortcuts_and_semantic_navigati
 
 
 @pytest.mark.asyncio
+async def test_execute_action_key_press_supports_repeated_key_sequences() -> None:
+    module = _import_actions_module()
+    executor = _instantiate_with_supported_kwargs(
+        module.ActionExecutor,
+        navigation_timeout_ms=1_000,
+        settle_delay_seconds=0,
+    )
+    page = FakePage()
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+
+    trace = await _call_execute_action(executor, page, "key_press", {"key_comb": "Tab Tab Tab"}, viewport)
+
+    assert trace == "key_press_sequence(Tab, Tab, Tab)"
+    assert page.keyboard.pressed == ["Tab", "Tab", "Tab"]
+
+
+@pytest.mark.asyncio
+async def test_execute_action_key_press_ignores_zoom_shortcuts() -> None:
+    module = _import_actions_module()
+    executor = _instantiate_with_supported_kwargs(
+        module.ActionExecutor,
+        navigation_timeout_ms=1_000,
+        settle_delay_seconds=0,
+    )
+    page = FakePage()
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+
+    trace = await _call_execute_action(executor, page, "key_press", {"key_comb": "ControlOrMeta+Minus"}, viewport)
+
+    assert trace == "key_press(ControlOrMeta+Minus)"
+    assert page.keyboard.pressed == []
+
+
+@pytest.mark.asyncio
 async def test_execute_action_screenshot_is_a_no_op_for_n1_default_tool_calls() -> None:
     module = _import_actions_module()
     executor = _instantiate_with_supported_kwargs(
