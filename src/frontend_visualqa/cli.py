@@ -7,10 +7,12 @@ import asyncio
 import json
 import logging
 import sys
+import threading
 from typing import Any
 
-from frontend_visualqa.mcp_server import close_runners_sync, get_mcp_server
-from frontend_visualqa.schemas import ViewportConfig
+from frontend_visualqa.browser import BrowserManager
+from frontend_visualqa.mcp_server import close_runners_sync, configure_server, get_mcp_server
+from frontend_visualqa.schemas import BrowserConfig, BrowserMode, ViewportConfig
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -23,6 +25,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     serve_parser = subparsers.add_parser("serve", help="Start the FastMCP stdio server.")
+    _add_browser_args(serve_parser)
     serve_parser.set_defaults(handler=_handle_serve)
 
     verify_parser = subparsers.add_parser("verify", help="Verify one or more visual claims against a URL.")
@@ -34,6 +37,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="One or more explicit visual claims to verify.",
     )
     _add_viewport_args(verify_parser)
+    _add_browser_args(verify_parser)
     verify_parser.add_argument("--session-key", default="default", help="Shared browser session key.")
     verify_parser.add_argument(
         "--reuse-session",
@@ -74,6 +78,7 @@ def build_parser() -> argparse.ArgumentParser:
     screenshot_parser = subparsers.add_parser("screenshot", help="Capture a screenshot for a target URL.")
     screenshot_parser.add_argument("url", help="Target page URL, usually a localhost route.")
     _add_viewport_args(screenshot_parser)
+    _add_browser_args(screenshot_parser)
     screenshot_parser.add_argument("--session-key", default="default", help="Shared browser session key.")
     screenshot_parser.add_argument(
         "--reuse-session",
@@ -82,6 +87,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Reuse the named browser session if it already exists.",
     )
     screenshot_parser.set_defaults(handler=_handle_screenshot)
+
+    login_parser = subparsers.add_parser(
+        "login",
+        help="Open a headed persistent browser profile so you can log in once and reuse the session later.",
+    )
+    login_parser.add_argument("url", help="Login page URL, usually a localhost route.")
+    login_parser.add_argument(
+        "--user-data-dir",
+        help="Persistent Playwright profile directory. Defaults to the shared frontend-visualqa cache path.",
+    )
+    login_parser.set_defaults(handler=_handle_login)
 
     status_parser = subparsers.add_parser("status", help="Show browser status for the current process as JSON.")
     status_parser.set_defaults(handler=_handle_status)
@@ -111,11 +127,45 @@ def _add_viewport_args(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_browser_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--browser-mode",
+        choices=[mode.value for mode in BrowserMode],
+        default=BrowserMode.ephemeral.value,
+        help="Browser launch strategy. Use persistent to keep cookies and local storage across runs.",
+    )
+    parser.add_argument(
+        "--user-data-dir",
+        help="Persistent Playwright profile directory. Ignored in ephemeral mode.",
+    )
+    parser.add_argument(
+        "--headed",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Run the browser visibly instead of headless.",
+    )
+
+
 def _build_viewport(args: argparse.Namespace) -> ViewportConfig:
     return ViewportConfig(
         width=args.width,
         height=args.height,
         device_scale_factor=args.device_scale_factor,
+    )
+
+
+def _build_browser_config(
+    args: argparse.Namespace,
+    *,
+    force_mode: BrowserMode | None = None,
+    force_headed: bool | None = None,
+) -> BrowserConfig:
+    mode = force_mode or BrowserMode(getattr(args, "browser_mode", BrowserMode.ephemeral.value))
+    headed = force_headed if force_headed is not None else getattr(args, "headed", False)
+    return BrowserConfig(
+        mode=mode,
+        user_data_dir=getattr(args, "user_data_dir", None),
+        headless=not headed,
     )
 
 
@@ -126,13 +176,20 @@ def _configure_serve_logging() -> None:
     logging.getLogger("mcp").setLevel(logging.ERROR)
 
 
+def _validate_url(url: str) -> str:
+    if not url.startswith(("http://", "https://")):
+        raise ValueError("url must start with http:// or https://")
+    return url
+
+
 def _emit_json(payload: dict[str, Any]) -> None:
     json.dump(payload, sys.stdout, indent=2)
     sys.stdout.write("\n")
 
 
-def _handle_serve(_: argparse.Namespace) -> int:
+def _handle_serve(args: argparse.Namespace) -> int:
     _configure_serve_logging()
+    configure_server(_build_browser_config(args))
     try:
         get_mcp_server().run(transport="stdio")
     finally:
@@ -152,6 +209,18 @@ def _handle_screenshot(args: argparse.Namespace) -> int:
     return 0
 
 
+def _handle_login(args: argparse.Namespace) -> int:
+    if not sys.stdin.isatty():
+        print("login requires an interactive terminal (stdin must be a TTY).", file=sys.stderr)
+        return 1
+    try:
+        _validate_url(args.url)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    return asyncio.run(_run_login(args))
+
+
 def _handle_status(_: argparse.Namespace) -> int:
     result = asyncio.run(_run_status())
     _emit_json(result)
@@ -159,7 +228,7 @@ def _handle_status(_: argparse.Namespace) -> int:
 
 
 async def _run_verify(args: argparse.Namespace) -> dict[str, Any]:
-    runner = _new_runner()
+    runner = _new_runner(browser_config=_build_browser_config(args))
     try:
         result = await runner.run(
             url=args.url,
@@ -179,7 +248,7 @@ async def _run_verify(args: argparse.Namespace) -> dict[str, Any]:
 
 
 async def _run_screenshot(args: argparse.Namespace) -> dict[str, Any]:
-    runner = _new_runner()
+    runner = _new_runner(browser_config=_build_browser_config(args))
     try:
         result = await runner.take_screenshot(
             url=args.url,
@@ -190,6 +259,51 @@ async def _run_screenshot(args: argparse.Namespace) -> dict[str, Any]:
         return _serialize_result(result)
     finally:
         await runner.close()
+
+
+async def _run_login(args: argparse.Namespace) -> int:
+    manager = BrowserManager(config=_build_browser_config(args, force_mode=BrowserMode.persistent, force_headed=True))
+    browser_closed = False
+    manager_closed = False
+    done = threading.Event()
+
+    def _mark_browser_closed(*_: object) -> None:
+        nonlocal browser_closed
+        browser_closed = True
+        done.set()
+
+    def _read_stdin() -> None:
+        try:
+            sys.stdin.readline()
+        finally:
+            done.set()
+
+    session = None
+    try:
+        session = await manager.get_session("default", reuse_session=False)
+        session.context.on("close", _mark_browser_closed)
+        await manager.goto(session, args.url)
+        print("Browser is open. Log in, then press Enter here to close and save the session.", file=sys.stderr)
+        reader = threading.Thread(target=_read_stdin, daemon=True)
+        reader.start()
+        while not done.is_set():
+            await asyncio.sleep(0.2)
+
+        if browser_closed:
+            print("Browser closed.", file=sys.stderr)
+            await manager.close()  # stops Playwright subprocess
+            manager_closed = True
+        else:
+            await manager.close()
+            manager_closed = True
+            print("Saved session.", file=sys.stderr)
+        return 0
+    finally:
+        if session is not None and not manager_closed:
+            try:
+                await manager.close()
+            except Exception:
+                pass
 
 
 async def _run_status() -> dict[str, Any]:
@@ -209,10 +323,10 @@ def _serialize_result(result: Any) -> dict[str, Any]:
     raise TypeError(f"CLI command returned unsupported type: {type(result)!r}")
 
 
-def _new_runner() -> Any:
+def _new_runner(*, browser_config: BrowserConfig | None = None) -> Any:
     from frontend_visualqa.runner import VisualQARunner
 
-    return VisualQARunner()
+    return VisualQARunner(browser_config=browser_config)
 
 
 if __name__ == "__main__":

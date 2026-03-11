@@ -21,6 +21,8 @@ _LAZY_EXPORTS = {
     "N1ClientError": ("frontend_visualqa.errors", "N1ClientError"),
     "N1Client": ("frontend_visualqa.n1_client", "N1Client"),
     "VisualQARunner": ("frontend_visualqa.runner", "VisualQARunner"),
+    "BrowserConfig": ("frontend_visualqa.schemas", "BrowserConfig"),
+    "BrowserMode": ("frontend_visualqa.schemas", "BrowserMode"),
     "BrowserSessionStatus": ("frontend_visualqa.schemas", "BrowserSessionStatus"),
     "BrowserStatusResult": ("frontend_visualqa.schemas", "BrowserStatusResult"),
     "ClaimResult": ("frontend_visualqa.schemas", "ClaimResult"),

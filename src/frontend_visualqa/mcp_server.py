@@ -8,7 +8,7 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
-from frontend_visualqa.schemas import ManageBrowserInput, VerifyVisualClaimsInput, ViewportConfig
+from frontend_visualqa.schemas import BrowserConfig, ManageBrowserInput, VerifyVisualClaimsInput, ViewportConfig
 
 
 logger = logging.getLogger(__name__)
@@ -24,12 +24,26 @@ mcp = FastMCP("frontend-visualqa", instructions=SERVER_INSTRUCTIONS, log_level="
 
 _runners_by_loop: dict[int, Any] = {}
 _runner_locks_by_loop: dict[int, asyncio.Lock] = {}
+_server_browser_config: BrowserConfig | None = None
+_config_frozen = False
 
 
 def get_mcp_server() -> FastMCP:
     """Return the configured FastMCP server instance."""
 
     return mcp
+
+
+def configure_server(browser_config: BrowserConfig) -> None:
+    """Set the browser config for future MCP runner construction."""
+
+    global _server_browser_config, _config_frozen
+    if _config_frozen:
+        raise RuntimeError(
+            "Cannot change browser config after runner has been created. "
+            "Call configure_server() before the first tool invocation."
+        )
+    _server_browser_config = browser_config
 
 
 def _coerce_viewport(viewport: ViewportConfig | dict[str, Any] | None) -> ViewportConfig:
@@ -54,6 +68,8 @@ def _ensure_lock() -> asyncio.Lock:
 
 
 async def _get_runner() -> Any:
+    global _config_frozen
+
     loop_key = _loop_key()
     runner = _runners_by_loop.get(loop_key)
     if runner is not None:
@@ -70,7 +86,8 @@ async def _get_runner() -> Any:
                 "frontend_visualqa.runner.VisualQARunner is unavailable. "
                 "Make sure the shared runtime files are present before invoking the CLI or MCP server."
             ) from exc
-        runner = VisualQARunner()
+        runner = VisualQARunner(browser_config=_server_browser_config or BrowserConfig())
+        _config_frozen = True
         _runners_by_loop[loop_key] = runner
         return runner
 
@@ -83,10 +100,22 @@ def _serialize_result(result: Any) -> dict[str, Any]:
     raise TypeError(f"Unsupported runner result type: {type(result)!r}")
 
 
-async def _close_all_runners() -> None:
+def _reset_server_state() -> None:
+    global _server_browser_config, _config_frozen
+    _runner_locks_by_loop.clear()
+    _server_browser_config = None
+    _config_frozen = False
+
+
+def _detach_runners_for_close() -> list[Any]:
     runners = list(_runners_by_loop.values())
     _runners_by_loop.clear()
-    _runner_locks_by_loop.clear()
+    _reset_server_state()
+    return runners
+
+
+async def _close_detached_runners(runners: list[Any]) -> None:
+    """Close runners after server state has already been reset."""
 
     for runner in runners:
         close = getattr(runner, "close", None)
@@ -98,19 +127,27 @@ async def _close_all_runners() -> None:
             logger.warning("Failed to close frontend-visualqa runner during shutdown", exc_info=True)
 
 
+async def _close_all_runners() -> None:
+    await _close_detached_runners(_detach_runners_for_close())
+
+
 def close_runners_sync() -> None:
     """Close any cached runners after the MCP server exits."""
 
-    if not _runners_by_loop:
+    if not _runners_by_loop and _server_browser_config is None and not _config_frozen:
         return
+
+    runners = _detach_runners_for_close()
 
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
-        asyncio.run(_close_all_runners())
+        if runners:
+            asyncio.run(_close_detached_runners(runners))
         return
 
-    loop.create_task(_close_all_runners())
+    if runners:
+        loop.create_task(_close_detached_runners(runners))
 
 
 def _validate_url(url: str) -> str:

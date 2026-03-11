@@ -10,6 +10,8 @@ import pytest
 
 from frontend_visualqa.artifacts import RunArtifacts
 from frontend_visualqa.schemas import (
+    BrowserConfig,
+    BrowserMode,
     BrowserStatusResult,
     ClaimResult,
     ManageBrowserInput,
@@ -385,6 +387,7 @@ async def test_runner_manage_browser_proxies_status_restart_viewport_and_close(
     await browser.get_session("managed", viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1))
     status = await _call_manage_browser(runner, action="status", session_key="managed")
     assert status.browser_running is True
+    assert status.browser_mode == BrowserMode.ephemeral
 
     resized_status = await _call_manage_browser(runner, action="set_viewport", session_key="managed", viewport=viewport)
     assert resized_status.sessions[0].viewport == viewport
@@ -613,3 +616,28 @@ async def test_runner_marks_remaining_claims_inconclusive_when_run_timeout_expir
 
     assert [item.status for item in result.results] == ["inconclusive", "inconclusive"]
     assert all("Run timed out" in item.summary for item in result.results)
+
+
+def test_runner_passes_browser_config_to_browser_manager(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    module = _import_runner_module()
+    captured: dict[str, Any] = {}
+
+    class CapturingBrowserManager(FakeBrowserManager):
+        def __init__(self, *, config: BrowserConfig | None = None, **kwargs: Any) -> None:
+            del kwargs
+            super().__init__(ViewportConfig(width=1280, height=800, device_scale_factor=1))
+            captured["config"] = config
+
+    artifacts = FakeArtifactManager(tmp_path)
+    monkeypatch.setattr(module, "BrowserManager", CapturingBrowserManager, raising=False)
+    monkeypatch.setattr(module, "ArtifactManager", lambda *args, **kwargs: artifacts, raising=False)
+
+    browser_config = BrowserConfig(
+        mode=BrowserMode.persistent,
+        user_data_dir=str(tmp_path / "browser-profile"),
+        headless=False,
+    )
+    runner = module.VisualQARunner(browser_config=browser_config)
+
+    assert captured["config"] == browser_config
+    assert runner.browser_manager is not None
