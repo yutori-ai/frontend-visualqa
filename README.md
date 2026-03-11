@@ -35,21 +35,21 @@ The repo includes a test page you can use immediately — no dev server required
 # Serve the included test page
 python3 -m http.server 8000 -d examples &
 
-# Verify some claims against it
+# Verify some claims — --headed so you can watch n1 work
 frontend-visualqa verify http://localhost:8000/comprehensive_test.html \
+  --headed \
   --claims \
   "The page title reads 'Comprehensive QA Test Suite'" \
   "The sidebar contains links labeled Dashboard, Tasks, and Settings" \
   "The notification badge shows the number 3"
 ```
 
-Watch n1 work in a visible browser:
+Try a claim that requires interaction:
 
 ```bash
 frontend-visualqa verify http://localhost:8000/comprehensive_test.html \
   --headed \
-  --claims \
-  "The counter shows 1" \
+  --claims "The counter shows 1" \
   --navigation-hint "Click the + button once before judging the claim."
 ```
 
