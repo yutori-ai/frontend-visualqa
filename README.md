@@ -32,7 +32,8 @@ playwright install chromium
 The repo includes a test page you can use immediately — no dev server required:
 
 ```bash
-# Serve the included test page
+# From the repo root, serve the included test page
+cd /path/to/frontend-visualqa
 python3 -m http.server 8000 -d examples &
 
 # Verify some claims — --headed so you can watch n1 work
