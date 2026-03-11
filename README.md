@@ -21,17 +21,17 @@ n1 is a pixels-to-actions model trained with RL on live websites. The two capabi
 
 **Rich visual state evaluation.** After clicking a single "Mark Complete" button, n1 reported three visual changes in its summary: the status badge changed from blue "In Progress" to green "Done" with a checkmark, the button label changed to "Completed", and a toast notification appeared confirming the action. Playwright MCP would need three separate hand-written assertions. n1 just saw it.
 
-## Install locally
+## Install
 
 ```bash
-uv sync
-uv run playwright install chromium
+uv tool install /path/to/frontend-visualqa
+frontend-visualqa --help
 ```
 
-For editable local development:
+This installs `frontend-visualqa` as a global CLI command. You also need Playwright's Chromium browser:
 
 ```bash
-uv pip install -e .
+playwright install chromium
 ```
 
 ## CLI usage
@@ -39,13 +39,13 @@ uv pip install -e .
 Quick screenshot:
 
 ```bash
-uv run frontend-visualqa screenshot http://localhost:3000
+frontend-visualqa screenshot http://localhost:3000
 ```
 
 Verify a few claims:
 
 ```bash
-uv run frontend-visualqa verify http://localhost:3000/tasks/123 \
+frontend-visualqa verify http://localhost:3000/tasks/123 \
   --claims \
   "The page title reads 'Task Details'" \
   "The Save button is visible without scrolling" \
@@ -55,7 +55,7 @@ uv run frontend-visualqa verify http://localhost:3000/tasks/123 \
 Include navigation context when the page needs interaction first:
 
 ```bash
-uv run frontend-visualqa verify http://localhost:3000/tasks \
+frontend-visualqa verify http://localhost:3000/tasks \
   --claims "The edit modal title reads 'Edit Task'" \
   --navigation-hint "Click the first task row to open the edit modal before judging the claim."
 ```
@@ -63,7 +63,7 @@ uv run frontend-visualqa verify http://localhost:3000/tasks \
 Switch viewport:
 
 ```bash
-uv run frontend-visualqa verify http://localhost:3000 \
+frontend-visualqa verify http://localhost:3000 \
   --claims "The mobile menu button is visible in the header" \
   --width 375 \
   --height 812
@@ -72,10 +72,26 @@ uv run frontend-visualqa verify http://localhost:3000 \
 Smoke-check the current process state:
 
 ```bash
-uv run frontend-visualqa status
+frontend-visualqa status
 ```
 
-One-shot CLI commands do not share browser state with each other. Session reuse and browser status are meaningful in the long-running `frontend-visualqa serve` process or when you embed `VisualQARunner` programmatically in a single Python process. A standalone `uv run frontend-visualqa status` call will usually report an empty fresh runtime.
+One-shot CLI commands do not share browser state with each other. Session reuse and browser status are meaningful in the long-running `frontend-visualqa serve` process or when you embed `VisualQARunner` programmatically in a single Python process.
+
+## Development
+
+To run from source without installing:
+
+```bash
+uv sync
+uv run playwright install chromium
+uv run frontend-visualqa --help
+```
+
+For an editable install into your current environment:
+
+```bash
+uv pip install -e .
+```
 
 ## MCP setup
 
