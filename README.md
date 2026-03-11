@@ -32,26 +32,29 @@ playwright install chromium
 The repo includes a test page you can use immediately — no dev server required:
 
 ```bash
-# From the repo root, serve the included test page
+# From the repo root, serve the included test pages
 cd /path/to/frontend-visualqa
 lsof -ti:8000 | xargs kill 2>/dev/null; python3 -m http.server 8000 -d examples &
-
-# Verify some claims — --headed so you can watch n1 work
-frontend-visualqa verify http://localhost:8000/comprehensive_test.html \
-  --headed \
-  --claims \
-  "The page title reads 'Comprehensive QA Test Suite'" \
-  "The sidebar contains links labeled Dashboard, Tasks, and Settings" \
-  "The notification badge shows the number 3"
 ```
 
-Try a claim that requires interaction:
+**Self-correcting navigation** — start on the wrong page and watch n1 find its way:
+
+```bash
+# n1 lands on the home page, clicks Tasks, then clicks Task #123
+frontend-visualqa verify http://localhost:8000/multi_page_app.html \
+  --headed \
+  --claims "The task detail heading reads 'Task #123: Landing page polish'"
+```
+
+**Catching regressions** — mix passing and failing claims:
 
 ```bash
 frontend-visualqa verify http://localhost:8000/comprehensive_test.html \
   --headed \
-  --claims "The counter shows 1" \
-  --navigation-hint "Click the + button once before judging the claim."
+  --claims \
+  "The sidebar contains links labeled Dashboard, Tasks, and Settings" \
+  "The progress bar shows 100%"
+# → first claim passes, second fails (actual value is 65%)
 ```
 
 Use against your own frontend the same way — just swap the URL:
