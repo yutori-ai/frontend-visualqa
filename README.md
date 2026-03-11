@@ -29,27 +29,36 @@ playwright install chromium
 
 ## Quick start
 
-Screenshot a page:
+The repo includes a test page you can use immediately — no dev server required:
 
 ```bash
-frontend-visualqa screenshot http://localhost:3000
-```
+# Serve the included test page
+python3 -m http.server 8000 -d examples &
 
-Verify claims:
-
-```bash
-frontend-visualqa verify http://localhost:3000/tasks/123 \
+# Verify some claims against it
+frontend-visualqa verify http://localhost:8000/comprehensive_test.html \
   --claims \
-  "The page title reads 'Task Details'" \
-  "The Save button is visible without scrolling"
+  "The page title reads 'Comprehensive QA Test Suite'" \
+  "The sidebar contains links labeled Dashboard, Tasks, and Settings" \
+  "The notification badge shows the number 3"
 ```
 
 Watch n1 work in a visible browser:
 
 ```bash
-frontend-visualqa verify http://localhost:3000 \
+frontend-visualqa verify http://localhost:8000/comprehensive_test.html \
   --headed \
-  --claims "The sidebar shows 3 links"
+  --claims \
+  "The counter shows 1" \
+  --navigation-hint "Click the + button once before judging the claim."
+```
+
+Use against your own frontend the same way — just swap the URL:
+
+```bash
+frontend-visualqa screenshot http://localhost:3000
+frontend-visualqa verify http://localhost:3000/tasks/123 \
+  --claims "The Save button is visible without scrolling"
 ```
 
 ## MCP setup
@@ -141,16 +150,16 @@ frontend-visualqa verify <url> --claims "claim1" "claim2" [options]
 Navigation hint for claims that require interaction:
 
 ```bash
-frontend-visualqa verify http://localhost:3000/tasks \
-  --claims "The edit modal title reads 'Edit Task'" \
-  --navigation-hint "Click the first task row to open the edit modal."
+frontend-visualqa verify http://localhost:8000/comprehensive_test.html \
+  --claims "The dropdown label reads 'Priority: High'" \
+  --navigation-hint "Open the Priority Selector dropdown and click High."
 ```
 
 Mobile viewport:
 
 ```bash
-frontend-visualqa verify http://localhost:3000 \
-  --claims "The mobile menu button is visible in the header" \
+frontend-visualqa verify http://localhost:8000/comprehensive_test.html \
+  --claims "A hamburger menu button is visible" \
   --width 375 --height 812
 ```
 
