@@ -34,7 +34,7 @@ The repo includes a test page you can use immediately — no dev server required
 ```bash
 # From the repo root, serve the included test page
 cd /path/to/frontend-visualqa
-python3 -m http.server 8000 -d examples &
+lsof -ti:8000 | xargs kill 2>/dev/null; python3 -m http.server 8000 -d examples &
 
 # Verify some claims — --headed so you can watch n1 work
 frontend-visualqa verify http://localhost:8000/comprehensive_test.html \
