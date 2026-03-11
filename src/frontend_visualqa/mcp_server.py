@@ -8,7 +8,7 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
-from frontend_visualqa.schemas import BrowserConfig, ManageBrowserInput, VerifyVisualClaimsInput, ViewportConfig
+from frontend_visualqa.schemas import BrowserConfig, ManageBrowserInput, VerifyVisualClaimsInput, ViewportConfig, validate_url
 
 
 logger = logging.getLogger(__name__)
@@ -150,12 +150,6 @@ def close_runners_sync() -> None:
         loop.create_task(_close_detached_runners(runners))
 
 
-def _validate_url(url: str) -> str:
-    if not url.startswith(("http://", "https://")):
-        raise ValueError("url must start with http:// or https://")
-    return url
-
-
 @mcp.tool(
     name="verify_visual_claims",
     description=(
@@ -179,7 +173,7 @@ async def verify_visual_claims(
 
     runner = await _get_runner()
     request = VerifyVisualClaimsInput(
-        url=_validate_url(url),
+        url=validate_url(url),
         claims=claims,
         viewport=_coerce_viewport(viewport),
         session_key=session_key,
@@ -207,7 +201,7 @@ async def take_screenshot(
 
     runner = await _get_runner()
     result = await runner.take_screenshot(
-        url=_validate_url(url),
+        url=validate_url(url),
         viewport=_coerce_viewport(viewport),
         session_key=session_key,
         reuse_session=reuse_session,

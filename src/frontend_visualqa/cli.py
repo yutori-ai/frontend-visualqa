@@ -12,7 +12,7 @@ from typing import Any
 
 from frontend_visualqa.browser import BrowserManager
 from frontend_visualqa.mcp_server import close_runners_sync, configure_server, get_mcp_server
-from frontend_visualqa.schemas import BrowserConfig, BrowserMode, ViewportConfig
+from frontend_visualqa.schemas import BrowserConfig, BrowserMode, ViewportConfig, validate_url
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -176,12 +176,6 @@ def _configure_serve_logging() -> None:
     logging.getLogger("mcp").setLevel(logging.ERROR)
 
 
-def _validate_url(url: str) -> str:
-    if not url.startswith(("http://", "https://")):
-        raise ValueError("url must start with http:// or https://")
-    return url
-
-
 def _emit_json(payload: dict[str, Any]) -> None:
     json.dump(payload, sys.stdout, indent=2)
     sys.stdout.write("\n")
@@ -214,7 +208,7 @@ def _handle_login(args: argparse.Namespace) -> int:
         print("login requires an interactive terminal (stdin must be a TTY).", file=sys.stderr)
         return 1
     try:
-        _validate_url(args.url)
+        validate_url(args.url)
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
         return 1
@@ -299,7 +293,7 @@ async def _run_login(args: argparse.Namespace) -> int:
             print("Saved session.", file=sys.stderr)
         return 0
     finally:
-        if session is not None and not manager_closed:
+        if not manager_closed:
             try:
                 await manager.close()
             except Exception:

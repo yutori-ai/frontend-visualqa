@@ -196,7 +196,7 @@ cython_debug/
 artifacts/
 
 # Agent / planning artifacts (internal docs, not shipped)
-# agent_artifacts/
+agent_artifacts/
 
 # Node
 node_modules/

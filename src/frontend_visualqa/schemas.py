@@ -16,6 +16,13 @@ BrowserAction = Literal["status", "restart", "close", "set_viewport"]
 DEFAULT_PERSISTENT_USER_DATA_DIR = Path("~/.cache/frontend-visualqa/browser-profile").expanduser()
 
 
+def validate_url(url: str) -> str:
+    """Raise ValueError if *url* does not start with http:// or https://."""
+    if not url.startswith(("http://", "https://")):
+        raise ValueError("url must start with http:// or https://")
+    return url
+
+
 class BrowserMode(str, Enum):
     """Supported Playwright session ownership strategies."""
 
@@ -82,10 +89,8 @@ class VerifyVisualClaimsInput(FrontendVisualQABaseModel):
 
     @field_validator("url")
     @classmethod
-    def validate_url(cls, value: str) -> str:
-        if not value.startswith(("http://", "https://")):
-            raise ValueError("url must start with http:// or https://")
-        return value
+    def validate_url_field(cls, value: str) -> str:
+        return validate_url(value)
 
     @field_validator("claims")
     @classmethod
