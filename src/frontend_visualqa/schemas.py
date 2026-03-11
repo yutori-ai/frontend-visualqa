@@ -2,16 +2,32 @@
 
 from __future__ import annotations
 
+from enum import Enum
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 ClaimStatus = Literal["pass", "fail", "inconclusive", "not_testable"]
 OverallStatus = Literal["completed", "not_testable"]
 ScreenshotStatus = Literal["completed", "not_testable"]
 BrowserAction = Literal["status", "restart", "close", "set_viewport"]
+DEFAULT_PERSISTENT_USER_DATA_DIR = Path("~/.cache/frontend-visualqa/browser-profile").expanduser()
+
+
+def validate_url(url: str) -> str:
+    """Raise ValueError if *url* does not start with http:// or https://."""
+    if not url.startswith(("http://", "https://")):
+        raise ValueError("url must start with http:// or https://")
+    return url
+
+
+class BrowserMode(str, Enum):
+    """Supported Playwright session ownership strategies."""
+
+    ephemeral = "ephemeral"
+    persistent = "persistent"
 
 
 class FrontendVisualQABaseModel(BaseModel):
@@ -26,6 +42,35 @@ class ViewportConfig(FrontendVisualQABaseModel):
     width: int = Field(default=1280, ge=320, le=4096)
     height: int = Field(default=800, ge=200, le=4096)
     device_scale_factor: float = Field(default=1.0, gt=0, le=4)
+
+
+class BrowserConfig(FrontendVisualQABaseModel):
+    """Browser lifecycle configuration shared by CLI and MCP flows."""
+
+    mode: BrowserMode = BrowserMode.ephemeral
+    user_data_dir: str | None = None
+    headless: bool = True
+    navigation_timeout_ms: int = Field(default=20_000, ge=1)
+    settle_delay_seconds: float = Field(default=1.0, ge=0, le=60)
+
+    @field_validator("user_data_dir")
+    @classmethod
+    def normalize_user_data_dir(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return str(Path(value).expanduser())
+
+    @model_validator(mode="after")
+    def apply_persistent_defaults(self) -> "BrowserConfig":
+        if self.mode == BrowserMode.persistent and self.user_data_dir is None:
+            self.user_data_dir = str(DEFAULT_PERSISTENT_USER_DATA_DIR)
+        return self
+
+    @property
+    def resolved_user_data_dir(self) -> str | None:
+        if self.mode != BrowserMode.persistent:
+            return self.user_data_dir
+        return self.user_data_dir or str(DEFAULT_PERSISTENT_USER_DATA_DIR)
 
 
 class VerifyVisualClaimsInput(FrontendVisualQABaseModel):
@@ -44,10 +89,8 @@ class VerifyVisualClaimsInput(FrontendVisualQABaseModel):
 
     @field_validator("url")
     @classmethod
-    def validate_url(cls, value: str) -> str:
-        if not value.startswith(("http://", "https://")):
-            raise ValueError("url must start with http:// or https://")
-        return value
+    def validate_url_field(cls, value: str) -> str:
+        return validate_url(value)
 
     @field_validator("claims")
     @classmethod
@@ -108,6 +151,8 @@ class BrowserStatusResult(FrontendVisualQABaseModel):
     """Aggregated browser status across all sessions."""
 
     browser_running: bool
+    browser_mode: BrowserMode = BrowserMode.ephemeral
+    user_data_dir: str | None = None
     sessions: list[BrowserSessionStatus] = Field(default_factory=list)
 
 

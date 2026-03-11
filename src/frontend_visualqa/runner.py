@@ -13,6 +13,7 @@ from frontend_visualqa.browser import BrowserManager
 from frontend_visualqa.claim_verifier import ClaimVerifier
 from frontend_visualqa.n1_client import N1Client
 from frontend_visualqa.schemas import (
+    BrowserConfig,
     BrowserStatusResult,
     ClaimResult,
     ClaimStatus,
@@ -33,13 +34,20 @@ class VisualQARunner:
         self,
         *,
         browser_manager: BrowserManager | None = None,
+        browser_config: BrowserConfig | None = None,
         artifact_manager: ArtifactManager | None = None,
         n1_client: N1Client | None = None,
         claim_verifier: ClaimVerifier | None = None,
         artifacts_dir: str = "artifacts",
-        headless: bool = True,
+        headless: bool | None = None,
     ) -> None:
-        self.browser_manager = browser_manager or BrowserManager(headless=headless)
+        resolved_browser_config = browser_config
+        if resolved_browser_config is None:
+            if headless is not None:
+                resolved_browser_config = BrowserConfig(headless=headless)
+        elif headless is not None:
+            resolved_browser_config = resolved_browser_config.model_copy(update={"headless": headless})
+        self.browser_manager = browser_manager or BrowserManager(config=resolved_browser_config)
         self.artifact_manager = artifact_manager or ArtifactManager(artifacts_dir)
         self.n1_client = n1_client or N1Client()
         self.claim_verifier = claim_verifier or ClaimVerifier(

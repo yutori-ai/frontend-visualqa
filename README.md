@@ -9,7 +9,7 @@
 - Reuses browser sessions inside the long-running MCP server when you need multi-step debugging
 - Exposes the same runtime through `frontend-visualqa serve`, `verify`, `screenshot`, and `status`
 
-The package does not start your dev server for you. If the target URL is unreachable or blocked by auth, expect `not_testable`.
+The package does not start your dev server for you. If the target URL is unreachable, expect `not_testable`. For auth-gated pages, use a persistent browser profile so you only log in once.
 
 ## Why n1
 
@@ -69,6 +69,14 @@ frontend-visualqa verify http://localhost:3000 \
   --height 812
 ```
 
+Watch n1 work in real time:
+
+```bash
+frontend-visualqa verify http://localhost:3000 \
+  --headed \
+  --claims "The sidebar shows 3 links"
+```
+
 Smoke-check the current process state:
 
 ```bash
@@ -76,6 +84,43 @@ frontend-visualqa status
 ```
 
 One-shot CLI commands do not share browser state with each other. Session reuse and browser status are meaningful in the long-running `frontend-visualqa serve` process or when you embed `VisualQARunner` programmatically in a single Python process.
+
+## Browser modes
+
+By default the runner launches a fresh Chromium instance with no saved state. For auth-gated pages, switch to a persistent browser profile so cookies and localStorage survive across runs.
+
+### Persistent profile
+
+Log in once, reuse the session for all future runs:
+
+```bash
+# 1. One-time login: opens a headed browser, you log in, press Enter to save
+frontend-visualqa login http://localhost:3000/login
+
+# 2. All subsequent runs reuse the saved session
+frontend-visualqa verify http://localhost:3000/dashboard \
+  --browser-mode persistent \
+  --claims "The user avatar is visible in the header"
+```
+
+The profile is stored at `~/.cache/frontend-visualqa/browser-profile/` by default. Override with `--user-data-dir`:
+
+```bash
+frontend-visualqa login http://localhost:3000/login \
+  --user-data-dir /tmp/my-project-profile
+
+frontend-visualqa verify http://localhost:3000/dashboard \
+  --browser-mode persistent \
+  --user-data-dir /tmp/my-project-profile \
+  --claims "The dashboard loads without a login redirect"
+```
+
+### Mode summary
+
+| Mode | Flag | Cookies persist? | Extensions? | Use case |
+|------|------|-----------------|-------------|----------|
+| Ephemeral (default) | *(none)* | No | No | Public pages, CI |
+| Persistent | `--browser-mode persistent` | Yes | No | Auth-gated local dev |
 
 ## Development
 
@@ -100,6 +145,14 @@ Claude Code:
 ```bash
 claude mcp add --scope user frontend-visualqa -- \
   uvx --from /absolute/path/to/frontend-visualqa frontend-visualqa serve
+```
+
+With persistent sessions (auth-gated pages):
+
+```bash
+claude mcp add --scope user frontend-visualqa -- \
+  uvx --from /absolute/path/to/frontend-visualqa frontend-visualqa serve \
+  --browser-mode persistent
 ```
 
 Codex:

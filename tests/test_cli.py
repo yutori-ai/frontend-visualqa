@@ -3,7 +3,9 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any
 
-from frontend_visualqa.schemas import ViewportConfig
+import pytest
+
+from frontend_visualqa.schemas import BrowserConfig, BrowserMode, ViewportConfig
 
 
 class FakeRunner:
@@ -48,12 +50,58 @@ class FakeServer:
         self.run_calls.append(transport)
 
 
-def test_handle_verify_closes_runner(monkeypatch: Any) -> None:
+class FakeContext:
+    def __init__(self) -> None:
+        self.events: dict[str, Any] = {}
+
+    def on(self, event: str, handler: Any) -> None:
+        self.events[event] = handler
+
+
+class FakeBrowserSession:
+    def __init__(self) -> None:
+        self.context = FakeContext()
+
+
+class FakeBrowserManager:
+    def __init__(self, *, config: BrowserConfig) -> None:
+        self.config = config
+        self.get_session_calls: list[dict[str, Any]] = []
+        self.goto_calls: list[tuple[Any, str]] = []
+        self.close_calls = 0
+        self.session = FakeBrowserSession()
+
+    async def get_session(self, session_key: str = "default", *, reuse_session: bool = True, **_: Any) -> FakeBrowserSession:
+        self.get_session_calls.append({"session_key": session_key, "reuse_session": reuse_session})
+        return self.session
+
+    async def goto(self, session: FakeBrowserSession, url: str) -> str:
+        self.goto_calls.append((session, url))
+        return url
+
+    async def close(self) -> None:
+        self.close_calls += 1
+
+
+class ClosingFakeBrowserManager(FakeBrowserManager):
+    async def goto(self, session: FakeBrowserSession, url: str) -> str:
+        final_url = await super().goto(session, url)
+        session.context.events["close"]()
+        return final_url
+
+
+def test_handle_verify_closes_runner_and_forwards_browser_config(monkeypatch: Any) -> None:
     import frontend_visualqa.cli as cli
 
     fake_runner = FakeRunner()
     emitted: list[dict[str, Any]] = []
-    monkeypatch.setattr(cli, "_new_runner", lambda: fake_runner)
+    browser_configs: list[BrowserConfig | None] = []
+
+    def _fake_new_runner(*, browser_config: BrowserConfig | None = None) -> FakeRunner:
+        browser_configs.append(browser_config)
+        return fake_runner
+
+    monkeypatch.setattr(cli, "_new_runner", _fake_new_runner)
     monkeypatch.setattr(cli, "_emit_json", emitted.append)
 
     exit_code = cli._handle_verify(
@@ -63,6 +111,9 @@ def test_handle_verify_closes_runner(monkeypatch: Any) -> None:
             width=1280,
             height=800,
             device_scale_factor=1.0,
+            browser_mode="persistent",
+            user_data_dir="/tmp/frontend-visualqa-profile",
+            headed=True,
             session_key="verify-session",
             reuse_session=True,
             reset_between_claims=True,
@@ -76,15 +127,28 @@ def test_handle_verify_closes_runner(monkeypatch: Any) -> None:
     assert exit_code == 0
     assert fake_runner.close_calls == 1
     assert fake_runner.run_calls[0]["viewport"] == ViewportConfig()
+    assert browser_configs == [
+        BrowserConfig(
+            mode=BrowserMode.persistent,
+            user_data_dir="/tmp/frontend-visualqa-profile",
+            headless=False,
+        )
+    ]
     assert emitted[0]["overall_status"] == "completed"
 
 
-def test_handle_screenshot_closes_runner(monkeypatch: Any) -> None:
+def test_handle_screenshot_closes_runner_and_forwards_browser_config(monkeypatch: Any) -> None:
     import frontend_visualqa.cli as cli
 
     fake_runner = FakeRunner()
     emitted: list[dict[str, Any]] = []
-    monkeypatch.setattr(cli, "_new_runner", lambda: fake_runner)
+    browser_configs: list[BrowserConfig | None] = []
+
+    def _fake_new_runner(*, browser_config: BrowserConfig | None = None) -> FakeRunner:
+        browser_configs.append(browser_config)
+        return fake_runner
+
+    monkeypatch.setattr(cli, "_new_runner", _fake_new_runner)
     monkeypatch.setattr(cli, "_emit_json", emitted.append)
 
     exit_code = cli._handle_screenshot(
@@ -93,6 +157,9 @@ def test_handle_screenshot_closes_runner(monkeypatch: Any) -> None:
             width=390,
             height=844,
             device_scale_factor=1.0,
+            browser_mode="ephemeral",
+            user_data_dir=None,
+            headed=False,
             session_key="shot-session",
             reuse_session=False,
         )
@@ -101,6 +168,7 @@ def test_handle_screenshot_closes_runner(monkeypatch: Any) -> None:
     assert exit_code == 0
     assert fake_runner.close_calls == 1
     assert fake_runner.screenshot_calls[0]["viewport"] == ViewportConfig(width=390, height=844, device_scale_factor=1.0)
+    assert browser_configs == [BrowserConfig(mode=BrowserMode.ephemeral, user_data_dir=None, headless=True)]
     assert emitted[0]["final_url"] == "http://localhost:3000/tasks/123"
 
 
@@ -109,7 +177,7 @@ def test_handle_status_closes_runner(monkeypatch: Any) -> None:
 
     fake_runner = FakeRunner()
     emitted: list[dict[str, Any]] = []
-    monkeypatch.setattr(cli, "_new_runner", lambda: fake_runner)
+    monkeypatch.setattr(cli, "_new_runner", lambda **_: fake_runner)
     monkeypatch.setattr(cli, "_emit_json", emitted.append)
 
     exit_code = cli._handle_status(SimpleNamespace())
@@ -120,16 +188,124 @@ def test_handle_status_closes_runner(monkeypatch: Any) -> None:
     assert emitted[0]["browser_running"] is False
 
 
-def test_handle_serve_closes_cached_mcp_runners(monkeypatch: Any) -> None:
+def test_handle_serve_configures_server_and_closes_cached_mcp_runners(monkeypatch: Any) -> None:
     import frontend_visualqa.cli as cli
 
     fake_server = FakeServer()
+    configured: list[BrowserConfig] = []
     closed: list[str] = []
     monkeypatch.setattr(cli, "get_mcp_server", lambda: fake_server)
+    monkeypatch.setattr(cli, "configure_server", configured.append)
     monkeypatch.setattr(cli, "close_runners_sync", lambda: closed.append("closed"))
 
-    exit_code = cli._handle_serve(SimpleNamespace())
+    exit_code = cli._handle_serve(
+        SimpleNamespace(
+            browser_mode="persistent",
+            user_data_dir="/tmp/frontend-visualqa-profile",
+            headed=True,
+        )
+    )
 
     assert exit_code == 0
+    assert configured == [
+        BrowserConfig(
+            mode=BrowserMode.persistent,
+            user_data_dir="/tmp/frontend-visualqa-profile",
+            headless=False,
+        )
+    ]
     assert fake_server.run_calls == ["stdio"]
     assert closed == ["closed"]
+
+
+def test_handle_login_requires_tty(monkeypatch: Any, capsys: pytest.CaptureFixture[str]) -> None:
+    import frontend_visualqa.cli as cli
+
+    monkeypatch.setattr(cli.sys, "stdin", SimpleNamespace(isatty=lambda: False))
+
+    exit_code = cli._handle_login(SimpleNamespace(url="http://localhost:3000/login", user_data_dir=None))
+
+    assert exit_code == 1
+    assert "login requires an interactive terminal" in capsys.readouterr().err
+
+
+def test_handle_login_rejects_invalid_url(monkeypatch: Any, capsys: pytest.CaptureFixture[str]) -> None:
+    import frontend_visualqa.cli as cli
+
+    monkeypatch.setattr(cli.sys, "stdin", SimpleNamespace(isatty=lambda: True))
+
+    exit_code = cli._handle_login(SimpleNamespace(url="localhost:3000/login", user_data_dir=None))
+
+    assert exit_code == 1
+    assert "url must start with http:// or https://" in capsys.readouterr().err
+
+
+@pytest.mark.asyncio
+async def test_run_login_opens_headed_persistent_browser_and_saves_profile(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import frontend_visualqa.cli as cli
+
+    created_managers: list[FakeBrowserManager] = []
+
+    def _fake_browser_manager(*, config: BrowserConfig) -> FakeBrowserManager:
+        manager = FakeBrowserManager(config=config)
+        created_managers.append(manager)
+        return manager
+
+    async def _noop_sleep(_: float) -> None:
+        return None
+
+    fake_stdin = SimpleNamespace(readline=lambda: "\n", isatty=lambda: True)
+    monkeypatch.setattr(cli, "BrowserManager", _fake_browser_manager)
+    monkeypatch.setattr(cli.sys, "stdin", fake_stdin)
+    monkeypatch.setattr(cli.asyncio, "sleep", _noop_sleep)
+
+    exit_code = await cli._run_login(SimpleNamespace(url="http://localhost:3000/login", user_data_dir="/tmp/profile"))
+
+    assert exit_code == 0
+    assert len(created_managers) == 1
+    manager = created_managers[0]
+    assert manager.config == BrowserConfig(
+        mode=BrowserMode.persistent,
+        user_data_dir="/tmp/profile",
+        headless=False,
+    )
+    assert manager.get_session_calls == [{"session_key": "default", "reuse_session": False}]
+    assert manager.goto_calls[0][1] == "http://localhost:3000/login"
+    assert manager.close_calls == 1
+    assert "Browser is open. Log in, then press Enter here to close and save the session." in capsys.readouterr().err
+
+
+@pytest.mark.asyncio
+async def test_run_login_exits_cleanly_when_browser_window_closes_first(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import frontend_visualqa.cli as cli
+
+    created_managers: list[ClosingFakeBrowserManager] = []
+
+    def _fake_browser_manager(*, config: BrowserConfig) -> ClosingFakeBrowserManager:
+        manager = ClosingFakeBrowserManager(config=config)
+        created_managers.append(manager)
+        return manager
+
+    async def _noop_sleep(_: float) -> None:
+        return None
+
+    fake_stdin = SimpleNamespace(readline=lambda: "", isatty=lambda: True)
+    monkeypatch.setattr(cli, "BrowserManager", _fake_browser_manager)
+    monkeypatch.setattr(cli.sys, "stdin", fake_stdin)
+    monkeypatch.setattr(cli.asyncio, "sleep", _noop_sleep)
+
+    exit_code = await cli._run_login(SimpleNamespace(url="http://localhost:3000/login", user_data_dir="/tmp/profile"))
+
+    assert exit_code == 0
+    assert len(created_managers) == 1
+    manager = created_managers[0]
+    assert manager.close_calls == 1  # manager.close() called to stop Playwright subprocess
+    stderr = capsys.readouterr().err
+    assert "Browser is open. Log in, then press Enter here to close and save the session." in stderr
+    assert "Browser closed." in stderr

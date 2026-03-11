@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 import inspect
 import json
 from typing import Any
 
 import pytest
 
-from frontend_visualqa.schemas import BrowserStatusResult, ScreenshotResult, ViewportConfig
+from frontend_visualqa.schemas import BrowserConfig, BrowserMode, BrowserStatusResult, ScreenshotResult, ViewportConfig
 
 
 def _import_mcp_server_module():
@@ -104,6 +105,15 @@ def _install_fake_runner(module: Any, fake_runner: FakeRunner, monkeypatch: pyte
         monkeypatch.setattr(module, "_get_runner", _return_runner, raising=False)
 
 
+def _reset_server_module_state(module: Any) -> None:
+    module._runners_by_loop.clear()
+    module._runner_locks_by_loop.clear()
+    if hasattr(module, "_server_browser_config"):
+        module._server_browser_config = None
+    if hasattr(module, "_config_frozen"):
+        module._config_frozen = False
+
+
 @pytest.mark.asyncio
 async def test_mcp_server_registers_expected_tools() -> None:
     module = _import_mcp_server_module()
@@ -177,12 +187,90 @@ async def test_mcp_server_helpers_delegate_to_runner(monkeypatch: pytest.MonkeyP
 def test_close_runners_sync_closes_cached_runners(monkeypatch: pytest.MonkeyPatch) -> None:
     module = _import_mcp_server_module()
     fake_runner = FakeRunner()
-    module._runners_by_loop.clear()
-    module._runner_locks_by_loop.clear()
+    _reset_server_module_state(module)
     monkeypatch.setitem(module._runners_by_loop, 123, fake_runner)
+    module._server_browser_config = BrowserConfig(mode=BrowserMode.persistent, user_data_dir="/tmp/profile")
+    module._config_frozen = True
 
     module.close_runners_sync()
 
     assert fake_runner.close_calls == 1
     assert module._runners_by_loop == {}
     assert module._runner_locks_by_loop == {}
+    assert module._server_browser_config is None
+    assert module._config_frozen is False
+
+
+@pytest.mark.asyncio
+async def test_configure_server_passes_browser_config_to_new_runner(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _import_mcp_server_module()
+    _reset_server_module_state(module)
+    fake_runner = FakeRunner()
+    captured: dict[str, Any] = {}
+
+    import frontend_visualqa.runner as runner_module
+
+    def fake_visual_qa_runner(*, browser_config: BrowserConfig | None = None, **kwargs: Any) -> FakeRunner:
+        del kwargs
+        captured["browser_config"] = browser_config
+        return fake_runner
+
+    monkeypatch.setattr(runner_module, "VisualQARunner", fake_visual_qa_runner)
+
+    browser_config = BrowserConfig(mode=BrowserMode.persistent, user_data_dir="/tmp/profile", headless=False)
+    module.configure_server(browser_config)
+    runner = await module._get_runner()
+
+    assert runner is fake_runner
+    assert captured["browser_config"] == browser_config
+    assert module._config_frozen is True
+
+
+@pytest.mark.asyncio
+async def test_configure_server_rejects_changes_after_runner_creation(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _import_mcp_server_module()
+    _reset_server_module_state(module)
+    fake_runner = FakeRunner()
+
+    import frontend_visualqa.runner as runner_module
+
+    monkeypatch.setattr(runner_module, "VisualQARunner", lambda **kwargs: fake_runner)
+
+    await module._get_runner()
+
+    with pytest.raises(RuntimeError, match="Cannot change browser config after runner has been created"):
+        module.configure_server(BrowserConfig(mode=BrowserMode.persistent, user_data_dir="/tmp/profile"))
+
+
+def test_close_runners_sync_resets_config_without_cached_runners() -> None:
+    module = _import_mcp_server_module()
+    _reset_server_module_state(module)
+    module._server_browser_config = BrowserConfig(mode=BrowserMode.persistent, user_data_dir="/tmp/profile")
+
+    module.close_runners_sync()
+
+    assert module._server_browser_config is None
+    assert module._config_frozen is False
+
+
+@pytest.mark.asyncio
+async def test_close_runners_sync_resets_state_immediately_inside_running_loop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _import_mcp_server_module()
+    fake_runner = FakeRunner()
+    _reset_server_module_state(module)
+    monkeypatch.setitem(module._runners_by_loop, module._loop_key(), fake_runner)
+    module._server_browser_config = BrowserConfig(mode=BrowserMode.persistent, user_data_dir="/tmp/profile")
+    module._config_frozen = True
+
+    module.close_runners_sync()
+
+    assert module._runners_by_loop == {}
+    assert module._runner_locks_by_loop == {}
+    assert module._server_browser_config is None
+    assert module._config_frozen is False
+
+    await asyncio.sleep(0)
+
+    assert fake_runner.close_calls == 1

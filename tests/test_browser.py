@@ -1,19 +1,45 @@
 from __future__ import annotations
 
 from functools import partial
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler, SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from threading import Thread
 
 import pytest
 
-from frontend_visualqa.browser import BrowserManager, image_bytes_to_data_url
-from frontend_visualqa.schemas import ViewportConfig
+from frontend_visualqa.browser import BrowserManager, PERSISTENT_SESSION_KEY_ERROR, image_bytes_to_data_url
+from frontend_visualqa.schemas import BrowserConfig, BrowserMode, DEFAULT_PERSISTENT_USER_DATA_DIR, ViewportConfig
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 
 
 class _SilentStaticHandler(SimpleHTTPRequestHandler):
+    def log_message(self, format: str, *args: object) -> None:  # noqa: A003
+        return
+
+
+class _CookieHandler(BaseHTTPRequestHandler):
+    def do_GET(self) -> None:  # noqa: N802
+        if self.path == "/set-cookie":
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Set-Cookie", "qa_cookie=present; Max-Age=3600; Path=/")
+            self.end_headers()
+            self.wfile.write(b"<html><body>cookie set</body></html>")
+            return
+
+        if self.path == "/echo-cookie":
+            cookie_header = self.headers.get("Cookie", "")
+            body = f"<html><body><div id='cookie'>{cookie_header}</div></body></html>".encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        self.send_response(404)
+        self.end_headers()
+
     def log_message(self, format: str, *args: object) -> None:  # noqa: A003
         return
 
@@ -32,10 +58,30 @@ def example_url() -> str:
         server.server_close()
 
 
+@pytest.fixture()
+def cookie_server() -> str:
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _CookieHandler)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_port}"
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+        server.server_close()
+
+
 def test_image_bytes_to_data_url_prefixes_payload() -> None:
     data_url = image_bytes_to_data_url(b"visual-qa", mime_type="image/webp")
 
     assert data_url.startswith("data:image/webp;base64,")
+
+
+def test_browser_config_defaults_persistent_user_data_dir() -> None:
+    config = BrowserConfig(mode=BrowserMode.persistent)
+
+    assert config.user_data_dir == str(DEFAULT_PERSISTENT_USER_DATA_DIR)
+    assert config.resolved_user_data_dir == str(DEFAULT_PERSISTENT_USER_DATA_DIR)
 
 
 @pytest.mark.asyncio
@@ -78,6 +124,8 @@ async def test_browser_manager_navigates_reuses_session_and_captures_webp(exampl
 
         status = manager.status()
         assert status.browser_running is True
+        assert status.browser_mode == BrowserMode.ephemeral
+        assert status.user_data_dir is None
         assert [item.session_key for item in status.sessions] == ["qa-fixture"]
         assert status.sessions[0].current_url == example_url
 
@@ -124,3 +172,158 @@ async def test_example_fixture_supports_modal_tabs_search_and_toast(example_url:
 
         await session.page.locator("#show-toast").click(force=True)
         assert await session.page.locator("#toast").get_attribute("data-visible") == "true"
+
+
+@pytest.mark.asyncio
+async def test_browser_manager_persistent_mode_preserves_cookies_across_relaunch(
+    cookie_server: str,
+    tmp_path: Path,
+) -> None:
+    profile_dir = tmp_path / "browser-profile"
+    config = BrowserConfig(
+        mode=BrowserMode.persistent,
+        user_data_dir=str(profile_dir),
+        headless=True,
+        settle_delay_seconds=0,
+    )
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+
+    async with BrowserManager(config=config) as manager:
+        session = await manager.get_session(viewport=viewport)
+        await manager.goto(session, f"{cookie_server}/set-cookie")
+
+    assert profile_dir.exists()
+
+    async with BrowserManager(config=config) as manager:
+        session = await manager.get_session(viewport=viewport)
+        await manager.goto(session, f"{cookie_server}/echo-cookie")
+        cookie_text = await session.page.locator("#cookie").text_content()
+        status = manager.status()
+
+    assert cookie_text is not None
+    assert "qa_cookie=present" in cookie_text
+    assert status.browser_mode == BrowserMode.persistent
+    assert status.user_data_dir == str(profile_dir)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operation", ["get_session", "close_session", "restart_session", "set_viewport"])
+async def test_browser_manager_persistent_mode_rejects_non_default_session_keys(
+    operation: str,
+    tmp_path: Path,
+) -> None:
+    manager = BrowserManager(
+        config=BrowserConfig(
+            mode=BrowserMode.persistent,
+            user_data_dir=str(tmp_path / "browser-profile"),
+            headless=True,
+            settle_delay_seconds=0,
+        )
+    )
+
+    try:
+        with pytest.raises(ValueError, match=PERSISTENT_SESSION_KEY_ERROR):
+            if operation == "get_session":
+                await manager.get_session("secondary", viewport=ViewportConfig())
+            elif operation == "close_session":
+                await manager.close_session("secondary")
+            elif operation == "restart_session":
+                await manager.restart_session("secondary", viewport=ViewportConfig())
+            else:
+                await manager.set_viewport("secondary", ViewportConfig())
+    finally:
+        await manager.close()
+
+
+@pytest.mark.asyncio
+async def test_browser_manager_persistent_mode_uses_dedicated_automation_page(
+    example_url: str,
+    tmp_path: Path,
+) -> None:
+    manager = BrowserManager(
+        config=BrowserConfig(
+            mode=BrowserMode.persistent,
+            user_data_dir=str(tmp_path / "browser-profile"),
+            headless=True,
+            settle_delay_seconds=0,
+        )
+    )
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+
+    try:
+        await manager.ensure_browser(viewport)
+        assert manager._persistent_context is not None
+        restored_page = await manager._persistent_context.new_page()
+        await restored_page.goto(example_url, wait_until="domcontentloaded")
+
+        session = await manager.get_session("default", viewport=viewport)
+
+        assert session.page is not restored_page
+        assert session.page.url == "about:blank"
+    finally:
+        await manager.close()
+
+
+@pytest.mark.asyncio
+async def test_browser_manager_persistent_mode_relaunches_for_dpr_change(
+    example_url: str,
+    tmp_path: Path,
+) -> None:
+    manager = BrowserManager(
+        config=BrowserConfig(
+            mode=BrowserMode.persistent,
+            user_data_dir=str(tmp_path / "browser-profile"),
+            headless=True,
+            settle_delay_seconds=0,
+        )
+    )
+    initial_viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    refreshed_viewport = ViewportConfig(width=1280, height=800, device_scale_factor=2)
+
+    try:
+        session = await manager.get_session("default", viewport=initial_viewport)
+        await manager.goto(session, example_url)
+        original_context = session.context
+
+        refreshed = await manager.get_session("default", viewport=refreshed_viewport, reuse_session=True)
+
+        assert refreshed.context is not original_context
+        assert refreshed.viewport == refreshed_viewport
+        assert refreshed.page.url == example_url
+    finally:
+        await manager.close()
+
+
+@pytest.mark.asyncio
+async def test_browser_manager_persistent_mode_recovers_after_external_context_close(
+    example_url: str,
+    tmp_path: Path,
+) -> None:
+    manager = BrowserManager(
+        config=BrowserConfig(
+            mode=BrowserMode.persistent,
+            user_data_dir=str(tmp_path / "browser-profile"),
+            headless=True,
+            settle_delay_seconds=0,
+        )
+    )
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+
+    try:
+        session = await manager.get_session("default", viewport=viewport)
+        await manager.goto(session, example_url)
+        await session.context.close()
+
+        assert manager.status().browser_running is False
+        assert manager.status().sessions == []
+
+        recovered = await manager.get_session("default", viewport=viewport, reuse_session=True)
+
+        assert recovered is not session
+        assert recovered.context is not session.context
+        # After recovery, the dedicated automation page starts at about:blank.
+        # Navigate to example_url and verify we have a working page.
+        await manager.goto(recovered, example_url)
+        assert await recovered.page.locator("h1").text_content() == "Frontend Visual QA Playground"
+    finally:
+        await manager.close()
