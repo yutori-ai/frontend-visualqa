@@ -685,3 +685,81 @@ async def test_runner_invokes_reporters_after_run(
     written_result, written_dir = spy.write_calls[0]
     assert written_result.overall_status == "completed"
     assert str(written_dir) == result.artifacts_dir
+
+
+@pytest.mark.asyncio
+async def test_runner_writes_both_native_and_ctrf_reports(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _import_runner_module()
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    from frontend_visualqa.reporters import get_reporters
+    reporters = get_reporters(["native", "ctrf"])
+    runner, browser, verifier = _build_runner(
+        module,
+        tmp_path,
+        verifier_results=[_result("Claim one", "passed", viewport), _result("Claim two", "failed", viewport)],
+        monkeypatch=monkeypatch,
+    )
+    runner.reporters = reporters
+    result = await _call_run(
+        runner,
+        url="http://fixture.local/page",
+        claims=["Claim one", "Claim two"],
+        viewport=viewport,
+        session_key="qa-session",
+        reuse_session=True,
+        reset_between_claims=True,
+        max_steps_per_claim=5,
+    )
+    run_dir = Path(result.artifacts_dir)
+    # Native report
+    native_path = run_dir / "run_result.json"
+    assert native_path.exists()
+    native_data = json.loads(native_path.read_text())
+    assert native_data["results"][0]["wrong_page_recovered"] is False
+    # CTRF report
+    ctrf_path = run_dir / "ctrf-report.json"
+    assert ctrf_path.exists()
+    ctrf_data = json.loads(ctrf_path.read_text())
+    assert ctrf_data["reportFormat"] == "CTRF"
+    assert "specVersion" in ctrf_data
+    assert ctrf_data["results"]["tool"]["name"] == "frontend-visualqa"
+    assert ctrf_data["results"]["summary"]["tests"] == 2
+    assert ctrf_data["results"]["summary"]["passed"] == 1
+    assert ctrf_data["results"]["summary"]["failed"] == 1
+    assert ctrf_data["results"]["tests"][0]["status"] == "passed"
+    assert ctrf_data["results"]["tests"][1]["status"] == "failed"
+
+
+@pytest.mark.asyncio
+async def test_runner_ctrf_only_does_not_write_native_report(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When only ctrf is selected, run_result.json must not be written."""
+    module = _import_runner_module()
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    from frontend_visualqa.reporters import get_reporters
+    reporters = get_reporters(["ctrf"])
+    runner, browser, verifier = _build_runner(
+        module,
+        tmp_path,
+        verifier_results=[_result("Claim one", "passed", viewport)],
+        monkeypatch=monkeypatch,
+    )
+    runner.reporters = reporters
+    result = await _call_run(
+        runner,
+        url="http://fixture.local/page",
+        claims=["Claim one"],
+        viewport=viewport,
+        session_key="qa-session",
+        reuse_session=True,
+        reset_between_claims=True,
+        max_steps_per_claim=5,
+    )
+    run_dir = Path(result.artifacts_dir)
+    assert (run_dir / "ctrf-report.json").exists()
+    assert not (run_dir / "run_result.json").exists()
