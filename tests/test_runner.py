@@ -641,3 +641,47 @@ def test_runner_passes_browser_config_to_browser_manager(monkeypatch: pytest.Mon
 
     assert captured["config"] == browser_config
     assert runner.browser_manager is not None
+
+
+class SpyReporter:
+    """Test spy that records write() calls."""
+    def __init__(self) -> None:
+        self.write_calls: list[tuple[Any, Path]] = []
+
+    @property
+    def name(self) -> str:
+        return "spy"
+
+    def write(self, run_result: Any, output_dir: Path) -> None:
+        self.write_calls.append((run_result, output_dir))
+
+
+@pytest.mark.asyncio
+async def test_runner_invokes_reporters_after_run(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _import_runner_module()
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    runner, browser, verifier = _build_runner(
+        module,
+        tmp_path,
+        verifier_results=[_result("Claim one", "passed", viewport)],
+        monkeypatch=monkeypatch,
+    )
+    spy = SpyReporter()
+    runner.reporters = [spy]
+    result = await _call_run(
+        runner,
+        url="http://fixture.local/page",
+        claims=["Claim one"],
+        viewport=viewport,
+        session_key="qa-session",
+        reuse_session=True,
+        reset_between_claims=True,
+        max_steps_per_claim=5,
+    )
+    assert len(spy.write_calls) == 1
+    written_result, written_dir = spy.write_calls[0]
+    assert written_result.overall_status == "completed"
+    assert str(written_dir) == result.artifacts_dir

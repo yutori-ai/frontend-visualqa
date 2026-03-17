@@ -9,10 +9,13 @@ from typing import Any
 
 import httpx
 
+from pathlib import Path
+
 from frontend_visualqa.artifacts import ArtifactManager
 from frontend_visualqa.browser import BrowserManager
 from frontend_visualqa.claim_verifier import ClaimVerifier
 from frontend_visualqa.n1_client import N1Client
+from frontend_visualqa.reporters import get_reporters
 from frontend_visualqa.schemas import (
     BrowserConfig,
     BrowserStatusResult,
@@ -41,6 +44,7 @@ class VisualQARunner:
         claim_verifier: ClaimVerifier | None = None,
         artifacts_dir: str = "artifacts",
         headless: bool | None = None,
+        reporters: list[str] | None = None,
     ) -> None:
         resolved_browser_config = browser_config
         if resolved_browser_config is None:
@@ -56,6 +60,7 @@ class VisualQARunner:
             artifact_manager=self.artifact_manager,
             n1_client=self.n1_client,
         )
+        self.reporters = get_reporters(reporters or [])
         self._operation_lock = asyncio.Lock()
 
     async def run(
@@ -104,7 +109,7 @@ class VisualQARunner:
                     started_at=run_started_at,
                     completed_at=time.time(),
                 )
-                self._save_json(run_artifacts, "run_result.json", result.model_dump())
+                self._write_reports(result, str(run_artifacts.run_dir))
                 return result
 
             try:
@@ -121,7 +126,7 @@ class VisualQARunner:
                     started_at=run_started_at,
                     completed_at=time.time(),
                 )
-                self._save_json(run_artifacts, "run_result.json", result.model_dump())
+                self._write_reports(result, str(run_artifacts.run_dir))
                 return result
 
             try:
@@ -134,7 +139,7 @@ class VisualQARunner:
                     started_at=run_started_at,
                     completed_at=time.time(),
                 )
-                self._save_json(run_artifacts, "run_result.json", result.model_dump())
+                self._write_reports(result, str(run_artifacts.run_dir))
                 return result
 
             claim_results: list[ClaimResult] = []
@@ -222,7 +227,7 @@ class VisualQARunner:
                 summary=summary,
                 artifacts_dir=str(run_artifacts.run_dir),
             )
-            self._save_json(run_artifacts, "run_result.json", run_result.model_dump())
+            self._write_reports(run_result, str(run_artifacts.run_dir))
             return run_result
 
     async def _prepare_session_for_claim(
@@ -433,6 +438,14 @@ class VisualQARunner:
             screenshots=[],
             action_trace=[],
         )
+
+    def _write_reports(self, run_result: RunResult, run_dir: str) -> None:
+        output_dir = Path(run_dir)
+        for reporter in self.reporters:
+            try:
+                reporter.write(run_result, output_dir)
+            except Exception:
+                logger.warning("Reporter %s failed to write", reporter.name, exc_info=True)
 
     def _save_json(self, run_artifacts: Any, relative_path: str, payload: dict[str, Any]) -> None:
         save_json = getattr(self.artifact_manager, "save_json", None)
