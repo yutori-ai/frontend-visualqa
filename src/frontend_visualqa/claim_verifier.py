@@ -23,7 +23,7 @@ from frontend_visualqa.schemas import ClaimResult, ClaimStatus
 
 
 FALLBACK_VERDICT_PATTERN = re.compile(
-    r"""["']?(?:status|verdict)["']?\s*[:=]\s*["']?(pass|fail|inconclusive|not[_ ]testable)\b""",
+    r"""["']?(?:status|verdict)["']?\s*[:=]\s*["']?(passed|failed|inconclusive|not[_ ]testable)\b""",
     re.IGNORECASE,
 )
 BUTTON_VISIBLE_PATTERN = re.compile(
@@ -416,7 +416,7 @@ class ClaimVerifier:
                 return "inconclusive", str(exc)
             status = str(arguments.get("status", "")).strip()
             summary = str(arguments.get("summary", "")).strip() or "No summary provided."
-            if status in {"pass", "fail", "inconclusive", "not_testable"}:
+            if status in {"passed", "failed", "inconclusive", "not_testable"}:
                 return status, summary
         return None
 
@@ -434,7 +434,7 @@ class ClaimVerifier:
                 return status, summary
 
             explicit_status = str(arguments.get("status", "")).strip().lower().replace(" ", "_")
-            if explicit_status in {"pass", "fail", "inconclusive", "not_testable"}:
+            if explicit_status in {"passed", "failed", "inconclusive", "not_testable"}:
                 status = explicit_status
 
             explicit_summary = str(
@@ -537,7 +537,7 @@ class ClaimVerifier:
             if grounded is None:
                 return status, summary
             grounded_status, grounded_summary = grounded
-            if grounded_status != "pass":
+            if grounded_status != "passed":
                 logger.info("Downgrading pass verdict for claim %r after grounding check", claim)
             return grounded_status, grounded_summary
 
@@ -677,9 +677,9 @@ class ClaimVerifier:
         expected = self._normalize_text(groups["text"])
         visible_headings = visual_state.get("visibleHeadings", [])
         if any(self._normalize_text(text) == expected for text in visible_headings):
-            return "pass", f"Visible heading matched {groups['text']!r}."
+            return "passed", f"Visible heading matched {groups['text']!r}."
         return (
-            "fail",
+            "failed",
             f"No visible heading matched {groups['text']!r}. Visible headings: {visible_headings or ['<none>']}.",
         )
 
@@ -691,9 +691,9 @@ class ClaimVerifier:
         expected = self._normalize_text(groups["text"])
         dialog_titles = visual_state.get("dialogTitles", [])
         if any(self._normalize_text(text) == expected for text in dialog_titles):
-            return "pass", f"Visible dialog title matched {groups['text']!r}."
+            return "passed", f"Visible dialog title matched {groups['text']!r}."
         return (
-            "fail",
+            "failed",
             f"No visible dialog title matched {groups['text']!r}. Visible dialog titles: {dialog_titles or ['<none>']}.",
         )
 
@@ -706,10 +706,10 @@ class ClaimVerifier:
         if matched_states:
             if any(state.get("fullyVisible", False) for state in matched_states):
                 candidate = matched_states[0].get("text", groups["label"])
-                return "pass", f"Visible button label matched {groups['label']!r}: {candidate!r}."
+                return "passed", f"Visible button label matched {groups['label']!r}: {candidate!r}."
             candidate = matched_states[0].get("text", groups["label"])
             return (
-                "fail",
+                "failed",
                 f"Visible button label matched {groups['label']!r}, but {candidate!r} is clipped or only partially visible.",
             )
 
@@ -725,9 +725,9 @@ class ClaimVerifier:
                 or (fuzzy_label and fuzzy_candidate == fuzzy_label)
                 or (fuzzy_label and fuzzy_candidate.startswith(f"{fuzzy_label} "))
             ):
-                return "pass", f"Visible button label matched {groups['label']!r}: {candidate!r}."
+                return "passed", f"Visible button label matched {groups['label']!r}: {candidate!r}."
         return (
-            "fail",
+            "failed",
             f"No visible button label matched {groups['label']!r}. Visible buttons: {visible_buttons or ['<none>']}.",
         )
 
@@ -740,7 +740,7 @@ class ClaimVerifier:
         if not matched_states:
             visible_buttons = visual_state.get("visibleButtons", [])
             return (
-                "fail",
+                "failed",
                 f"No visible button label matched {groups['label']!r}. Visible buttons: {visible_buttons or ['<none>']}.",
             )
 
@@ -748,11 +748,11 @@ class ClaimVerifier:
             candidate = next(
                 state.get("text", groups["label"]) for state in matched_states if state.get("fullyVisible", False)
             )
-            return "pass", f"Visible button label matched {groups['label']!r} and is fully visible: {candidate!r}."
+            return "passed", f"Visible button label matched {groups['label']!r} and is fully visible: {candidate!r}."
 
         candidate = matched_states[0].get("text", groups["label"])
         return (
-            "fail",
+            "failed",
             f"Visible button label matched {groups['label']!r}, but {candidate!r} is clipped or not fully visible.",
         )
 

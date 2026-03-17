@@ -117,7 +117,7 @@ async def test_live_runner_executes_real_browser_flow_and_passes_modal_claim(
                         id="tool-2",
                         function=FakeFunction(
                             name="record_claim_result",
-                            arguments=json.dumps({"status": "pass", "summary": "The modal title reads Edit Task."}),
+                            arguments=json.dumps({"status": "passed", "summary": "The modal title reads Edit Task."}),
                         ),
                     )
                 ]
@@ -148,7 +148,7 @@ async def test_live_runner_executes_real_browser_flow_and_passes_modal_claim(
         await runner.close()
 
     assert result.overall_status == "completed"
-    assert [item.status for item in result.results] == ["pass"]
+    assert [item.status for item in result.results] == ["passed"]
     assert result.results[0].action_trace == ["left_click([419, 348])"]
     assert all(Path(path).exists() for path in result.results[0].screenshots)
 
@@ -169,7 +169,7 @@ async def test_live_runner_downgrades_false_positive_button_claim_with_grounding
                             name="record_claim_result",
                             arguments=json.dumps(
                                 {
-                                    "status": "pass",
+                                    "status": "passed",
                                     "summary": "The Show Save Confirmation button is visible without scrolling.",
                                 }
                             ),
@@ -202,5 +202,5 @@ async def test_live_runner_downgrades_false_positive_button_claim_with_grounding
         await runner.close()
 
     assert result.overall_status == "completed"
-    assert [item.status for item in result.results] == ["fail"]
+    assert [item.status for item in result.results] == ["failed"]
     assert "No visible button label matched" in result.results[0].summary

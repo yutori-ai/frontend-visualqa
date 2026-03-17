@@ -284,7 +284,7 @@ async def test_runner_run_aggregates_claim_results_and_resets_between_claims(
     runner, browser, verifier = _build_runner(
         module,
         tmp_path,
-        verifier_results=[_result("Claim one", "pass", viewport), _result("Claim two", "fail", viewport)],
+        verifier_results=[_result("Claim one", "passed", viewport), _result("Claim two", "failed", viewport)],
         monkeypatch=monkeypatch,
     )
 
@@ -302,7 +302,7 @@ async def test_runner_run_aggregates_claim_results_and_resets_between_claims(
 
     assert result.overall_status == "completed"
     assert result.session_key == "qa-session"
-    assert [item.status for item in result.results] == ["pass", "fail"]
+    assert [item.status for item in result.results] == ["passed", "failed"]
     assert result.artifacts_dir
     assert result.summary
     assert len([call for call in browser.goto_calls if call == ("qa-session", "http://fixture.local/page")]) >= 2
@@ -322,7 +322,7 @@ async def test_runner_run_request_reuses_prevalidated_input(
     runner, browser, verifier = _build_runner(
         module,
         tmp_path,
-        verifier_results=[_result("Claim one", "pass", viewport)],
+        verifier_results=[_result("Claim one", "passed", viewport)],
         monkeypatch=monkeypatch,
     )
     request = VerifyVisualClaimsInput(
@@ -339,7 +339,7 @@ async def test_runner_run_request_reuses_prevalidated_input(
     result = await runner.run_request(request)
 
     assert result.overall_status == "completed"
-    assert [item.status for item in result.results] == ["pass"]
+    assert [item.status for item in result.results] == ["passed"]
     assert browser.goto_calls[0] == ("qa-session", "http://fixture.local/page")
     assert verifier.calls[0]["navigation_hint"] == "Open the modal if needed."
 
@@ -473,7 +473,7 @@ async def test_runner_marks_claim_not_testable_when_reset_between_claims_fails(
     runner, _, verifier = _build_runner(
         module,
         tmp_path,
-        verifier_results=[_result("Claim one", "pass", viewport)],
+        verifier_results=[_result("Claim one", "passed", viewport)],
         monkeypatch=monkeypatch,
         browser_manager=browser,
     )
@@ -489,7 +489,7 @@ async def test_runner_marks_claim_not_testable_when_reset_between_claims_fails(
         max_steps_per_claim=5,
     )
 
-    assert [item.status for item in result.results] == ["pass", "not_testable"]
+    assert [item.status for item in result.results] == ["passed", "not_testable"]
     assert "Could not prepare browser state" in result.results[1].summary
     assert len(verifier.calls) == 1
 
@@ -560,7 +560,7 @@ async def test_runner_marks_claim_inconclusive_when_claim_timeout_expires(
 ) -> None:
     module = _import_runner_module()
     viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
-    slow_verifier = SlowClaimVerifier(delay_seconds=0.05, result=_result("Claim one", "pass", viewport))
+    slow_verifier = SlowClaimVerifier(delay_seconds=0.05, result=_result("Claim one", "passed", viewport))
     runner, _, _ = _build_runner(
         module,
         tmp_path,
@@ -592,7 +592,7 @@ async def test_runner_marks_remaining_claims_inconclusive_when_run_timeout_expir
 ) -> None:
     module = _import_runner_module()
     viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
-    slow_verifier = SlowClaimVerifier(delay_seconds=0.05, result=_result("Claim one", "pass", viewport))
+    slow_verifier = SlowClaimVerifier(delay_seconds=0.05, result=_result("Claim one", "passed", viewport))
     runner, _, _ = _build_runner(
         module,
         tmp_path,

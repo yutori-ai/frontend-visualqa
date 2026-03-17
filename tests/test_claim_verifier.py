@@ -257,7 +257,7 @@ async def test_claim_verifier_returns_structured_verdict_from_record_claim_resul
                             name="record_claim_result",
                             arguments=json.dumps(
                                 {
-                                    "status": "pass",
+                                    "status": "passed",
                                     "summary": "The red button is visible in the hero panel.",
                                 }
                             ),
@@ -278,7 +278,7 @@ async def test_claim_verifier_returns_structured_verdict_from_record_claim_resul
     )
 
     assert _field(result, "claim") == "The page has a red button"
-    assert _field(result, "status") == "pass"
+    assert _field(result, "status") == "passed"
     assert "red button" in _field(result, "summary")
     assert _field(result, "final_url") == "http://fixture.local/page"
     assert n1_client.calls
@@ -312,7 +312,7 @@ async def test_claim_verifier_executes_actions_before_final_verdict(tmp_path: Pa
                             name="record_claim_result",
                             arguments=json.dumps(
                                 {
-                                    "status": "pass",
+                                    "status": "passed",
                                     "summary": "The modal is now visible and titled Edit Task.",
                                 }
                             ),
@@ -334,7 +334,7 @@ async def test_claim_verifier_executes_actions_before_final_verdict(tmp_path: Pa
     )
 
     assert action_executor.calls == [("goto_url", {"url": "http://fixture.local/modal"})]
-    assert _field(result, "status") == "pass"
+    assert _field(result, "status") == "passed"
     assert _field(result, "final_url") == "http://fixture.local/modal"
     assert _field(result, "steps_taken") >= 1
     assert _field(result, "wrong_page_recovered") is True
@@ -365,7 +365,7 @@ async def test_claim_verifier_reprompts_after_plain_text_thought_and_continues(t
                         id="tool-2",
                         function=FakeFunction(
                             name="record_claim_result",
-                            arguments=json.dumps({"status": "pass", "summary": "The Task Details heading is visible."}),
+                            arguments=json.dumps({"status": "passed", "summary": "The Task Details heading is visible."}),
                         ),
                     )
                 ]
@@ -382,7 +382,7 @@ async def test_claim_verifier_reprompts_after_plain_text_thought_and_continues(t
         navigation_hint="Open the task detail page before deciding.",
     )
 
-    assert _field(result, "status") == "pass"
+    assert _field(result, "status") == "passed"
     assert action_executor.calls == [("goto_url", {"url": "http://fixture.local/tasks/123"})]
     assert len(n1_client.calls) == 3
     reminder_message = next(
@@ -414,7 +414,7 @@ async def test_claim_verifier_preserves_tool_call_order_when_action_and_verdict_
                         id="tool-2",
                         function=FakeFunction(
                             name="record_claim_result",
-                            arguments=json.dumps({"status": "pass", "summary": "The modal is visible."}),
+                            arguments=json.dumps({"status": "passed", "summary": "The modal is visible."}),
                         ),
                     ),
                 ]
@@ -433,7 +433,7 @@ async def test_claim_verifier_preserves_tool_call_order_when_action_and_verdict_
     )
 
     assert action_executor.calls == [("goto_url", {"url": "http://fixture.local/modal"})]
-    assert _field(result, "status") == "pass"
+    assert _field(result, "status") == "passed"
     assert _field(result, "final_url") == "http://fixture.local/modal"
 
 
@@ -452,7 +452,7 @@ async def test_claim_verifier_downgrades_pass_when_button_grounding_disagrees(tm
                             name="record_claim_result",
                             arguments=json.dumps(
                                 {
-                                    "status": "pass",
+                                    "status": "passed",
                                     "summary": "The Show Save Confirmation button is visible in the header.",
                                 }
                             ),
@@ -483,7 +483,7 @@ async def test_claim_verifier_downgrades_pass_when_button_grounding_disagrees(tm
         navigation_hint=None,
     )
 
-    assert _field(result, "status") == "fail"
+    assert _field(result, "status") == "failed"
     assert "No visible button label matched" in _field(result, "summary")
 
 
@@ -530,7 +530,7 @@ async def test_claim_verifier_converts_inconclusive_full_visibility_button_claim
         navigation_hint=None,
     )
 
-    assert _field(result, "status") == "fail"
+    assert _field(result, "status") == "failed"
     assert "not fully visible" in _field(result, "summary")
 
 
@@ -548,7 +548,7 @@ async def test_claim_verifier_fuzzy_matches_button_with_decorative_chars_and_quo
                         id="tool-1",
                         function=FakeFunction(
                             name="record_claim_result",
-                            arguments=json.dumps({"status": "pass", "summary": "Button visible."}),
+                            arguments=json.dumps({"status": "passed", "summary": "Button visible."}),
                         ),
                     )
                 ]
@@ -573,7 +573,7 @@ async def test_claim_verifier_fuzzy_matches_button_with_decorative_chars_and_quo
         navigation_hint=None,
     )
 
-    assert _field(result, "status") == "pass"
+    assert _field(result, "status") == "passed"
     assert "Select Priority" in _field(result, "summary")
 
 
@@ -591,7 +591,7 @@ async def test_claim_verifier_skips_grounding_for_compound_claims(tmp_path: Path
                         id="tool-1",
                         function=FakeFunction(
                             name="record_claim_result",
-                            arguments=json.dumps({"status": "pass", "summary": "Both conditions met."}),
+                            arguments=json.dumps({"status": "passed", "summary": "Both conditions met."}),
                         ),
                     )
                 ]
@@ -617,7 +617,7 @@ async def test_claim_verifier_skips_grounding_for_compound_claims(tmp_path: Path
     )
 
     # n1 said pass; grounding should NOT override because claim is compound
-    assert _field(result, "status") == "pass"
+    assert _field(result, "status") == "passed"
 
 
 @pytest.mark.asyncio
@@ -648,7 +648,7 @@ async def test_claim_verifier_reuses_trimmed_history_across_requests(
                             name="record_claim_result",
                             arguments=json.dumps(
                                 {
-                                    "status": "pass",
+                                    "status": "passed",
                                     "summary": "The modal is now visible and titled Edit Task.",
                                 }
                             ),
@@ -676,7 +676,7 @@ async def test_claim_verifier_reuses_trimmed_history_across_requests(
         navigation_hint="Open the modal before deciding.",
     )
 
-    assert _field(result, "status") == "pass"
+    assert _field(result, "status") == "passed"
     assert len(trim_calls) >= 2
     assert trim_calls[0]["messages"][0]["content"][0]["text"] != "trimmed"
     assert trim_calls[1]["messages"][0]["content"][0]["text"] == "trimmed"
@@ -723,9 +723,9 @@ def test_parse_fallback_verdict_requires_explicit_status_markers() -> None:
     module = _import_claim_verifier_module()
 
     assert module.ClaimVerifier._parse_fallback_verdict("The screenshot seems verified.") is None
-    assert module.ClaimVerifier._parse_fallback_verdict("Status: pass\nThe header matches.") == (
-        "pass",
-        "Status: pass\nThe header matches.",
+    assert module.ClaimVerifier._parse_fallback_verdict("Status: passed\nThe header matches.") == (
+        "passed",
+        "Status: passed\nThe header matches.",
     )
     assert module.ClaimVerifier._parse_fallback_verdict('{"verdict":"not_testable","summary":"Auth wall"}') == (
         "not_testable",

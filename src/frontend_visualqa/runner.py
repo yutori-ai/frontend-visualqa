@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from typing import Any
 
 import httpx
@@ -91,6 +92,7 @@ class VisualQARunner:
         """Verify a set of claims from a prevalidated request."""
 
         async with self._operation_lock:
+            run_started_at = time.time()
             run_artifacts = self.artifact_manager.create_run(prefix="run")
 
             preflight_error = await self._preflight_url(request.url)
@@ -99,6 +101,8 @@ class VisualQARunner:
                     request=request,
                     run_dir=str(run_artifacts.run_dir),
                     summary=preflight_error,
+                    started_at=run_started_at,
+                    completed_at=time.time(),
                 )
                 self._save_json(run_artifacts, "run_result.json", result.model_dump())
                 return result
@@ -114,6 +118,8 @@ class VisualQARunner:
                     request=request,
                     run_dir=str(run_artifacts.run_dir),
                     summary=f"Could not start a browser session for {request.url}: {exc}",
+                    started_at=run_started_at,
+                    completed_at=time.time(),
                 )
                 self._save_json(run_artifacts, "run_result.json", result.model_dump())
                 return result
@@ -125,6 +131,8 @@ class VisualQARunner:
                     request=request,
                     run_dir=str(run_artifacts.run_dir),
                     summary=f"Could not navigate to {request.url}: {exc}",
+                    started_at=run_started_at,
+                    completed_at=time.time(),
                 )
                 self._save_json(run_artifacts, "run_result.json", result.model_dump())
                 return result
@@ -207,6 +215,8 @@ class VisualQARunner:
             )
             run_result = RunResult(
                 overall_status=overall_status,
+                started_at=run_started_at,
+                completed_at=time.time(),
                 session_key=request.session_key,
                 results=claim_results,
                 summary=summary,
@@ -342,14 +352,14 @@ class VisualQARunner:
     @staticmethod
     def _summarize_results(results: list[ClaimResult]) -> str:
         counts = {
-            "pass": sum(result.status == "pass" for result in results),
-            "fail": sum(result.status == "fail" for result in results),
+            "passed": sum(result.status == "passed" for result in results),
+            "failed": sum(result.status == "failed" for result in results),
             "inconclusive": sum(result.status == "inconclusive" for result in results),
             "not_testable": sum(result.status == "not_testable" for result in results),
         }
-        parts = [f"{counts['pass']}/{len(results)} claims passed."]
-        if counts["fail"]:
-            parts.append(f"{counts['fail']} failed.")
+        parts = [f"{counts['passed']}/{len(results)} claims passed."]
+        if counts["failed"]:
+            parts.append(f"{counts['failed']} failed.")
         if counts["inconclusive"]:
             parts.append(f"{counts['inconclusive']} inconclusive.")
         if counts["not_testable"]:
@@ -376,6 +386,8 @@ class VisualQARunner:
         request: VerifyVisualClaimsInput,
         run_dir: str,
         summary: str,
+        started_at: float | None = None,
+        completed_at: float | None = None,
     ) -> RunResult:
         results = [
             ClaimResult(
@@ -393,6 +405,8 @@ class VisualQARunner:
         ]
         return RunResult(
             overall_status="not_testable",
+            started_at=started_at,
+            completed_at=completed_at,
             session_key=request.session_key,
             results=results,
             summary=summary,
