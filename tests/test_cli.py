@@ -97,7 +97,7 @@ def test_handle_verify_closes_runner_and_forwards_browser_config(monkeypatch: An
     emitted: list[dict[str, Any]] = []
     browser_configs: list[BrowserConfig | None] = []
 
-    def _fake_new_runner(*, browser_config: BrowserConfig | None = None) -> FakeRunner:
+    def _fake_new_runner(*, browser_config=None, reporters=None):
         browser_configs.append(browser_config)
         return fake_runner
 
@@ -121,6 +121,7 @@ def test_handle_verify_closes_runner_and_forwards_browser_config(monkeypatch: An
             claim_timeout_seconds=120.0,
             run_timeout_seconds=300.0,
             navigation_hint="Open the modal first.",
+            reporter=None,
         )
     )
 
@@ -218,6 +219,45 @@ def test_handle_serve_configures_server_and_closes_cached_mcp_runners(monkeypatc
     assert closed == ["closed"]
 
 
+def test_handle_verify_passes_reporters_to_runner(monkeypatch: Any) -> None:
+    import frontend_visualqa.cli as cli
+
+    fake_runner = FakeRunner()
+    emitted: list[dict[str, Any]] = []
+    captured_reporters: list[list[str] | None] = []
+
+    def _fake_new_runner(*, browser_config=None, reporters=None):
+        captured_reporters.append(reporters)
+        return fake_runner
+
+    monkeypatch.setattr(cli, "_new_runner", _fake_new_runner)
+    monkeypatch.setattr(cli, "_emit_json", emitted.append)
+
+    exit_code = cli._handle_verify(
+        SimpleNamespace(
+            url="http://localhost:3000/tasks/123",
+            claims=["The modal title reads Edit Task"],
+            width=1280,
+            height=800,
+            device_scale_factor=1.0,
+            browser_mode="ephemeral",
+            user_data_dir=None,
+            headed=False,
+            session_key="default",
+            reuse_session=True,
+            reset_between_claims=True,
+            max_steps_per_claim=12,
+            claim_timeout_seconds=120.0,
+            run_timeout_seconds=300.0,
+            navigation_hint=None,
+            reporter=["native", "ctrf"],
+        )
+    )
+
+    assert exit_code == 0
+    assert captured_reporters == [["native", "ctrf"]]
+
+
 def test_handle_login_requires_tty(monkeypatch: Any, capsys: pytest.CaptureFixture[str]) -> None:
     import frontend_visualqa.cli as cli
 
@@ -227,6 +267,15 @@ def test_handle_login_requires_tty(monkeypatch: Any, capsys: pytest.CaptureFixtu
 
     assert exit_code == 1
     assert "login requires an interactive terminal" in capsys.readouterr().err
+
+
+def test_verify_rejects_invalid_reporter_at_parse_time(capsys: pytest.CaptureFixture[str]) -> None:
+    from frontend_visualqa.cli import build_parser
+
+    parser = build_parser()
+    with pytest.raises(SystemExit, match="2"):
+        parser.parse_args(["verify", "http://localhost:3000", "--claims", "x", "--reporter", "bogus"])
+    assert "invalid choice" in capsys.readouterr().err
 
 
 def test_handle_login_rejects_invalid_url(monkeypatch: Any, capsys: pytest.CaptureFixture[str]) -> None:

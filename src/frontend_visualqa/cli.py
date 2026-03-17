@@ -73,6 +73,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--navigation-hint",
         help="Optional interaction guidance when the page must be manipulated before judging a claim.",
     )
+    verify_parser.add_argument(
+        "--reporter",
+        action="append",
+        choices=("native", "ctrf"),
+        default=None,
+        help="Output reporter. Can be specified multiple times. Defaults to native.",
+    )
     verify_parser.set_defaults(handler=_handle_verify)
 
     screenshot_parser = subparsers.add_parser("screenshot", help="Capture a screenshot for a target URL.")
@@ -222,7 +229,10 @@ def _handle_status(_: argparse.Namespace) -> int:
 
 
 async def _run_verify(args: argparse.Namespace) -> dict[str, Any]:
-    runner = _new_runner(browser_config=_build_browser_config(args))
+    runner = _new_runner(
+        browser_config=_build_browser_config(args),
+        reporters=getattr(args, "reporter", None),
+    )
     try:
         result = await runner.run(
             url=args.url,
@@ -317,10 +327,10 @@ def _serialize_result(result: Any) -> dict[str, Any]:
     raise TypeError(f"CLI command returned unsupported type: {type(result)!r}")
 
 
-def _new_runner(*, browser_config: BrowserConfig | None = None) -> Any:
+def _new_runner(*, browser_config: BrowserConfig | None = None, reporters: list[str] | None = None) -> Any:
     from frontend_visualqa.runner import VisualQARunner
 
-    return VisualQARunner(browser_config=browser_config)
+    return VisualQARunner(browser_config=browser_config, reporters=reporters)
 
 
 if __name__ == "__main__":

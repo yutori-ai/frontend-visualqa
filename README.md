@@ -146,6 +146,7 @@ frontend-visualqa verify <url> --claims "claim1" "claim2" [options]
 | `--max-steps-per-claim` | 12 | Max actions per claim |
 | `--claim-timeout-seconds` | 120 | Per-claim timeout |
 | `--run-timeout-seconds` | 300 | Whole-run timeout |
+| `--reporter` | native | Output reporter (`native`, `ctrf`). Repeat for multiple. |
 
 </details>
 
@@ -222,10 +223,25 @@ If a claim requires interaction first, use `--navigation-hint` instead of encodi
 
 | Status | Meaning |
 |--------|---------|
-| `pass` | Claim matched the visual evidence |
-| `fail` | Claim was visually false |
+| `passed` | Claim matched the visual evidence |
+| `failed` | Claim was visually false |
 | `inconclusive` | Runner explored but couldn't determine confidently |
 | `not_testable` | Environment blocked verification (server down, auth wall) |
+
+## Reporters
+
+Output format for persisted artifacts. Does not affect CLI stdout or MCP tool responses (always native JSON).
+
+| Reporter | File | Description |
+|----------|------|-------------|
+| `native` *(default)* | `run_result.json` | Full domain-specific schema with all fields |
+| `ctrf` | `ctrf-report.json` | [CTRF](https://ctrf.io/) standard JSON for CI/CD integration |
+
+```bash
+frontend-visualqa verify http://localhost:3000 \
+  --claims "The heading reads 'Dashboard'" \
+  --reporter native --reporter ctrf
+```
 
 ## Development
 

@@ -1,0 +1,255 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+from frontend_visualqa.schemas import ClaimResult, RunResult, ViewportConfig
+
+
+def _import_reporters_module():
+    import importlib
+    try:
+        return importlib.import_module("frontend_visualqa.reporters")
+    except ModuleNotFoundError as exc:
+        if exc.name and exc.name.startswith("frontend_visualqa"):
+            pytest.skip("frontend_visualqa.reporters is not implemented yet")
+        raise
+
+
+def _sample_run_result(artifacts_dir: str) -> RunResult:
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1.0)
+    return RunResult(
+        overall_status="completed",
+        session_key="default",
+        results=[
+            ClaimResult(
+                claim="The heading reads 'Dashboard'",
+                status="passed",
+                summary="Visible heading matched 'Dashboard'.",
+                final_url="http://localhost:3000/dashboard",
+                wrong_page_recovered=False,
+                steps_taken=0,
+                viewport=viewport,
+                screenshots=["artifacts/run-001/claim-01/step-00-initial.webp"],
+                action_trace=[],
+            ),
+            ClaimResult(
+                claim="The progress bar shows 100%",
+                status="failed",
+                summary="Progress bar shows 65%, not 100%.",
+                final_url="http://localhost:3000/dashboard",
+                wrong_page_recovered=False,
+                steps_taken=2,
+                viewport=viewport,
+                screenshots=[
+                    "artifacts/run-001/claim-02/step-00-initial.webp",
+                    "artifacts/run-001/claim-02/step-01.webp",
+                ],
+                action_trace=["scroll(direction='down', amount=300)"],
+                trace_path="artifacts/run-001/claim-02/action_trace.json",
+            ),
+        ],
+        summary="1/2 claims passed. 1 failed.",
+        artifacts_dir=artifacts_dir,
+    )
+
+
+def test_native_reporter_writes_run_result_json(tmp_path: Path) -> None:
+    module = _import_reporters_module()
+    reporter = module.NativeReporter()
+    run_result = _sample_run_result(str(tmp_path))
+    reporter.write(run_result, tmp_path)
+    output_path = tmp_path / "run_result.json"
+    assert output_path.exists()
+    data = json.loads(output_path.read_text())
+    assert data["overall_status"] == "completed"
+    assert data["results"][0]["status"] == "passed"
+    assert data["results"][1]["status"] == "failed"
+    assert data["results"][0]["wrong_page_recovered"] is False
+    assert data["results"][1]["action_trace"] == ["scroll(direction='down', amount=300)"]
+
+
+def test_native_reporter_name() -> None:
+    module = _import_reporters_module()
+    reporter = module.NativeReporter()
+    assert reporter.name == "native"
+
+
+def test_get_reporters_returns_native_by_default() -> None:
+    module = _import_reporters_module()
+    reporters = module.get_reporters([])
+    assert len(reporters) == 1
+    assert reporters[0].name == "native"
+
+
+def test_get_reporters_returns_requested_reporters() -> None:
+    module = _import_reporters_module()
+    reporters = module.get_reporters(["native"])
+    names = [r.name for r in reporters]
+    assert "native" in names
+    assert len(reporters) == 1
+
+
+def test_get_reporters_raises_on_unknown_reporter() -> None:
+    module = _import_reporters_module()
+    with pytest.raises(ValueError, match="unknown_reporter"):
+        module.get_reporters(["unknown_reporter"])
+
+
+def test_get_reporters_returns_native_and_ctrf() -> None:
+    module = _import_reporters_module()
+    reporters = module.get_reporters(["native", "ctrf"])
+    names = [r.name for r in reporters]
+    assert "native" in names
+    assert "ctrf" in names
+    assert len(reporters) == 2
+
+
+def test_ctrf_reporter_writes_valid_ctrf_json(tmp_path: Path) -> None:
+    module = _import_reporters_module()
+    reporter = module.CTRFReporter()
+    run_result = _sample_run_result(str(tmp_path))
+    reporter.write(run_result, tmp_path)
+    output_path = tmp_path / "ctrf-report.json"
+    assert output_path.exists()
+    data = json.loads(output_path.read_text())
+    # Required CTRF root fields
+    assert data["reportFormat"] == "CTRF"
+    assert "specVersion" in data
+    # Top-level structure
+    results = data["results"]
+    assert results["tool"]["name"] == "frontend-visualqa"
+    # Summary
+    summary = results["summary"]
+    assert summary["tests"] == 2
+    assert summary["passed"] == 1
+    assert summary["failed"] == 1
+    assert summary["pending"] == 0
+    assert summary["skipped"] == 0
+    assert summary["other"] == 0
+    assert "start" in summary
+    assert "stop" in summary
+    # Individual tests
+    tests = results["tests"]
+    assert len(tests) == 2
+    assert tests[0]["name"] == "The heading reads 'Dashboard'"
+    assert tests[0]["status"] == "passed"
+    assert tests[0]["duration"] >= 0
+    assert tests[0]["message"] == "Visible heading matched 'Dashboard'."
+    assert tests[1]["name"] == "The progress bar shows 100%"
+    assert tests[1]["status"] == "failed"
+    assert tests[1]["message"] == "Progress bar shows 65%, not 100%."
+
+
+def test_ctrf_reporter_uses_real_timing_when_available(tmp_path: Path) -> None:
+    module = _import_reporters_module()
+    reporter = module.CTRFReporter()
+    run_result = _sample_run_result(str(tmp_path))
+    run_result = run_result.model_copy(update={"started_at": 1710000000.0, "completed_at": 1710000005.5})
+    reporter.write(run_result, tmp_path)
+    data = json.loads((tmp_path / "ctrf-report.json").read_text())
+    summary = data["results"]["summary"]
+    assert summary["start"] == 1710000000000
+    assert summary["stop"] == 1710000005500
+
+
+def test_ctrf_reporter_maps_inconclusive_and_not_testable(tmp_path: Path) -> None:
+    module = _import_reporters_module()
+    reporter = module.CTRFReporter()
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1.0)
+    run_result = RunResult(
+        overall_status="completed",
+        session_key="default",
+        results=[
+            ClaimResult(
+                claim="Inconclusive claim",
+                status="inconclusive",
+                summary="Could not determine.",
+                final_url="http://localhost:3000",
+                viewport=viewport,
+            ),
+            ClaimResult(
+                claim="Not testable claim",
+                status="not_testable",
+                summary="Server was down.",
+                final_url="http://localhost:3000",
+                viewport=viewport,
+            ),
+        ],
+        summary="0/2 claims passed. 2 inconclusive.",
+        artifacts_dir=str(tmp_path),
+    )
+    reporter.write(run_result, tmp_path)
+    data = json.loads((tmp_path / "ctrf-report.json").read_text())
+    tests = data["results"]["tests"]
+    assert tests[0]["status"] == "other"
+    assert tests[0]["rawStatus"] == "inconclusive"
+    assert tests[1]["status"] == "skipped"
+    assert tests[1]["rawStatus"] == "not_testable"
+
+
+def test_ctrf_reporter_includes_extra_fields(tmp_path: Path) -> None:
+    module = _import_reporters_module()
+    reporter = module.CTRFReporter()
+    run_result = _sample_run_result(str(tmp_path))
+    reporter.write(run_result, tmp_path)
+    data = json.loads((tmp_path / "ctrf-report.json").read_text())
+    t1 = data["results"]["tests"][1]
+    extra = t1["extra"]
+    assert extra["finalUrl"] == "http://localhost:3000/dashboard"
+    assert extra["wrongPageRecovered"] is False
+    assert extra["stepsTaken"] == 2
+    assert extra["viewport"] == {"width": 1280, "height": 800, "device_scale_factor": 1.0}
+    assert extra["actionTrace"] == ["scroll(direction='down', amount=300)"]
+
+
+def test_ctrf_reporter_includes_screenshots_as_attachments(tmp_path: Path) -> None:
+    module = _import_reporters_module()
+    reporter = module.CTRFReporter()
+    run_result = _sample_run_result(str(tmp_path))
+    reporter.write(run_result, tmp_path)
+    data = json.loads((tmp_path / "ctrf-report.json").read_text())
+    t0 = data["results"]["tests"][0]
+    assert "attachments" in t0
+    assert len(t0["attachments"]) == 1
+    assert t0["attachments"][0]["name"] == "step-00-initial.webp"
+    assert t0["attachments"][0]["contentType"] == "image/webp"
+
+
+def test_ctrf_reporter_includes_trace_path_as_attachment(tmp_path: Path) -> None:
+    module = _import_reporters_module()
+    reporter = module.CTRFReporter()
+    run_result = _sample_run_result(str(tmp_path))
+    reporter.write(run_result, tmp_path)
+    data = json.loads((tmp_path / "ctrf-report.json").read_text())
+    t1 = data["results"]["tests"][1]
+    assert len(t1["attachments"]) == 3  # 2 screenshots + 1 trace
+    trace_attachment = t1["attachments"][-1]
+    assert trace_attachment["name"] == "action_trace.json"
+    assert trace_attachment["contentType"] == "application/json"
+
+
+def test_ctrf_reporter_name() -> None:
+    module = _import_reporters_module()
+    reporter = module.CTRFReporter()
+    assert reporter.name == "ctrf"
+
+
+def test_ctrf_output_validates_against_official_schema(tmp_path: Path) -> None:
+    """Validate CTRF output against the vendored official JSON schema."""
+    try:
+        import jsonschema
+    except ImportError:
+        pytest.skip("jsonschema not installed")
+    schema_path = Path(__file__).parent / "fixtures" / "ctrf.schema.json"
+    assert schema_path.exists(), "Vendored CTRF schema missing -- expected at tests/fixtures/ctrf.schema.json"
+    schema = json.loads(schema_path.read_text())
+    module = _import_reporters_module()
+    reporter = module.CTRFReporter()
+    run_result = _sample_run_result(str(tmp_path))
+    reporter.write(run_result, tmp_path)
+    data = json.loads((tmp_path / "ctrf-report.json").read_text())
+    jsonschema.validate(instance=data, schema=schema)

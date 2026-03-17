@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -12,6 +14,7 @@ from frontend_visualqa.artifacts import ArtifactManager
 from frontend_visualqa.browser import BrowserManager
 from frontend_visualqa.claim_verifier import ClaimVerifier
 from frontend_visualqa.n1_client import N1Client
+from frontend_visualqa.reporters import get_reporters
 from frontend_visualqa.schemas import (
     BrowserConfig,
     BrowserStatusResult,
@@ -40,6 +43,7 @@ class VisualQARunner:
         claim_verifier: ClaimVerifier | None = None,
         artifacts_dir: str = "artifacts",
         headless: bool | None = None,
+        reporters: list[str] | None = None,
     ) -> None:
         resolved_browser_config = browser_config
         if resolved_browser_config is None:
@@ -55,6 +59,7 @@ class VisualQARunner:
             artifact_manager=self.artifact_manager,
             n1_client=self.n1_client,
         )
+        self.reporters = get_reporters(reporters or [])
         self._operation_lock = asyncio.Lock()
 
     async def run(
@@ -91,6 +96,7 @@ class VisualQARunner:
         """Verify a set of claims from a prevalidated request."""
 
         async with self._operation_lock:
+            run_started_at = time.time()
             run_artifacts = self.artifact_manager.create_run(prefix="run")
 
             preflight_error = await self._preflight_url(request.url)
@@ -99,8 +105,10 @@ class VisualQARunner:
                     request=request,
                     run_dir=str(run_artifacts.run_dir),
                     summary=preflight_error,
+                    started_at=run_started_at,
+                    completed_at=time.time(),
                 )
-                self._save_json(run_artifacts, "run_result.json", result.model_dump())
+                self._write_reports(result, str(run_artifacts.run_dir))
                 return result
 
             try:
@@ -114,8 +122,10 @@ class VisualQARunner:
                     request=request,
                     run_dir=str(run_artifacts.run_dir),
                     summary=f"Could not start a browser session for {request.url}: {exc}",
+                    started_at=run_started_at,
+                    completed_at=time.time(),
                 )
-                self._save_json(run_artifacts, "run_result.json", result.model_dump())
+                self._write_reports(result, str(run_artifacts.run_dir))
                 return result
 
             try:
@@ -125,8 +135,10 @@ class VisualQARunner:
                     request=request,
                     run_dir=str(run_artifacts.run_dir),
                     summary=f"Could not navigate to {request.url}: {exc}",
+                    started_at=run_started_at,
+                    completed_at=time.time(),
                 )
-                self._save_json(run_artifacts, "run_result.json", result.model_dump())
+                self._write_reports(result, str(run_artifacts.run_dir))
                 return result
 
             claim_results: list[ClaimResult] = []
@@ -207,12 +219,14 @@ class VisualQARunner:
             )
             run_result = RunResult(
                 overall_status=overall_status,
+                started_at=run_started_at,
+                completed_at=time.time(),
                 session_key=request.session_key,
                 results=claim_results,
                 summary=summary,
                 artifacts_dir=str(run_artifacts.run_dir),
             )
-            self._save_json(run_artifacts, "run_result.json", run_result.model_dump())
+            self._write_reports(run_result, str(run_artifacts.run_dir))
             return run_result
 
     async def _prepare_session_for_claim(
@@ -342,14 +356,14 @@ class VisualQARunner:
     @staticmethod
     def _summarize_results(results: list[ClaimResult]) -> str:
         counts = {
-            "pass": sum(result.status == "pass" for result in results),
-            "fail": sum(result.status == "fail" for result in results),
+            "passed": sum(result.status == "passed" for result in results),
+            "failed": sum(result.status == "failed" for result in results),
             "inconclusive": sum(result.status == "inconclusive" for result in results),
             "not_testable": sum(result.status == "not_testable" for result in results),
         }
-        parts = [f"{counts['pass']}/{len(results)} claims passed."]
-        if counts["fail"]:
-            parts.append(f"{counts['fail']} failed.")
+        parts = [f"{counts['passed']}/{len(results)} claims passed."]
+        if counts["failed"]:
+            parts.append(f"{counts['failed']} failed.")
         if counts["inconclusive"]:
             parts.append(f"{counts['inconclusive']} inconclusive.")
         if counts["not_testable"]:
@@ -376,6 +390,8 @@ class VisualQARunner:
         request: VerifyVisualClaimsInput,
         run_dir: str,
         summary: str,
+        started_at: float | None = None,
+        completed_at: float | None = None,
     ) -> RunResult:
         results = [
             ClaimResult(
@@ -393,6 +409,8 @@ class VisualQARunner:
         ]
         return RunResult(
             overall_status="not_testable",
+            started_at=started_at,
+            completed_at=completed_at,
             session_key=request.session_key,
             results=results,
             summary=summary,
@@ -419,6 +437,14 @@ class VisualQARunner:
             screenshots=[],
             action_trace=[],
         )
+
+    def _write_reports(self, run_result: RunResult, run_dir: str) -> None:
+        output_dir = Path(run_dir)
+        for reporter in self.reporters:
+            try:
+                reporter.write(run_result, output_dir)
+            except Exception:
+                logger.warning("Reporter %s failed to write", reporter.name, exc_info=True)
 
     def _save_json(self, run_artifacts: Any, relative_path: str, payload: dict[str, Any]) -> None:
         save_json = getattr(self.artifact_manager, "save_json", None)

@@ -18,9 +18,9 @@ RECORD_CLAIM_RESULT_TOOL: dict[str, Any] = {
             "properties": {
                 "status": {
                     "type": "string",
-                    "enum": ["pass", "fail", "inconclusive", "not_testable"],
+                    "enum": ["passed", "failed", "inconclusive", "not_testable"],
                     "description": (
-                        "pass: the claim is visually true. fail: the claim is visually false. "
+                        "passed: the claim is visually true. failed: the claim is visually false. "
                         "inconclusive: you tried but still cannot determine. "
                         "not_testable: the environment blocked verification."
                     ),
@@ -55,8 +55,8 @@ def build_verification_task(claim: str, url: str, navigation_hint: str | None = 
         "7. Do not change browser zoom or device scale. Judge the page at the provided viewport.",
         "",
         "Use one of these statuses:",
-        "- pass: the claim is visually true",
-        "- fail: the claim is visually false",
+        "- passed: the claim is visually true",
+        "- failed: the claim is visually false",
         "- inconclusive: you tried but still cannot determine",
         "- not_testable: the environment blocked verification",
         "",

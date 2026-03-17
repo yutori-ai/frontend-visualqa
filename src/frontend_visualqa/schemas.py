@@ -9,7 +9,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
-ClaimStatus = Literal["pass", "fail", "inconclusive", "not_testable"]
+ClaimStatus = Literal["passed", "failed", "inconclusive", "not_testable"]
 OverallStatus = Literal["completed", "not_testable"]
 ScreenshotStatus = Literal["completed", "not_testable"]
 BrowserAction = Literal["status", "restart", "close", "set_viewport"]
@@ -121,6 +121,8 @@ class RunResult(FrontendVisualQABaseModel):
 
     overall_status: OverallStatus
     runner_version: str = "0.1.0"
+    started_at: float | None = None
+    completed_at: float | None = None
     session_key: str
     results: list[ClaimResult] = Field(default_factory=list)
     summary: str
