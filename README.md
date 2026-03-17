@@ -24,6 +24,7 @@ n1 is a pixels-to-actions model trained with RL on live websites. Two capabiliti
 
 ```bash
 uv tool install /path/to/frontend-visualqa
+uv tool install playwright
 playwright install chromium
 ```
 
