@@ -5,11 +5,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from pathlib import Path
 from typing import Any
 
 import httpx
-
-from pathlib import Path
 
 from frontend_visualqa.artifacts import ArtifactManager
 from frontend_visualqa.browser import BrowserManager
