@@ -76,8 +76,9 @@ def build_parser() -> argparse.ArgumentParser:
     verify_parser.add_argument(
         "--reporter",
         action="append",
+        choices=("native", "ctrf"),
         default=None,
-        help="Output reporters (native, ctrf). Can be specified multiple times. Defaults to native.",
+        help="Output reporter. Can be specified multiple times. Defaults to native.",
     )
     verify_parser.set_defaults(handler=_handle_verify)
 

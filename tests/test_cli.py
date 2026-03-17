@@ -269,6 +269,15 @@ def test_handle_login_requires_tty(monkeypatch: Any, capsys: pytest.CaptureFixtu
     assert "login requires an interactive terminal" in capsys.readouterr().err
 
 
+def test_verify_rejects_invalid_reporter_at_parse_time(capsys: pytest.CaptureFixture[str]) -> None:
+    from frontend_visualqa.cli import build_parser
+
+    parser = build_parser()
+    with pytest.raises(SystemExit, match="2"):
+        parser.parse_args(["verify", "http://localhost:3000", "--claims", "x", "--reporter", "bogus"])
+    assert "invalid choice" in capsys.readouterr().err
+
+
 def test_handle_login_rejects_invalid_url(monkeypatch: Any, capsys: pytest.CaptureFixture[str]) -> None:
     import frontend_visualqa.cli as cli
 

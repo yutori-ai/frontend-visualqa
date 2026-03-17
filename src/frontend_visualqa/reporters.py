@@ -61,9 +61,6 @@ class CTRFReporter:
                 "viewport": claim_result.viewport.model_dump(mode="json"),
                 "actionTrace": claim_result.action_trace,
             }
-            if claim_result.status not in ("passed", "failed"):
-                extra["nativeStatus"] = claim_result.status
-
             attachments = [
                 {
                     "name": Path(screenshot_path).name,
@@ -86,6 +83,8 @@ class CTRFReporter:
                 "message": claim_result.summary,
                 "extra": extra,
             }
+            if claim_result.status not in ("passed", "failed"):
+                ctrf_test["rawStatus"] = claim_result.status
             if attachments:
                 ctrf_test["attachments"] = attachments
             ctrf_tests.append(ctrf_test)

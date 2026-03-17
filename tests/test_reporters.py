@@ -186,9 +186,9 @@ def test_ctrf_reporter_maps_inconclusive_and_not_testable(tmp_path: Path) -> Non
     data = json.loads((tmp_path / "ctrf-report.json").read_text())
     tests = data["results"]["tests"]
     assert tests[0]["status"] == "other"
-    assert tests[0]["extra"]["nativeStatus"] == "inconclusive"
+    assert tests[0]["rawStatus"] == "inconclusive"
     assert tests[1]["status"] == "skipped"
-    assert tests[1]["extra"]["nativeStatus"] == "not_testable"
+    assert tests[1]["rawStatus"] == "not_testable"
 
 
 def test_ctrf_reporter_includes_extra_fields(tmp_path: Path) -> None:
