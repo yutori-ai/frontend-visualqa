@@ -1,107 +1,58 @@
 ---
 name: frontend-visualqa
-description: Verify local frontend changes with visual claims using the shared frontend-visualqa CLI or MCP server.
+description: Verify a running local frontend with explicit visual claims, viewports, and screenshot evidence using the frontend-visualqa MCP server or CLI.
+argument-hint: "[url] [claims or QA task]"
 metadata:
-  short-description: Visual QA loop for local frontend work
+  short-description: Claim-based visual QA for local frontend work
 ---
 
 # Frontend Visual QA
 
-Use `frontend-visualqa` when code changes need pixel-level verification rather than DOM-only assertions.
+Use this skill after changing UI code when DOM assertions are not enough and you need screenshot-backed proof of what the page actually rendered.
 
-## Setup
+Use it for:
 
-The frontend must already be running locally. This tool checks the page, but it does not boot the dev server.
+- confirming the agent is on the right route or UI state
+- checking visibility, clipping, overflow, z-index, truncation, and responsive behavior
+- verifying interactive states such as modals, menus, toasts, tabs, and disabled buttons
 
-On a fresh clone, install the Playwright browser binary once before using the CLI or MCP server:
+Do not use it for:
 
-```bash
-uv sync
-uv run playwright install chromium
-```
+- starting the dev server
+- vague requests like "make it look better"
+- broad visual diffing across a large app surface
 
-Claude Code MCP registration:
+## Fast Path
 
-```bash
-claude mcp add --scope user frontend-visualqa -- \
-  uvx --from /absolute/path/to/frontend-visualqa frontend-visualqa serve
-```
+1. Make sure the frontend is already running locally.
+2. Prefer the `frontend-visualqa` MCP tools when available. They keep browser state warm across calls.
+3. If the route or UI state is uncertain, call `take_screenshot` first.
+4. Run `verify_visual_claims` with 1-5 explicit claims and an explicit viewport.
+5. Fix the frontend, then rerun the same claims until they pass.
 
-Codex MCP registration:
+## Claim Discipline
 
-```bash
-codex mcp add frontend-visualqa -- \
-  uvx --from /absolute/path/to/frontend-visualqa frontend-visualqa serve
-```
+Claims must be observable from pixels. Open `references/claim-writing.md` for examples and anti-patterns.
 
-Direct local CLI usage:
+If a claim requires interaction before it becomes true or false, pass a `navigation_hint`. Keep the claim focused on the final visible state instead of burying a multi-step script inside the claim text.
 
-```bash
-uv run frontend-visualqa screenshot http://localhost:3000
-uv run frontend-visualqa verify http://localhost:3000 --claims "The header shows the signed-in user's email"
-uv run frontend-visualqa status
-```
+## Session Strategy
 
-Separate CLI invocations do not share browser state. Session reuse and `manage_browser` are most useful through the long-running `frontend-visualqa serve` MCP process, where one tool call can reuse the same browser session as the next.
+Use ephemeral mode for public pages and quick checks.
 
-## Claim writing rules
+Use persistent mode for auth-gated apps, multi-step flows, or any case where cookies and local storage must survive across runs.
 
-Use claims that can be proven from the final screenshot.
+Setup and client-specific install commands live in `references/install.md`.
+The detailed QA playbook, status meanings, and recovery steps live in `references/protocol.md`.
 
-Good claims:
+## Tool Preference
 
-- `The modal title reads "Invite teammate"`
-- `The Publish button is disabled`
-- `The selected tab has a blue underline`
-- `At 375px width, the sidebar is replaced by a menu button`
+Prefer the tools in this order:
 
-Bad claims:
+- `take_screenshot` for quick visual grounding
+- `verify_visual_claims` for claim-based checks with evidence
+- `manage_browser` when the shared browser state is stale, wrong-sized, or needs reset
 
-- `The page looks good`
-- `The design feels modern`
-- `The layout is cleaner now`
-- `The modal works`
-
-If the page needs interaction before a claim becomes true or false, include a `navigation_hint`.
-
-Example:
-
-- Claim: `The delete confirmation dialog is visible`
-- Navigation hint: `Open the kebab menu in the first row, click Delete, then judge the claim.`
-
-## Recommended process
-
-1. Confirm the local URL and viewport you need.
-2. If page state is unclear, call `take_screenshot` first.
-3. Run `verify_visual_claims` with a small batch of explicit claims.
-4. Read each result status and summary, then inspect the saved screenshots.
-5. Fix the frontend and rerun the same claims until they pass.
-
-## Viewports
-
-Use explicit viewports when responsive behavior matters.
-
-- Desktop: `1280x800`
-- Tablet: `768x1024`
-- Mobile: `375x812`
-
-## Status meanings
-
-- `pass`: visual evidence matched the claim
-- `fail`: visual evidence contradicted the claim
-- `inconclusive`: the runner tried but could not make a reliable determination
-- `not_testable`: the environment blocked verification, usually because the page was unreachable, crashed, or required auth
-
-## Grounding note
-
-The primary evaluator is still the vision loop. The runner may use lightweight DOM-derived text visibility checks only as a defensive guardrail to downgrade suspicious `pass` verdicts for simple textual claims like headings, modal titles, and button labels. It is not intended to replace the visual evaluation or turn the tool into a DOM-first assertion system.
-
-## When to prefer screenshot first
-
-Start with `take_screenshot` when:
-
-- you are not sure the app is on the expected route
-- the page may still be broken enough that writing claims would be premature
-- you need to confirm whether a prior interaction already changed the browser session
+If the MCP server is not available, use the CLI fallback in `references/install.md`.
 
 $ARGUMENTS

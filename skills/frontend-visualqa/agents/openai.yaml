@@ -1,0 +1,13 @@
+appearance:
+  name: "Frontend Visual QA"
+  description: "Claim-based visual QA for local frontends"
+
+interface:
+  display_name: "Frontend Visual QA"
+  description: "Verify local frontend changes with screenshot-backed visual claims"
+  brand_color: "#0F766E"
+  default_prompt: "Verify a local frontend change with frontend-visualqa"
+
+dependencies:
+  mcp_servers:
+    - frontend-visualqa

@@ -1,0 +1,3 @@
+[mcp_servers.frontend-visualqa]
+command = "uvx"
+args = [ "frontend-visualqa", "serve" ]

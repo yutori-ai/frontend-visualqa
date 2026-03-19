@@ -22,11 +22,85 @@ n1 is a pixels-to-actions model trained with RL on live websites. Two capabiliti
 
 ## Install
 
-```bash
-uv tool install /path/to/frontend-visualqa
-uv tool install playwright
-playwright install chromium
+### Requirements
+
+A Yutori API key — set `YUTORI_API_KEY` or save it to `~/.yutori/config.json`. Get one at [platform.yutori.com](https://platform.yutori.com).
+
+### Quick install (recommended)
+
+1. Install the MCP server using [add-mcp](https://github.com/nicobailon/add-mcp) (works with all clients):
+
+    ```bash
+    npx add-mcp "uvx frontend-visualqa serve"
+    ```
+
+    Pick the clients you want to configure.
+
+2. Install workflow skills using [skills.sh](https://skills.sh):
+
+    ```bash
+    npx skills add yutori-ai/frontend-visualqa -g
+    ```
+
+    Adds the `/frontend-visualqa` slash command for claim-based visual QA guidance.
+
+    `-g` installs at user scope. Omit `-g` for project-local install.
+
+3. Restart the agent client.
+
+### Manual per-client setup
+
+<details>
+<summary><strong>Claude Code</strong></summary>
+
+**Plugin (recommended)** — installs MCP tools + skill together:
+
 ```
+/plugin marketplace add yutori-ai/frontend-visualqa
+/plugin install frontend-visualqa@frontend-visualqa-plugins
+```
+
+**MCP only** (if you prefer not to use the plugin):
+
+```bash
+claude mcp add --scope user frontend-visualqa -- uvx frontend-visualqa serve
+```
+
+</details>
+
+<details>
+<summary><strong>Codex</strong></summary>
+
+```bash
+codex mcp add frontend-visualqa -- uvx frontend-visualqa serve
+```
+
+Skills can be installed via `npx skills add` above, or with `$skill-installer` inside Codex:
+
+```
+$skill-installer install https://github.com/yutori-ai/frontend-visualqa/tree/main/.agents/skills/frontend-visualqa
+```
+
+</details>
+
+<details>
+<summary><strong>Cursor / VS Code / other MCP hosts</strong></summary>
+
+Use the checked-in `.mcp.json`, or point your client at `uvx frontend-visualqa serve`.
+
+</details>
+
+<details>
+<summary><strong>From source</strong></summary>
+
+```bash
+uv sync
+uv run playwright install chromium
+```
+
+Register the MCP server with your client using `uvx --from /absolute/path/to/frontend-visualqa frontend-visualqa serve` as the command.
+
+</details>
 
 ## Quick start
 
@@ -66,37 +140,7 @@ frontend-visualqa verify http://localhost:3000/tasks/123 \
   --claims "The Save button is visible without scrolling"
 ```
 
-## MCP setup
-
-<details>
-<summary><strong>Claude Code</strong></summary>
-
-```bash
-claude mcp add --scope user frontend-visualqa -- \
-  uvx --from /absolute/path/to/frontend-visualqa frontend-visualqa serve
-```
-
-With persistent sessions for auth-gated pages:
-
-```bash
-claude mcp add --scope user frontend-visualqa -- \
-  uvx --from /absolute/path/to/frontend-visualqa frontend-visualqa serve \
-  --browser-mode persistent
-```
-
-</details>
-
-<details>
-<summary><strong>Codex</strong></summary>
-
-```bash
-codex mcp add frontend-visualqa -- \
-  uvx --from /absolute/path/to/frontend-visualqa frontend-visualqa serve
-```
-
-</details>
-
-### MCP tools
+## MCP tools
 
 | Tool | Description |
 |------|-------------|
@@ -256,3 +300,12 @@ Editable install:
 ```bash
 uv pip install -e .
 ```
+
+## Skill packaging
+
+The canonical skill lives in [skills/frontend-visualqa/SKILL.md](skills/frontend-visualqa/SKILL.md).
+
+- `skills/frontend-visualqa/` is the source of truth.
+- `.agents/skills/frontend-visualqa/` is a compatibility wrapper for Codex and other OpenAI-compatible installers.
+- `.claude-plugin/` and `.cursor-plugin/` contain plugin marketplace manifests.
+- `docs/skill-ecosystem.md` records the packaging rationale.

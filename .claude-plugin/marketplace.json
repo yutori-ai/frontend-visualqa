@@ -1,0 +1,18 @@
+{
+  "name": "frontend-visualqa-plugins",
+  "owner": {
+    "name": "Yutori",
+    "email": "support@yutori.com"
+  },
+  "metadata": {
+    "description": "Official frontend-visualqa plugin marketplace for Claude Code",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "frontend-visualqa",
+      "source": "./",
+      "description": "Local visual QA for frontends with Yutori n1 and Playwright"
+    }
+  ]
+}
