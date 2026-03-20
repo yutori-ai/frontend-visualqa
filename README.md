@@ -48,8 +48,6 @@ A Yutori API key — set `YUTORI_API_KEY` or save it to `~/.yutori/config.json`.
 
 3. Restart the agent client.
 
-    To uninstall later, remove the MCP server from your client and run `npx skills remove -g frontend-visualqa`.
-
 ### Manual per-client setup
 
 <details>
@@ -62,22 +60,11 @@ A Yutori API key — set `YUTORI_API_KEY` or save it to `~/.yutori/config.json`.
 /plugin install frontend-visualqa@frontend-visualqa-plugins
 ```
 
-To uninstall the plugin later:
-```
-/plugin uninstall frontend-visualqa@frontend-visualqa-plugins -s user
-```
-
 **MCP only** (if you prefer not to use the plugin):
 
 ```bash
 claude mcp add --scope user frontend-visualqa -- uvx frontend-visualqa serve
 ```
-
-> **Already have the plugin installed?** Remove the MCP server first to avoid duplicate configurations:
-> ```bash
-> claude mcp remove frontend-visualqa -s user   # if installed at user scope
-> claude mcp remove frontend-visualqa -s local   # if installed at project scope
-> ```
 
 </details>
 
@@ -94,22 +81,12 @@ Skills can be installed via `npx skills add` above, or with `$skill-installer` i
 $skill-installer install https://github.com/yutori-ai/frontend-visualqa/tree/main/.agents/skills/frontend-visualqa
 ```
 
-To uninstall manually installed skills, delete the skill directory and remove the MCP server entry from `~/.codex/config.toml`:
-
-```bash
-rm -rf ~/.agents/skills/frontend-visualqa
-```
-
-Restart Codex after removing.
-
 </details>
 
 <details>
 <summary><strong>Cursor / VS Code / other MCP hosts</strong></summary>
 
 Use the checked-in `.mcp.json`, or point your client at `uvx frontend-visualqa serve`.
-
-Remove the `frontend-visualqa` entry from your client's MCP config to uninstall.
 
 </details>
 
@@ -122,6 +99,48 @@ uv run playwright install chromium
 ```
 
 Register the MCP server with your client using `uvx --from /absolute/path/to/frontend-visualqa frontend-visualqa serve` as the command.
+
+</details>
+
+### Uninstall
+
+<details>
+<summary><strong>Quick install path</strong></summary>
+
+Remove the MCP server from your client (example for Claude Code):
+
+```bash
+claude mcp remove frontend-visualqa -s user   # if installed at user scope
+claude mcp remove frontend-visualqa -s local   # if installed at project scope
+```
+
+Remove skills:
+
+```bash
+npx skills remove -g frontend-visualqa
+```
+
+</details>
+
+<details>
+<summary><strong>Claude Code plugin</strong></summary>
+
+```
+/plugin uninstall frontend-visualqa@frontend-visualqa-plugins -s user
+```
+
+</details>
+
+<details>
+<summary><strong>Codex</strong></summary>
+
+Remove the MCP server entry from `~/.codex/config.toml`, then delete the skill directory:
+
+```bash
+rm -rf ~/.agents/skills/frontend-visualqa
+```
+
+Restart Codex after removing.
 
 </details>
 
