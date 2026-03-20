@@ -22,13 +22,29 @@ n1 is a pixels-to-actions model trained with RL on live websites. Two capabiliti
 
 ## Install
 
-### Requirements
-
-A Yutori API key — set `YUTORI_API_KEY` or save it to `~/.yutori/config.json`. Get one at [platform.yutori.com](https://platform.yutori.com).
-
 ### Quick install (recommended)
 
-1. Install the MCP server using [add-mcp](https://github.com/nicobailon/add-mcp) (works with all clients):
+1. Log in to [Yutori](https://yutori.com) (provides the n1 vision model):
+
+    ```bash
+    uvx yutori auth login
+    ```
+
+    This opens your browser and saves your API key to `~/.yutori/config.json`.
+
+    <details>
+    <summary>Or, manually add your API key</summary>
+
+    Go to [platform.yutori.com](https://platform.yutori.com) and add your key to the config file:
+    ```bash
+    mkdir -p ~/.yutori
+    cat > ~/.yutori/config.json << 'EOF'
+    {"api_key": "yt-your-api-key"}
+    EOF
+    ```
+    </details>
+
+2. Install the MCP server using [add-mcp](https://github.com/nicobailon/add-mcp) (works with all clients):
 
     ```bash
     npx add-mcp -n frontend-visualqa "uvx frontend-visualqa serve"
@@ -36,7 +52,7 @@ A Yutori API key — set `YUTORI_API_KEY` or save it to `~/.yutori/config.json`.
 
     Pick the clients you want to configure.
 
-2. Install workflow skills using [skills.sh](https://skills.sh):
+3. Install workflow skills using [skills.sh](https://skills.sh):
 
     ```bash
     npx skills add yutori-ai/frontend-visualqa -g
@@ -46,7 +62,7 @@ A Yutori API key — set `YUTORI_API_KEY` or save it to `~/.yutori/config.json`.
 
     `-g` installs at user scope. Omit `-g` for project-local install.
 
-3. Restart the agent client.
+4. Restart the agent client.
 
    <details>
    <summary>To list or remove later:</summary>

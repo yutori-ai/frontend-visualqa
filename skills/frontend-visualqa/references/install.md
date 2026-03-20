@@ -3,10 +3,16 @@
 ## Requirements
 
 - A running local frontend
-- A Yutori API key, available through `YUTORI_API_KEY` or `~/.yutori/config.json`
+- Yutori API key — run `uvx yutori auth login` or set `YUTORI_API_KEY`
 - Playwright Chromium installed once
 
 ## Quick Install
+
+Authenticate with Yutori:
+
+```bash
+uvx yutori auth login
+```
 
 MCP server (works with all clients):
 
@@ -20,7 +26,7 @@ Skill (cross-agent):
 npx skills add yutori-ai/frontend-visualqa -g
 ```
 
-Restart the agent client after both steps.
+Restart the agent client after setup.
 
 ## CLI Fallback
 
