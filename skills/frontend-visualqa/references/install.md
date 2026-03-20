@@ -18,7 +18,7 @@ yutori auth login
 MCP server (works with all clients):
 
 ```bash
-npx add-mcp -n frontend-visualqa "frontend-visualqa serve"
+npx add-mcp -g -n frontend-visualqa "frontend-visualqa serve"
 ```
 
 Skill (cross-agent):

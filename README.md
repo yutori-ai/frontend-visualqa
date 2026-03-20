@@ -48,7 +48,7 @@ n1 is a pixels-to-actions model trained with RL on live websites. Two capabiliti
 2. Register the MCP server using [add-mcp](https://github.com/nicobailon/add-mcp) (works with all clients):
 
     ```bash
-    npx add-mcp -n frontend-visualqa "frontend-visualqa serve"
+    npx add-mcp -g -n frontend-visualqa "frontend-visualqa serve"
     ```
 
     Pick the clients you want to configure.
