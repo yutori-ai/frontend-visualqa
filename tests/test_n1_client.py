@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 from typing import Any
 
@@ -140,3 +141,27 @@ def test_n1_client_trim_messages_uses_sdk_compatibility_fallback(monkeypatch: py
     assert trim_calls
     assert trimmed_messages[0]["content"][0]["text"] == "trimmed"
     assert messages[0]["content"][0]["text"] == "trimmed"
+
+
+def test_n1_client_fallback_trim_removes_oldest_images_when_sdk_is_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
+    import frontend_visualqa.n1_client as module
+
+    messages = [
+        {"role": "user", "content": [{"type": "image_url", "image_url": {"url": "data:image/png;base64," + "a" * 500}}]},
+        {"role": "tool", "content": [{"type": "image_url", "image_url": {"url": "data:image/png;base64," + "b" * 500}}]},
+        {"role": "user", "content": [{"type": "text", "text": "keep"}]},
+    ]
+    n1_client = N1Client(client=FakeClient([]), max_request_bytes=400, keep_recent_screenshots=1)
+
+    monkeypatch.setattr(module, "estimate_messages_size_bytes", lambda payload: len(json.dumps(payload).encode("utf-8")))
+
+    trimmed_messages = n1_client.trim_messages(messages)
+
+    image_items = [
+        item
+        for message in trimmed_messages
+        for item in message.get("content", [])
+        if isinstance(item, dict) and item.get("type") == "image_url"
+    ]
+    assert len(image_items) == 1
+    assert "b" * 100 in image_items[0]["image_url"]["url"]

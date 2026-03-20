@@ -225,3 +225,7 @@ __marimo__/
 
 # Claude Code
 .claude/
+
+# Superpowers (brainstorming mockups, specs, plans — not shipped)
+.superpowers/
+docs/superpowers/

@@ -6,10 +6,13 @@ import asyncio
 import json
 import re
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from frontend_visualqa.browser import BrowserSession, DEFAULT_NAVIGATION_TIMEOUT_MS as BROWSER_NAVIGATION_TIMEOUT_MS
 from frontend_visualqa.errors import BrowserActionError
+
+if TYPE_CHECKING:
+    from frontend_visualqa.overlay import OverlayController
 
 
 MODEL_COORDINATE_SCALE = 1000
@@ -35,6 +38,8 @@ ACTION_DELAY_SECONDS: dict[str, float] = {
     "screenshot": 0.0,
     "wait": 0.0,
 }
+
+_OVERLAY_LEAD_TIME_FALLBACK_SECONDS = 0.45
 
 ACTION_NAME_ALIASES: dict[str, str] = {
     "back": "go_back",
@@ -441,6 +446,14 @@ def scale_coordinates(coordinates: list[int] | tuple[int, int], width: int, heig
     return clamped_x, clamped_y
 
 
+def _overlay_lead_time_seconds() -> float:
+    try:
+        from frontend_visualqa.overlay import LEAD_TIME_MS
+    except Exception:
+        return _OVERLAY_LEAD_TIME_FALLBACK_SECONDS
+    return float(LEAD_TIME_MS) / 1000.0
+
+
 def render_action_trace(
     action_name: str,
     arguments: dict[str, Any],
@@ -524,6 +537,15 @@ class ActionExecutor:
     ) -> None:
         self.navigation_timeout_ms = navigation_timeout_ms
         self.settle_delay_seconds = settle_delay_seconds
+        self._overlay: OverlayController | None = None
+
+    @property
+    def overlay(self) -> OverlayController | None:
+        return self._overlay
+
+    @overlay.setter
+    def overlay(self, value: OverlayController | None) -> None:
+        self._overlay = value
 
     async def execute_tool_call(self, session: BrowserSession, tool_call: Any) -> ActionExecutionResult | str:
         """Execute a tool call object with ``function.name`` and JSON arguments."""
@@ -552,22 +574,33 @@ class ActionExecutor:
         page = session.page
         width = session.viewport.width
         height = session.viewport.height
+        needs_domcontentloaded_wait = canonical_name not in {"screenshot", "wait"}
 
         try:
-            if canonical_name in {
+            if canonical_name == "hover":
+                coords = raw_arguments.get("coordinates")
+                if coords is None:
+                    raise BrowserActionError("hover requires coordinates")
+                x, y = scale_coordinates(coords, width, height)
+                await page.mouse.move(x, y)
+
+            elif canonical_name in {
                 "left_click",
                 "double_click",
                 "triple_click",
                 "right_click",
-                "hover",
             }:
                 coords = raw_arguments.get("coordinates")
                 if coords is None:
                     raise BrowserActionError(f"{canonical_name} requires coordinates")
                 x, y = scale_coordinates(coords, width, height)
-                if canonical_name == "hover":
-                    await page.mouse.move(x, y)
-                elif canonical_name == "double_click":
+                await self._best_effort_overlay_show_action(
+                    action_type=canonical_name,
+                    x=x,
+                    y=y,
+                    num_clicks=3 if canonical_name == "triple_click" else 2 if canonical_name == "double_click" else 1,
+                )
+                if canonical_name == "double_click":
                     await page.mouse.dblclick(x, y)
                 else:
                     click_count = 3 if canonical_name == "triple_click" else 1
@@ -593,6 +626,12 @@ class ActionExecutor:
                 if direction not in {"up", "down", "left", "right"}:
                     raise BrowserActionError(f"unsupported scroll direction: {direction}")
                 x, y = scale_coordinates(coords, width, height)
+                await self._best_effort_overlay_show_action(
+                    action_type="scroll",
+                    x=x,
+                    y=y,
+                    direction=direction,
+                )
                 await page.mouse.move(x, y)
                 delta_x = (
                     width * 0.1 * amount
@@ -618,6 +657,7 @@ class ActionExecutor:
                     or raw_arguments.get("clear_before_type")
                 )
                 press_enter = bool(raw_arguments.get("press_enter_after"))
+                await self._best_effort_overlay_show_action(action_type="type")
                 if clear_before:
                     await page.keyboard.press("ControlOrMeta+A")
                     await page.keyboard.press("Backspace")
@@ -638,6 +678,7 @@ class ActionExecutor:
                     if semantic_action is not None:
                         await self.execute_action(session, semantic_action, {})
                         return trace
+                await self._best_effort_overlay_set_status("Pressing keys")
                 for key_name in key_sequence:
                     if is_disallowed_zoom_shortcut(key_name):
                         continue
@@ -647,23 +688,27 @@ class ActionExecutor:
                 url = raw_arguments.get("url") or raw_arguments.get("href")
                 if not url:
                     raise BrowserActionError("goto_url requires url")
+                await self._best_effort_overlay_set_status("Navigating")
                 await page.goto(url, wait_until="domcontentloaded")
 
             elif canonical_name == "go_back":
+                await self._best_effort_overlay_set_status("Navigating")
                 await page.go_back(wait_until="domcontentloaded")
 
             elif canonical_name == "go_forward":
+                await self._best_effort_overlay_set_status("Navigating")
                 await page.go_forward(wait_until="domcontentloaded")
 
             elif canonical_name == "refresh":
+                await self._best_effort_overlay_set_status("Refreshing")
                 await page.reload(wait_until="domcontentloaded")
 
             elif canonical_name == "screenshot":
-                return trace
+                pass
 
             elif canonical_name == "wait":
+                await self._best_effort_overlay_set_status("Waiting")
                 await asyncio.sleep(float(raw_arguments.get("seconds", DEFAULT_WAIT_SECONDS)))
-                return trace
 
             else:
                 raise BrowserActionError(f"unsupported action: {canonical_name}")
@@ -673,8 +718,10 @@ class ActionExecutor:
         except Exception as exc:  # pragma: no cover - exercised through integration tests
             raise BrowserActionError(f"failed to execute {trace}: {exc}") from exc
 
-        await self._best_effort_wait_for_domcontentloaded(page)
-        await asyncio.sleep(self._post_action_delay(canonical_name))
+        if needs_domcontentloaded_wait:
+            await self._best_effort_wait_for_domcontentloaded(page)
+            await asyncio.sleep(self._post_action_delay(canonical_name))
+        await self._best_effort_overlay_ensure_persistent_ui()
         return trace
 
     @staticmethod
@@ -863,6 +910,52 @@ class ActionExecutor:
     async def _best_effort_wait_for_domcontentloaded(self, page: Any) -> None:
         try:
             await page.wait_for_load_state("domcontentloaded", timeout=self.navigation_timeout_ms)
+        except Exception:
+            return
+
+    async def _best_effort_overlay_show_action(
+        self,
+        *,
+        action_type: str,
+        x: int = 0,
+        y: int = 0,
+        num_clicks: int = 1,
+        direction: str = "down",
+    ) -> None:
+        overlay = self._overlay
+        if overlay is None:
+            return
+        show_action = getattr(overlay, "show_action", None)
+        if not callable(show_action):
+            return
+        try:
+            await show_action(action_type, x=x, y=y, num_clicks=num_clicks, direction=direction)
+            await asyncio.sleep(_overlay_lead_time_seconds())
+        except Exception:
+            return
+
+    async def _best_effort_overlay_set_status(self, label: str) -> None:
+        overlay = self._overlay
+        if overlay is None:
+            return
+        set_status = getattr(overlay, "set_status", None)
+        if not callable(set_status):
+            return
+        try:
+            await set_status(label)
+            await asyncio.sleep(_overlay_lead_time_seconds())
+        except Exception:
+            return
+
+    async def _best_effort_overlay_ensure_persistent_ui(self) -> None:
+        overlay = self._overlay
+        if overlay is None:
+            return
+        ensure_persistent_ui = getattr(overlay, "ensure_persistent_ui", None)
+        if not callable(ensure_persistent_ui):
+            return
+        try:
+            await ensure_persistent_ui()
         except Exception:
             return
 

@@ -2,18 +2,17 @@
 
 from __future__ import annotations
 
+import inspect
 import asyncio
 import logging
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 import httpx
 
 from frontend_visualqa.artifacts import ArtifactManager
 from frontend_visualqa.browser import BrowserManager
-from frontend_visualqa.claim_verifier import ClaimVerifier
-from frontend_visualqa.n1_client import N1Client
 from frontend_visualqa.reporters import get_reporters
 from frontend_visualqa.schemas import (
     BrowserConfig,
@@ -28,6 +27,41 @@ from frontend_visualqa.schemas import (
 )
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from frontend_visualqa.claim_verifier import ClaimVerifier as ClaimVerifierType
+    from frontend_visualqa.n1_client import N1Client as N1ClientType
+else:
+    ClaimVerifier = None  # type: ignore[assignment]
+    N1Client = None  # type: ignore[assignment]
+
+
+def _callable_accepts_visualize(target: Any) -> bool:
+    try:
+        signature = inspect.signature(target)
+    except (TypeError, ValueError):
+        return False
+    return "visualize" in signature.parameters or any(
+        parameter.kind == inspect.Parameter.VAR_KEYWORD for parameter in signature.parameters.values()
+    )
+
+
+def _load_claim_verifier_class() -> Any:
+    global ClaimVerifier
+    if ClaimVerifier is None:
+        from frontend_visualqa.claim_verifier import ClaimVerifier as loaded_claim_verifier
+
+        ClaimVerifier = loaded_claim_verifier  # type: ignore[assignment]
+    return ClaimVerifier
+
+
+def _load_n1_client_class() -> Any:
+    global N1Client
+    if N1Client is None:
+        from frontend_visualqa.n1_client import N1Client as loaded_n1_client
+
+        N1Client = loaded_n1_client  # type: ignore[assignment]
+    return N1Client
 
 
 class VisualQARunner:
@@ -51,14 +85,31 @@ class VisualQARunner:
                 resolved_browser_config = BrowserConfig(headless=headless)
         elif headless is not None:
             resolved_browser_config = resolved_browser_config.model_copy(update={"headless": headless})
+        configured_visualize = bool(getattr(resolved_browser_config or BrowserConfig(), "visualize", False))
         self.browser_manager = browser_manager or BrowserManager(config=resolved_browser_config)
         self.artifact_manager = artifact_manager or ArtifactManager(artifacts_dir)
-        self.n1_client = n1_client or N1Client()
-        self.claim_verifier = claim_verifier or ClaimVerifier(
-            browser_manager=self.browser_manager,
-            artifact_manager=self.artifact_manager,
-            n1_client=self.n1_client,
-        )
+        if n1_client is None:
+            n1_client_class = _load_n1_client_class()
+            self.n1_client = n1_client_class()
+        else:
+            self.n1_client = n1_client
+        if claim_verifier is None:
+            claim_verifier_class = _load_claim_verifier_class()
+            claim_verifier_kwargs: dict[str, Any] = {
+                "browser_manager": self.browser_manager,
+                "artifact_manager": self.artifact_manager,
+                "n1_client": self.n1_client,
+            }
+            if _callable_accepts_visualize(claim_verifier_class):
+                claim_verifier_kwargs["visualize"] = configured_visualize
+            try:
+                self.claim_verifier = claim_verifier_class(**claim_verifier_kwargs)
+            except TypeError:
+                claim_verifier_kwargs.pop("visualize", None)
+                self.claim_verifier = claim_verifier_class(**claim_verifier_kwargs)
+        else:
+            self.claim_verifier = claim_verifier
+        self._default_visualize = bool(getattr(self.claim_verifier, "_visualize", configured_visualize))
         self.reporters = get_reporters(reporters or [])
         self._operation_lock = asyncio.Lock()
 
@@ -71,6 +122,7 @@ class VisualQARunner:
         session_key: str = "default",
         reuse_session: bool = True,
         reset_between_claims: bool = True,
+        visualize: bool | None = None,
         max_steps_per_claim: int = 12,
         claim_timeout_seconds: float | None = 120.0,
         run_timeout_seconds: float | None = 300.0,
@@ -85,6 +137,7 @@ class VisualQARunner:
             session_key=session_key,
             reuse_session=reuse_session,
             reset_between_claims=reset_between_claims,
+            visualize=visualize,
             max_steps_per_claim=max_steps_per_claim,
             claim_timeout_seconds=claim_timeout_seconds,
             run_timeout_seconds=run_timeout_seconds,
@@ -351,7 +404,9 @@ class VisualQARunner:
         """Close all long-lived resources."""
 
         await self.browser_manager.close()
-        await self.n1_client.close()
+        close = getattr(self.n1_client, "close", None)
+        if callable(close):
+            await close()
 
     @staticmethod
     def _summarize_results(results: list[ClaimResult]) -> str:
@@ -483,16 +538,21 @@ class VisualQARunner:
         run_artifacts: Any,
         claim_index: int,
     ) -> ClaimResult:
+        visualize = request.visualize if request.visualize is not None else self._default_visualize
+
         async def _call_verifier() -> ClaimResult:
-            return await self.claim_verifier.verify(
-                session=session,
-                claim=claim,
-                url=request.url,
-                claim_index=claim_index,
-                run_artifacts=run_artifacts,
-                max_steps=request.max_steps_per_claim,
-                navigation_hint=request.navigation_hint,
-            )
+            verify_kwargs: dict[str, Any] = {
+                "session": session,
+                "claim": claim,
+                "url": request.url,
+                "claim_index": claim_index,
+                "run_artifacts": run_artifacts,
+                "max_steps": request.max_steps_per_claim,
+                "navigation_hint": request.navigation_hint,
+            }
+            if _callable_accepts_visualize(self.claim_verifier.verify):
+                verify_kwargs["visualize"] = visualize
+            return await self.claim_verifier.verify(**verify_kwargs)
 
         if request.claim_timeout_seconds:
             async with asyncio.timeout(request.claim_timeout_seconds):

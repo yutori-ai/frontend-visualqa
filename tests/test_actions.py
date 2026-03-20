@@ -4,6 +4,7 @@ import inspect
 import json
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -166,6 +167,26 @@ class FakePage:
         raise AssertionError("No evaluate result queued")
 
 
+def _make_overlay_enabled_page(call_order: list[tuple[Any, ...]]) -> FakePage:
+    page = FakePage()
+
+    async def _click(x: int, y: int, *, button: str = "left", click_count: int = 1) -> None:
+        call_order.append(("click", x, y, button, click_count))
+
+    async def _goto(url: str, **kwargs: Any) -> SimpleNamespace:
+        call_order.append(("goto", url, kwargs))
+        page.url = url
+        return SimpleNamespace(url=url)
+
+    async def _wait_for_load_state(state: str, **kwargs: Any) -> None:
+        call_order.append(("wait_for_load_state", state, kwargs))
+
+    page.mouse.click = AsyncMock(side_effect=_click)
+    page.goto = AsyncMock(side_effect=_goto)
+    page.wait_for_load_state = AsyncMock(side_effect=_wait_for_load_state)
+    return page
+
+
 def test_scale_coordinates_maps_n1_grid_to_viewport_pixels() -> None:
     module = _import_actions_module()
     executor = _instantiate_with_supported_kwargs(
@@ -290,6 +311,127 @@ async def test_execute_action_supports_hover_drag_and_multi_click_variants() -> 
     assert page.mouse.up_count == 1
     assert page.mouse.click_counts[-2:] == [3, 1]
     assert page.mouse.clicks[-1] == (640, 200, "right")
+
+
+@pytest.mark.asyncio
+async def test_execute_action_left_click_triggers_overlay_before_dispatch_and_restores_ui(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _import_actions_module()
+    call_order: list[tuple[Any, ...]] = []
+    page = _make_overlay_enabled_page(call_order)
+    overlay = MagicMock()
+
+    async def _show_action(action_type: str, **kwargs: Any) -> None:
+        call_order.append(("show_action", action_type, kwargs))
+
+    async def _ensure_persistent_ui() -> None:
+        call_order.append(("ensure_persistent_ui",))
+
+    overlay.show_action = AsyncMock(side_effect=_show_action)
+    overlay.ensure_persistent_ui = AsyncMock(side_effect=_ensure_persistent_ui)
+
+    executor = _instantiate_with_supported_kwargs(
+        module.ActionExecutor,
+        navigation_timeout_ms=1_000,
+        settle_delay_seconds=0,
+    )
+    executor.overlay = overlay
+    monkeypatch.setattr(module, "_overlay_lead_time_seconds", lambda: 0.0)
+
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    trace = await _call_execute_action(executor, page, "left_click", {"coordinates": [500, 250]}, viewport)
+
+    assert trace == "left_click([640, 200])"
+    assert call_order[0][0] == "show_action"
+    assert call_order[0][1] == "left_click"
+    assert call_order[0][2]["x"] == 640
+    assert call_order[0][2]["y"] == 200
+    assert call_order[1][0] == "click"
+    assert call_order[-1][0] == "ensure_persistent_ui"
+    overlay.show_action.assert_awaited_once()
+    overlay.ensure_persistent_ui.assert_awaited_once()
+    assert executor.overlay is overlay
+
+
+@pytest.mark.asyncio
+async def test_execute_action_navigation_updates_overlay_status_before_navigation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _import_actions_module()
+    call_order: list[tuple[Any, ...]] = []
+    page = _make_overlay_enabled_page(call_order)
+    overlay = MagicMock()
+
+    async def _set_status(label: str) -> None:
+        call_order.append(("set_status", label))
+
+    async def _ensure_persistent_ui() -> None:
+        call_order.append(("ensure_persistent_ui",))
+
+    overlay.set_status = AsyncMock(side_effect=_set_status)
+    overlay.ensure_persistent_ui = AsyncMock(side_effect=_ensure_persistent_ui)
+
+    executor = _instantiate_with_supported_kwargs(
+        module.ActionExecutor,
+        navigation_timeout_ms=1_000,
+        settle_delay_seconds=0,
+    )
+    executor.overlay = overlay
+    monkeypatch.setattr(module, "_overlay_lead_time_seconds", lambda: 0.0)
+
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    trace = await _call_execute_action(
+        executor,
+        page,
+        "goto_url",
+        {"url": "http://fixture.local/modal"},
+        viewport,
+    )
+
+    assert trace == "goto_url(\"http://fixture.local/modal\")"
+    assert call_order[0] == ("set_status", "Navigating")
+    assert call_order[1][0] == "goto"
+    assert call_order[-1][0] == "ensure_persistent_ui"
+    overlay.set_status.assert_awaited_once()
+    overlay.ensure_persistent_ui.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_execute_action_semantic_key_shortcut_uses_single_overlay_footer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _import_actions_module()
+    call_order: list[tuple[Any, ...]] = []
+    page = _make_overlay_enabled_page(call_order)
+    overlay = MagicMock()
+
+    status_calls: list[str] = []
+
+    async def _set_status(label: str) -> None:
+        status_calls.append(label)
+        call_order.append(("set_status", label))
+
+    async def _ensure_persistent_ui() -> None:
+        call_order.append(("ensure_persistent_ui",))
+
+    overlay.set_status = AsyncMock(side_effect=_set_status)
+    overlay.ensure_persistent_ui = AsyncMock(side_effect=_ensure_persistent_ui)
+
+    executor = _instantiate_with_supported_kwargs(
+        module.ActionExecutor,
+        navigation_timeout_ms=1_000,
+        settle_delay_seconds=0,
+    )
+    executor.overlay = overlay
+    monkeypatch.setattr(module, "_overlay_lead_time_seconds", lambda: 0.0)
+
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    trace = await _call_execute_action(executor, page, "key_press", {"key_comb": "F5"}, viewport)
+
+    assert trace == "key_press(F5)"
+    assert [entry for entry in call_order if entry == ("ensure_persistent_ui",)] == [("ensure_persistent_ui",)]
+    assert status_calls == ["Refreshing"]
 
 
 @pytest.mark.asyncio

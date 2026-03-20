@@ -142,6 +142,7 @@ async def test_mcp_server_verify_visual_claims_delegates_to_runner(monkeypatch: 
         "session_key": "frontend-visualqa",
         "reuse_session": True,
         "reset_between_claims": True,
+        "visualize": True,
         "max_steps_per_claim": 4,
         "navigation_hint": "Open the first task row.",
     }
@@ -151,6 +152,7 @@ async def test_mcp_server_verify_visual_claims_delegates_to_runner(monkeypatch: 
     forwarded = fake_runner.run_request_calls[0]
     assert forwarded.url == payload["url"]
     assert forwarded.claims == payload["claims"]
+    assert forwarded.visualize is True
     assert result["overall_status"] == "completed"
 
 

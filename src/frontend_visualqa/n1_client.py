@@ -3,12 +3,74 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from typing import Any, Protocol
 
 import httpx
-from yutori import AsyncYutoriClient
-from yutori.n1 import estimate_messages_size_bytes, trim_images_to_fit
+
+try:
+    from yutori import AsyncYutoriClient
+    from yutori.n1 import estimate_messages_size_bytes, trim_images_to_fit
+except ModuleNotFoundError:
+    class AsyncYutoriClient:  # type: ignore[no-redef]
+        """Fallback stub when the Yutori SDK is unavailable."""
+
+        def __init__(self, *_: Any, **__: Any) -> None:
+            raise ModuleNotFoundError("No module named 'yutori'")
+
+    def estimate_messages_size_bytes(messages: list[dict[str, Any]]) -> int:
+        """Fallback byte estimation when the SDK helper is unavailable."""
+
+        return len(json.dumps(messages).encode("utf-8"))
+
+    def _fallback_trim_images_to_fit(
+        messages: list[dict[str, Any]],
+        *,
+        max_bytes: int,
+        keep_recent: int,
+    ) -> tuple[int, int]:
+        """Trim oldest image payloads when the SDK helper is unavailable."""
+
+        def collect_image_slots() -> list[tuple[list[dict[str, Any]], int]]:
+            slots: list[tuple[list[dict[str, Any]], int]] = []
+            for message in messages:
+                content = message.get("content")
+                if not isinstance(content, list):
+                    continue
+                for index, item in enumerate(content):
+                    if not isinstance(item, dict):
+                        continue
+                    if item.get("type") in {"image_url", "input_image"}:
+                        slots.append((content, index))
+            return slots
+
+        removed = 0
+        size_bytes = estimate_messages_size_bytes(messages)
+        while size_bytes > max_bytes:
+            image_slots = collect_image_slots()
+            removable_slots = image_slots[:-keep_recent] if keep_recent > 0 else image_slots
+            if not removable_slots:
+                break
+            content, index = removable_slots[0]
+            content.pop(index)
+            removed += 1
+            size_bytes = estimate_messages_size_bytes(messages)
+        return size_bytes, removed
+
+    def trim_images_to_fit(
+        messages: list[dict[str, Any]],
+        *,
+        max_bytes: int,
+        keep_recent: int,
+    ) -> tuple[int, int]:
+        """Fallback image trimming when the SDK helper is unavailable."""
+
+        return _fallback_trim_images_to_fit(
+            messages,
+            max_bytes=max_bytes,
+            keep_recent=keep_recent,
+        )
 
 from frontend_visualqa.errors import N1ClientError
 
@@ -132,6 +194,12 @@ class N1Client:
                 removed,
                 trimmed_size / (1024 * 1024),
             )
+        elif trimmed_size > self.max_request_bytes:
+            logger.warning(
+                "Request still exceeds the %.2f MB limit after compatibility trimming (%.2f MB).",
+                self.max_request_bytes / (1024 * 1024),
+                trimmed_size / (1024 * 1024),
+            )
         return trimmed_messages
 
     async def close(self) -> None:
@@ -145,11 +213,16 @@ class N1Client:
         if self._client is not None:
             return self._client
 
-        self._client = AsyncYutoriClient(
-            api_key=self.api_key,
-            base_url=self.base_url,
-            timeout=self.timeout_seconds,
-        )
+        try:
+            self._client = AsyncYutoriClient(
+                api_key=self.api_key,
+                base_url=self.base_url,
+                timeout=self.timeout_seconds,
+            )
+        except ModuleNotFoundError as exc:
+            raise N1ClientError(
+                "The Yutori SDK is not installed. Install the optional 'yutori' dependency to use the live n1 client."
+            ) from exc
         return self._client
 
     @staticmethod
