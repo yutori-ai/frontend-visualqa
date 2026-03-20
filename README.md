@@ -27,11 +27,11 @@ n1 is a pixels-to-actions model trained with RL on live websites. Two capabiliti
 1. Log in to [Yutori](https://yutori.com) (provides the n1 vision model):
 
     ```bash
-    pip install frontend-visualqa
+    uv tool install frontend-visualqa --with-executables-from yutori
     yutori auth login
     ```
 
-    This installs the `frontend-visualqa` CLI (and the `yutori` CLI as a dependency), then opens your browser to save your API key to `~/.yutori/config.json`.
+    The first command installs both the `frontend-visualqa` and `yutori` CLIs. The second opens your browser to save your API key to `~/.yutori/config.json`.
 
     <details>
     <summary>Or, manually add your API key</summary>
