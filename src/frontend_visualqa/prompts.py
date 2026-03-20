@@ -60,7 +60,7 @@ def build_verification_task(claim: str, url: str, navigation_hint: str | None = 
         "- inconclusive: you tried but still cannot determine",
         "- not_testable: the environment blocked verification",
         "",
-        "Available browser actions include goto_url, left_click, double_click, triple_click, right_click, hover, drag, scroll, type, key_press, wait, refresh, go_back, and go_forward.",
+        "Available tools include goto_url, left_click, double_click, triple_click, right_click, hover, drag, scroll, type, key_press, wait, refresh, go_back, go_forward, extract_elements, extract_content, and find.",
         "If the page is unreachable, stuck, crashes, or requires credentials you do not have, use not_testable.",
     ]
     if navigation_hint:

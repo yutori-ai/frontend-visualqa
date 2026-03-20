@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import json
 from types import SimpleNamespace
 from typing import Any
 
@@ -67,6 +68,18 @@ async def _call_execute_action(
     return await method(**kwargs)
 
 
+async def _call_execute_tool_call(
+    executor: Any,
+    page: Any,
+    action_name: str,
+    arguments: dict[str, Any],
+    viewport: ViewportConfig,
+) -> Any:
+    session = SimpleNamespace(page=page, viewport=viewport)
+    tool_call = SimpleNamespace(function=SimpleNamespace(name=action_name, arguments=json.dumps(arguments)))
+    return await executor.execute_tool_call(session, tool_call)
+
+
 class FakeMouse:
     def __init__(self) -> None:
         self.clicks: list[tuple[int, int, str]] = []
@@ -121,6 +134,8 @@ class FakePage:
         self.go_back_calls: list[dict[str, Any]] = []
         self.go_forward_calls: list[dict[str, Any]] = []
         self.wait_states: list[tuple[str, dict[str, Any]]] = []
+        self.evaluate_results: list[Any] = []
+        self.evaluate_calls: list[tuple[str, tuple[Any, ...]]] = []
 
     async def goto(self, url: str, **kwargs: Any) -> SimpleNamespace:
         self.url = url
@@ -143,6 +158,12 @@ class FakePage:
 
     async def wait_for_load_state(self, state: str, **kwargs: Any) -> None:
         self.wait_states.append((state, kwargs))
+
+    async def evaluate(self, script: str, *args: Any) -> Any:
+        self.evaluate_calls.append((script, args))
+        if self.evaluate_results:
+            return self.evaluate_results.pop(0)
+        raise AssertionError("No evaluate result queued")
 
 
 def test_scale_coordinates_maps_n1_grid_to_viewport_pixels() -> None:
@@ -363,3 +384,57 @@ async def test_execute_action_rejects_invalid_scroll_direction() -> None:
             {"coordinates": [500, 500], "direction": "diagonal", "amount": 1},
             viewport,
         )
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_call_extract_elements_returns_output_text() -> None:
+    module = _import_actions_module()
+    executor = _instantiate_with_supported_kwargs(
+        module.ActionExecutor,
+        navigation_timeout_ms=1_000,
+        settle_delay_seconds=0,
+    )
+    page = FakePage()
+    page.evaluate_results.append(
+        {
+            "headings": ["ATMOS"],
+            "buttons": ["11°"],
+            "links": [{"text": "Forecast", "href": "http://fixture.local/forecast"}],
+            "inputs": [{"label": "Search", "type": "search", "placeholder": ""}],
+            "visibleText": ["ATMOS", "San Francisco, CA"],
+        }
+    )
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+
+    result = await _call_execute_tool_call(executor, page, "extract_elements", {"filter": "ATMOS"}, viewport)
+
+    assert result.trace == "extract_elements(filter='ATMOS')"
+    assert "Visible headings" in result.output_text
+    assert "ATMOS" in result.output_text
+    assert result.current_url == page.url
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_call_extract_content_and_find_return_read_only_text() -> None:
+    module = _import_actions_module()
+    executor = _instantiate_with_supported_kwargs(
+        module.ActionExecutor,
+        navigation_timeout_ms=1_000,
+        settle_delay_seconds=0,
+    )
+    page = FakePage()
+    page.evaluate_results.extend(
+        [
+            "ATMOS San Francisco, CA Mostly Sunny",
+            {"count": 1, "matches": ["ATMOS San Francisco, CA Mostly Sunny"]},
+        ]
+    )
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+
+    content_result = await _call_execute_tool_call(executor, page, "extract_content", {}, viewport)
+    find_result = await _call_execute_tool_call(executor, page, "find", {"text": "ATMOS"}, viewport)
+
+    assert content_result.trace == "extract_content()"
+    assert "Page text:" in content_result.output_text
+    assert find_result.trace == "find(text='ATMOS')"
+    assert "Found 1 visible text match" in find_result.output_text

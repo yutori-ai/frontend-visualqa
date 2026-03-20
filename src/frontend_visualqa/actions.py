@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+from dataclasses import dataclass
 from typing import Any
 
 from frontend_visualqa.browser import BrowserSession, DEFAULT_NAVIGATION_TIMEOUT_MS as BROWSER_NAVIGATION_TIMEOUT_MS
@@ -28,6 +29,9 @@ ACTION_DELAY_SECONDS: dict[str, float] = {
     "go_back": 0.8,
     "go_forward": 0.8,
     "refresh": 0.8,
+    "extract_elements": 0.0,
+    "extract_content": 0.0,
+    "find": 0.0,
     "screenshot": 0.0,
     "wait": 0.0,
 }
@@ -281,6 +285,42 @@ BROWSER_ACTION_TOOLS: list[dict[str, Any]] = [
             "parameters": {"type": "object", "properties": {}},
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "extract_elements",
+            "description": "Extract visible page elements and nearby text without interacting.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "filter": {"type": "string", "description": "Optional text filter for matching elements."},
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "extract_content",
+            "description": "Extract readable text from the current page without interacting.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "find",
+            "description": "Find visible text matches on the current page.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "text": {"type": "string", "description": "Text to search for on the page."},
+                },
+                "required": ["text"],
+            },
+        },
+    },
 ]
 
 KEY_MAP: dict[str, str] = {
@@ -412,7 +452,13 @@ def render_action_trace(
 
     canonical_name = ACTION_NAME_ALIASES.get(action_name, action_name)
 
-    if canonical_name in {"left_click", "double_click", "triple_click", "right_click", "hover"} and width and height:
+    if canonical_name in {
+        "left_click",
+        "double_click",
+        "triple_click",
+        "right_click",
+        "hover",
+    } and width and height:
         coordinates = arguments.get("coordinates")
         if coordinates is not None:
             x, y = scale_coordinates(coordinates, width, height)
@@ -460,6 +506,13 @@ def render_action_trace(
     return f"{canonical_name}({ordered_parts})"
 
 
+@dataclass
+class ActionExecutionResult:
+    trace: str
+    output_text: str | None = None
+    current_url: str | None = None
+
+
 class ActionExecutor:
     """Execute n1 browser action tool calls against a Playwright page."""
 
@@ -472,11 +525,14 @@ class ActionExecutor:
         self.navigation_timeout_ms = navigation_timeout_ms
         self.settle_delay_seconds = settle_delay_seconds
 
-    async def execute_tool_call(self, session: BrowserSession, tool_call: Any) -> str:
+    async def execute_tool_call(self, session: BrowserSession, tool_call: Any) -> ActionExecutionResult | str:
         """Execute a tool call object with ``function.name`` and JSON arguments."""
 
         arguments = self._parse_tool_arguments(tool_call)
         action_name = getattr(getattr(tool_call, "function", tool_call), "name", "")
+        canonical_name = ACTION_NAME_ALIASES.get(action_name, action_name)
+        if canonical_name in {"extract_elements", "extract_content", "find"}:
+            return await self._execute_read_only_tool(session, canonical_name, arguments)
         return await self.execute_action(session=session, action_name=action_name, arguments=arguments)
 
     async def execute_action(
@@ -498,7 +554,13 @@ class ActionExecutor:
         height = session.viewport.height
 
         try:
-            if canonical_name in {"left_click", "double_click", "triple_click", "right_click", "hover"}:
+            if canonical_name in {
+                "left_click",
+                "double_click",
+                "triple_click",
+                "right_click",
+                "hover",
+            }:
                 coords = raw_arguments.get("coordinates")
                 if coords is None:
                     raise BrowserActionError(f"{canonical_name} requires coordinates")
@@ -627,6 +689,176 @@ class ActionExecutor:
         if not isinstance(parsed, dict):
             raise BrowserActionError(f"tool arguments must decode to an object: {arguments}")
         return parsed
+
+    async def _execute_read_only_tool(
+        self,
+        session: BrowserSession,
+        action_name: str,
+        arguments: dict[str, Any],
+    ) -> ActionExecutionResult:
+        trace = render_action_trace(
+            action_name,
+            arguments,
+            width=session.viewport.width,
+            height=session.viewport.height,
+        )
+
+        if action_name == "extract_elements":
+            output_text = await self._extract_elements(session.page, filter_text=str(arguments.get("filter") or "").strip())
+        elif action_name == "extract_content":
+            output_text = await self._extract_content(session.page)
+        elif action_name == "find":
+            needle = str(arguments.get("text") or "").strip()
+            if not needle:
+                raise BrowserActionError("find requires text")
+            output_text = await self._find_text(session.page, needle)
+        else:  # pragma: no cover - caller constrains the action_name
+            raise BrowserActionError(f"unsupported read-only action: {action_name}")
+
+        return ActionExecutionResult(trace=trace, output_text=output_text, current_url=session.page.url)
+
+    async def _extract_elements(self, page: Any, filter_text: str) -> str:
+        payload = await page.evaluate(
+            """(filterText) => {
+                const limit = (items, max = 12) => items.slice(0, max);
+                const normalize = (value) => (value || "").replace(/\\s+/g, " ").trim();
+                const isVisible = (element) => {
+                    if (!element) return false;
+                    const style = window.getComputedStyle(element);
+                    if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0) {
+                        return false;
+                    }
+                    const rect = element.getBoundingClientRect();
+                    return rect.width > 0 && rect.height > 0;
+                };
+                const elementText = (element) => {
+                    if (!element) return "";
+                    return normalize(
+                        element.innerText ||
+                        element.textContent ||
+                        element.getAttribute("aria-label") ||
+                        element.getAttribute("placeholder") ||
+                        element.value
+                    );
+                };
+                const loweredFilter = normalize(filterText).toLowerCase();
+                const matchesFilter = (...values) => {
+                    if (!loweredFilter) return true;
+                    return values.some((value) => normalize(value).toLowerCase().includes(loweredFilter));
+                };
+                const headings = limit(
+                    Array.from(document.querySelectorAll("h1, h2, h3, h4, [role='heading']"))
+                        .filter(isVisible)
+                        .map(elementText)
+                        .filter((text) => text && matchesFilter(text))
+                );
+                const buttons = limit(
+                    Array.from(document.querySelectorAll("button, [role='button'], input[type='button'], input[type='submit']"))
+                        .filter(isVisible)
+                        .map(elementText)
+                        .filter((text) => text && matchesFilter(text))
+                );
+                const links = limit(
+                    Array.from(document.querySelectorAll("a[href]"))
+                        .filter(isVisible)
+                        .map((element) => ({ text: elementText(element), href: element.href || "" }))
+                        .filter((item) => item.text || item.href)
+                        .filter((item) => matchesFilter(item.text, item.href))
+                );
+                const inputs = limit(
+                    Array.from(document.querySelectorAll("input, textarea, select"))
+                        .filter(isVisible)
+                        .map((element) => ({
+                            type: element.getAttribute("type") || element.tagName.toLowerCase(),
+                            label: elementText(element),
+                            placeholder: normalize(element.getAttribute("placeholder")),
+                        }))
+                        .filter((item) => item.label || item.placeholder)
+                        .filter((item) => matchesFilter(item.label, item.placeholder, item.type))
+                );
+                const visibleText = limit(
+                    Array.from(document.querySelectorAll("body *"))
+                        .filter(isVisible)
+                        .map(elementText)
+                        .filter(Boolean)
+                        .filter((text, index, items) => items.indexOf(text) === index)
+                        .filter((text) => matchesFilter(text)),
+                    24
+                );
+                return { headings, buttons, links, inputs, visibleText };
+            }""",
+            filter_text,
+        )
+        return self._format_extract_elements_output(payload, filter_text=filter_text)
+
+    async def _extract_content(self, page: Any) -> str:
+        content = await page.evaluate(
+            """() => (document.body?.innerText || "").replace(/\\s+/g, " ").trim()"""
+        )
+        if not content:
+            return "Page text: <none>"
+        clipped = content[:4000]
+        suffix = "..." if len(content) > 4000 else ""
+        return f"Page text:\n{clipped}{suffix}"
+
+    async def _find_text(self, page: Any, needle: str) -> str:
+        payload = await page.evaluate(
+            """(needle) => {
+                const normalize = (value) => (value || "").replace(/\\s+/g, " ").trim();
+                const loweredNeedle = normalize(needle).toLowerCase();
+                const bodyText = normalize(document.body?.innerText || "");
+                const lines = bodyText.split(/\\n+/).map(normalize).filter(Boolean);
+                const matches = lines.filter((line) => line.toLowerCase().includes(loweredNeedle)).slice(0, 12);
+                return { count: matches.length, matches };
+            }""",
+            needle,
+        )
+        matches = payload.get("matches", []) if isinstance(payload, dict) else []
+        if not matches:
+            return f"No visible text matched {needle!r}."
+        return f"Found {len(matches)} visible text match(es) for {needle!r}:\n" + "\n".join(f"- {match}" for match in matches)
+
+    @staticmethod
+    def _format_extract_elements_output(payload: Any, *, filter_text: str) -> str:
+        if not isinstance(payload, dict):
+            return "No visible elements found."
+
+        sections: list[str] = []
+        if filter_text:
+            sections.append(f"Filter: {filter_text!r}")
+
+        headings = [item for item in payload.get("headings", []) if item]
+        buttons = [item for item in payload.get("buttons", []) if item]
+        links = payload.get("links", []) or []
+        inputs = payload.get("inputs", []) or []
+        visible_text = [item for item in payload.get("visibleText", []) if item]
+
+        if headings:
+            sections.append("Visible headings:\n" + "\n".join(f"- {item}" for item in headings))
+        if buttons:
+            sections.append("Visible buttons:\n" + "\n".join(f"- {item}" for item in buttons))
+        if links:
+            formatted_links = [
+                f"- {item.get('text') or '<no text>'}: {item.get('href') or '<no href>'}"
+                for item in links
+                if isinstance(item, dict)
+            ]
+            if formatted_links:
+                sections.append("Visible links:\n" + "\n".join(formatted_links))
+        if inputs:
+            formatted_inputs = []
+            for item in inputs:
+                if not isinstance(item, dict):
+                    continue
+                descriptor = item.get("label") or item.get("placeholder") or "<unnamed input>"
+                input_type = item.get("type") or "input"
+                formatted_inputs.append(f"- {descriptor} [{input_type}]")
+            if formatted_inputs:
+                sections.append("Visible inputs:\n" + "\n".join(formatted_inputs))
+        if visible_text:
+            sections.append("Visible text snippets:\n" + "\n".join(f"- {item}" for item in visible_text))
+
+        return "\n\n".join(sections) if sections else "No visible elements found."
 
     async def _best_effort_wait_for_domcontentloaded(self, page: Any) -> None:
         try:
