@@ -5,9 +5,23 @@ build-backend = "hatchling.build"
 [project]
 name = "frontend-visualqa"
 version = "0.1.0"
-description = "Visual QA for local frontends with a shared CLI and FastMCP server."
+description = "Visual QA for local frontends — gives coding agents a pixel-level verification loop powered by Yutori n1."
 readme = "README.md"
+license = "Apache-2.0"
 requires-python = ">=3.11"
+authors = [
+    { name = "Yutori", email = "support@yutori.com" }
+]
+keywords = ["frontend", "visual-qa", "browser", "playwright", "mcp", "yutori", "n1"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
 dependencies = [
     "httpx>=0.26.0",
     "mcp>=1.1.2",
@@ -17,8 +31,9 @@ dependencies = [
     "yutori>=0.4.3",
 ]
 
-[[project.authors]]
-name = "Yutori"
+[project.urls]
+Homepage = "https://yutori.com"
+Repository = "https://github.com/yutori-ai/frontend-visualqa"
 
 [dependency-groups]
 dev = [
