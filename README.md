@@ -31,7 +31,7 @@ A Yutori API key — set `YUTORI_API_KEY` or save it to `~/.yutori/config.json`.
 1. Install the MCP server using [add-mcp](https://github.com/nicobailon/add-mcp) (works with all clients):
 
     ```bash
-    npx add-mcp "uvx frontend-visualqa serve"
+    npx add-mcp -n frontend-visualqa "uvx frontend-visualqa serve"
     ```
 
     Pick the clients you want to configure.
