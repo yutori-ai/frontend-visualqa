@@ -24,10 +24,11 @@ n1 is a pixels-to-actions model trained with RL on live websites. Two capabiliti
 
 ### Quick install (recommended)
 
-1. Log in to [Yutori](https://yutori.com) (provides the n1 vision model):
+1. Install the CLI and log in to [Yutori](https://yutori.com) (provides the n1 vision model):
 
     ```bash
-    uvx yutori auth login
+    pip install yutori
+    yutori auth login
     ```
 
     This opens your browser and saves your API key to `~/.yutori/config.json`.

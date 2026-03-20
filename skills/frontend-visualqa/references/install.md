@@ -3,7 +3,7 @@
 ## Requirements
 
 - A running local frontend
-- Yutori API key — run `uvx yutori auth login` or set `YUTORI_API_KEY`
+- Yutori API key — run `pip install yutori && yutori auth login`, or set `YUTORI_API_KEY`
 - Playwright Chromium installed once
 
 ## Quick Install
@@ -11,7 +11,8 @@
 Authenticate with Yutori:
 
 ```bash
-uvx yutori auth login
+pip install yutori
+yutori auth login
 ```
 
 MCP server (works with all clients):
