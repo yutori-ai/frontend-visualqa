@@ -48,6 +48,15 @@ A Yutori API key — set `YUTORI_API_KEY` or save it to `~/.yutori/config.json`.
 
 3. Restart the agent client.
 
+   <details>
+   <summary>To list or remove skills later:</summary>
+
+   ```bash
+   npx skills ls -g
+   npx skills remove -g frontend-visualqa
+   ```
+   </details>
+
 ### Manual per-client setup
 
 <details>
@@ -103,24 +112,6 @@ Register the MCP server with your client using `uvx --from /absolute/path/to/fro
 </details>
 
 ### Uninstall
-
-<details>
-<summary><strong>Quick install path</strong></summary>
-
-Remove the MCP server from your client (example for Claude Code):
-
-```bash
-claude mcp remove frontend-visualqa -s user   # if installed at user scope
-claude mcp remove frontend-visualqa -s local   # if installed at project scope
-```
-
-Remove skills:
-
-```bash
-npx skills remove -g frontend-visualqa
-```
-
-</details>
 
 <details>
 <summary><strong>Claude Code plugin</strong></summary>
