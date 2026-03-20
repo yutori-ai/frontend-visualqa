@@ -24,14 +24,14 @@ n1 is a pixels-to-actions model trained with RL on live websites. Two capabiliti
 
 ### Quick install (recommended)
 
-1. Install and log in:
+1. Log in to [Yutori](https://yutori.com) (provides the n1 vision model):
 
     ```bash
     pip install frontend-visualqa
     yutori auth login
     ```
 
-    The second command opens your browser to save your [Yutori](https://yutori.com) API key to `~/.yutori/config.json`.
+    This installs the `frontend-visualqa` CLI (and the `yutori` CLI as a dependency), then opens your browser to save your API key to `~/.yutori/config.json`.
 
     <details>
     <summary>Or, manually add your API key</summary>
@@ -45,10 +45,10 @@ n1 is a pixels-to-actions model trained with RL on live websites. Two capabiliti
     ```
     </details>
 
-2. Install the MCP server using [add-mcp](https://github.com/nicobailon/add-mcp) (works with all clients):
+2. Register the MCP server using [add-mcp](https://github.com/nicobailon/add-mcp) (works with all clients):
 
     ```bash
-    npx add-mcp -n frontend-visualqa "uvx frontend-visualqa serve"
+    npx add-mcp -n frontend-visualqa "frontend-visualqa serve"
     ```
 
     Pick the clients you want to configure.
@@ -91,7 +91,7 @@ n1 is a pixels-to-actions model trained with RL on live websites. Two capabiliti
 **MCP only** (if you prefer not to use the plugin):
 
 ```bash
-claude mcp add --scope user frontend-visualqa -- uvx frontend-visualqa serve
+claude mcp add --scope user frontend-visualqa -- frontend-visualqa serve
 ```
 
 </details>
@@ -100,7 +100,7 @@ claude mcp add --scope user frontend-visualqa -- uvx frontend-visualqa serve
 <summary><strong>Codex</strong></summary>
 
 ```bash
-codex mcp add frontend-visualqa -- uvx frontend-visualqa serve
+codex mcp add frontend-visualqa -- frontend-visualqa serve
 ```
 
 Skills can be installed via `npx skills add` above, or with `$skill-installer` inside Codex:
@@ -114,7 +114,7 @@ $skill-installer install https://github.com/yutori-ai/frontend-visualqa/tree/mai
 <details>
 <summary><strong>Cursor / VS Code / other MCP hosts</strong></summary>
 
-Use the checked-in `.mcp.json`, or point your client at `uvx frontend-visualqa serve`.
+Use the checked-in `.mcp.json`, or point your client at `frontend-visualqa serve`.
 
 </details>
 
