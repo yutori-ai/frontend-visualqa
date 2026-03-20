@@ -102,6 +102,48 @@ Register the MCP server with your client using `uvx --from /absolute/path/to/fro
 
 </details>
 
+### Uninstall
+
+<details>
+<summary><strong>Quick install path</strong></summary>
+
+Remove the MCP server from your client (example for Claude Code):
+
+```bash
+claude mcp remove frontend-visualqa -s user   # if installed at user scope
+claude mcp remove frontend-visualqa -s local   # if installed at project scope
+```
+
+Remove skills:
+
+```bash
+npx skills remove -g frontend-visualqa
+```
+
+</details>
+
+<details>
+<summary><strong>Claude Code plugin</strong></summary>
+
+```
+/plugin uninstall frontend-visualqa@frontend-visualqa-plugins -s user
+```
+
+</details>
+
+<details>
+<summary><strong>Codex</strong></summary>
+
+Remove the MCP server entry from `~/.codex/config.toml`, then delete the skill directory:
+
+```bash
+rm -rf ~/.agents/skills/frontend-visualqa
+```
+
+Restart Codex after removing.
+
+</details>
+
 ## Quick start
 
 The repo includes a test page you can use immediately — no dev server required:
