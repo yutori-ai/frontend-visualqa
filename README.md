@@ -24,14 +24,17 @@ n1 is a pixels-to-actions model trained with RL on live websites. Two capabiliti
 
 ### Quick install (recommended)
 
-1. Log in to [Yutori](https://yutori.com) (provides the n1 vision model):
+1. Install and authenticate:
 
     ```bash
-    uv tool install frontend-visualqa --with-executables-from yutori
+    uv tool install frontend-visualqa \
+      --with-executables-from yutori \
+      --with-executables-from playwright
+    playwright install chromium
     yutori auth login
     ```
 
-    The first command installs both the `frontend-visualqa` and `yutori` CLIs. The second opens your browser to save your API key to `~/.yutori/config.json`.
+    This installs the `frontend-visualqa`, `yutori`, and `playwright` CLIs, downloads the Chromium browser binary, and opens your browser to save your Yutori API key to `~/.yutori/config.json`.
 
     <details>
     <summary>Or, manually add your API key</summary>
@@ -66,14 +69,14 @@ n1 is a pixels-to-actions model trained with RL on live websites. Two capabiliti
 4. Restart the agent client.
 
    <details>
-   <summary>To list or remove later:</summary>
+   <summary>To uninstall later:</summary>
 
    ```bash
-   npx skills ls -g
+   uv tool uninstall frontend-visualqa
    npx skills remove -g frontend-visualqa
    ```
 
-   `add-mcp` has no remove command. Delete the `frontend-visualqa` entry from the `.mcp.json` it wrote to (project-level or `~/.mcp.json`).
+   `add-mcp` has no remove command. Delete the `frontend-visualqa` entry from your client's MCP config (e.g. `~/.mcp.json`).
    </details>
 
 ### Manual per-client setup

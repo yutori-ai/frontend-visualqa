@@ -3,15 +3,16 @@
 ## Requirements
 
 - A running local frontend
-- Yutori API key — run `uv tool install frontend-visualqa --with-executables-from yutori && yutori auth login`, or set `YUTORI_API_KEY`
-- Playwright Chromium installed once
+- Yutori API key — run `yutori auth login` after install, or set `YUTORI_API_KEY`
+- Playwright Chromium — run `playwright install chromium` after install
 
 ## Quick Install
 
-Install and authenticate:
-
 ```bash
-uv tool install frontend-visualqa --with-executables-from yutori
+uv tool install frontend-visualqa \
+  --with-executables-from yutori \
+  --with-executables-from playwright
+playwright install chromium
 yutori auth login
 ```
 
