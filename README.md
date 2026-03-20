@@ -49,12 +49,14 @@ A Yutori API key — set `YUTORI_API_KEY` or save it to `~/.yutori/config.json`.
 3. Restart the agent client.
 
    <details>
-   <summary>To list or remove skills later:</summary>
+   <summary>To list or remove later:</summary>
 
    ```bash
    npx skills ls -g
    npx skills remove -g frontend-visualqa
    ```
+
+   `add-mcp` has no remove command. Delete the `frontend-visualqa` entry from the `.mcp.json` it wrote to (project-level or `~/.mcp.json`).
    </details>
 
 ### Manual per-client setup
