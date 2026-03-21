@@ -207,7 +207,7 @@ async def test_mcp_server_verify_visual_claims_delegates_to_runner(monkeypatch: 
     assert forwarded.claims == payload["claims"]
     assert forwarded.visualize is True
     assert result["overall_status"] == "completed"
-    assert result["runner_version"] == "0.3.0"
+    assert result["runner_version"] == "0.3.1"
     claim_result = result["results"][0]
     _assert_claim_result_payload_shape(claim_result)
     assert claim_result["finding"] == "The modal is visible."

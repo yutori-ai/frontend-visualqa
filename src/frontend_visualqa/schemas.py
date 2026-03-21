@@ -145,7 +145,7 @@ class RunResult(FrontendVisualQABaseModel):
     """Structured output for a verification run."""
 
     overall_status: OverallStatus
-    runner_version: str = "0.3.0"
+    runner_version: str = "0.3.1"
     started_at: float | None = None
     completed_at: float | None = None
     session_key: str
