@@ -272,8 +272,11 @@ class OverlayController:
 
                 const box = document.createElement('div');
                 box.style.cssText = 'width:56px;height:56px;border:2.5px solid {YUTORI_GREEN};border-radius:12px;display:flex;align-items:center;justify-content:center;box-shadow:0 0 20px rgba(29,205,152,0.4);';
-                box.innerHTML = '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="{YUTORI_GREEN}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="transform:rotate({rotation}deg);animation:n1schev 0.7s ease-in-out infinite"><polyline points="9 18 15 12 9 6"></polyline></svg>';
+                const icon = document.createElement('div');
+                icon.style.cssText = 'display:flex;align-items:center;justify-content:center;transform:rotate({rotation}deg);';
+                icon.innerHTML = '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="{YUTORI_GREEN}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="animation:n1schev 0.7s ease-in-out infinite"><polyline points="9 18 15 12 9 6"></polyline></svg>';
 
+                box.appendChild(icon);
                 container.appendChild(box);
                 root.appendChild(container);
                 setTimeout(() => {{

@@ -107,8 +107,12 @@ class TestOverlayShowAction:
         assert any("const numClicks = 2" in script for script in scripts)
         assert any("left:100px" in script and "top:200px" in script for script in scripts)
 
+    @pytest.mark.parametrize(
+        ("direction", "rotation"),
+        [("up", -90), ("down", 90), ("left", 180), ("right", 0)],
+    )
     @pytest.mark.asyncio
-    async def test_scroll_effect_updates_status(self) -> None:
+    async def test_scroll_effect_updates_status(self, direction: str, rotation: int) -> None:
         from frontend_visualqa.overlay import OverlayController
 
         page = _make_mock_page()
@@ -117,12 +121,19 @@ class TestOverlayShowAction:
         await controller.claim_started()
         page.evaluate.reset_mock()
 
-        await controller.show_action("scroll", x=640, y=400, direction="down")
+        await controller.show_action("scroll", x=640, y=400, direction=direction)
 
         assert controller._current_status == "Scrolling"
         scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
         assert any("__n1ScrollStyle" in script for script in scripts)
-        assert any("polyline points" in script and "left:640px" in script and "top:400px" in script for script in scripts)
+        assert any(
+            "polyline points" in script
+            and "left:640px" in script
+            and "top:400px" in script
+            and f"transform:rotate({rotation}deg)" in script
+            and 'style="animation:n1schev 0.7s ease-in-out infinite"' in script
+            for script in scripts
+        )
 
     @pytest.mark.asyncio
     async def test_type_effect_uses_focused_element_center_when_available(self) -> None:
