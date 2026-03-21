@@ -310,17 +310,7 @@ frontend-visualqa verify http://localhost:3000/dashboard \
 
 ## Action visualization
 
-When running in headed mode (`--headed`), the browser shows real-time visual effects illustrating what n1 is doing. This matches the visual language of the [Yutori n1 browser extension](https://yutori.com).
-
-| Effect | Description |
-|--------|-------------|
-| Gradient border | Green breathing glow around the viewport edge while a claim is being verified |
-| Status chip | Compact pill in the top-right corner: "Analyzing", "Clicking", "Navigating", "Typing", etc. |
-| Click ripple | Green dot + expanding ring at the click coordinates |
-| Scroll indicator | Bordered box with animated directional chevron |
-| Type indicator | Floating "typing..." pill near the focused input |
-
-Visualization is on by default in headed mode. To disable it:
+When running in headed mode (`--headed`), the browser shows visual effects illustrating what n1 is doing (clicking, scrolling, typing). To disable it, use `--no-visualize`:
 
 ```bash
 frontend-visualqa verify http://localhost:3000 \
