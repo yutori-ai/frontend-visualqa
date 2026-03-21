@@ -7,7 +7,7 @@ Gives coding agents eyes for frontend work — visual QA and verification powere
 - Verifies explicit visual claims against a running localhost frontend
 - Captures screenshots for quick visual inspection
 - Reuses browser sessions across MCP tool calls for multi-step debugging
-- Works as a CLI (`frontend-visualqa verify`) or MCP server (`frontend-visualqa serve`)
+- Works as a CLI (`frontend-visualqa verify`), MCP server (`frontend-visualqa serve`), or agent skill (`/frontend-visualqa`)
 
 Does not start your dev server. If the URL is unreachable, claims return `not_testable`.
 
