@@ -1,6 +1,6 @@
 # frontend-visualqa
 
-Visual QA for local frontends — gives coding agents a pixel-level verification loop powered by [Yutori n1](https://yutori.com/api).
+Gives coding agents eyes for frontend work — visual QA and verification powered by [Yutori n1](https://yutori.com/api).
 
 ## What it does
 

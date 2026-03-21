@@ -20,7 +20,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     parser = argparse.ArgumentParser(
         prog="frontend-visualqa",
-        description="Visual QA for local frontends using the shared frontend-visualqa runner.",
+        description="Gives coding agents eyes for frontend work — visual QA and verification powered by Yutori n1.",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 

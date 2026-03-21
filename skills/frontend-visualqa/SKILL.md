@@ -1,9 +1,9 @@
 ---
 name: frontend-visualqa
-description: Verify a running local frontend with explicit visual claims, viewports, and screenshot evidence using the frontend-visualqa MCP server or CLI.
+description: Verify a running frontend with explicit visual claims, viewports, and screenshot evidence using the frontend-visualqa MCP server or CLI.
 argument-hint: "[url] [claims or QA task]"
 metadata:
-  short-description: Claim-based visual QA for local frontend work
+  short-description: Gives coding agents eyes for frontend work — visual QA and verification powered by Yutori n1
 ---
 
 # Frontend Visual QA
