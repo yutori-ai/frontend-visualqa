@@ -30,29 +30,42 @@ except ModuleNotFoundError:
         max_bytes: int,
         keep_recent: int,
     ) -> tuple[int, int]:
-        """Trim oldest image payloads when the SDK helper is unavailable."""
+        """Trim oldest image payloads when the SDK helper is unavailable.
 
-        def collect_image_slots() -> list[tuple[list[dict[str, Any]], int]]:
-            slots: list[tuple[list[dict[str, Any]], int]] = []
+        ``keep_recent`` protects the last N *messages* that contain images,
+        matching the SDK's semantics (one screenshot per message in typical
+        verification flows).
+        """
+
+        def collect_removable_slots() -> list[tuple[list[dict[str, Any]], int]]:
+            """Return image slots eligible for removal (oldest first).
+
+            Groups by message so ``keep_recent`` protects whole messages,
+            not individual image items within a message.
+            """
+            per_message: list[list[tuple[list[dict[str, Any]], int]]] = []
             for message in messages:
                 content = message.get("content")
                 if not isinstance(content, list):
                     continue
+                msg_slots: list[tuple[list[dict[str, Any]], int]] = []
                 for index, item in enumerate(content):
-                    if not isinstance(item, dict):
-                        continue
-                    if item.get("type") in {"image_url", "input_image"}:
-                        slots.append((content, index))
-            return slots
+                    if isinstance(item, dict) and item.get("type") in {"image_url", "input_image"}:
+                        msg_slots.append((content, index))
+                if msg_slots:
+                    per_message.append(msg_slots)
+            # Protect the last keep_recent *messages*
+            removable_messages = per_message[:-keep_recent] if keep_recent > 0 else per_message
+            # Flatten: return individual slots from removable messages, oldest first
+            return [slot for group in removable_messages for slot in group]
 
         removed = 0
         size_bytes = estimate_messages_size_bytes(messages)
         while size_bytes > max_bytes:
-            image_slots = collect_image_slots()
-            removable_slots = image_slots[:-keep_recent] if keep_recent > 0 else image_slots
-            if not removable_slots:
+            removable = collect_removable_slots()
+            if not removable:
                 break
-            content, index = removable_slots[0]
+            content, index = removable[0]
             content.pop(index)
             removed += 1
             size_bytes = estimate_messages_size_bytes(messages)
