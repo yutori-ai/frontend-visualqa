@@ -20,7 +20,7 @@ from frontend_visualqa.prompts import (
     build_force_stop_prompt,
     build_verification_task,
 )
-from frontend_visualqa.schemas import ClaimHistory, ClaimPage, ClaimProof, ClaimResult, ClaimStatus
+from frontend_visualqa.schemas import ClaimPage, ClaimProof, ClaimResult, ClaimStatus, ClaimTrace
 
 if TYPE_CHECKING:
     from frontend_visualqa.n1_client import N1Client
@@ -448,12 +448,12 @@ class ClaimVerifier:
             finding=finding,
             proof=proof,
             page=ClaimPage(url=session.page.url or url, viewport=session.viewport),
-            history=ClaimHistory(
+            trace=ClaimTrace(
                 steps_taken=step_count,
                 wrong_page_recovered=self._wrong_page_recovered(url_history, url, action_trace),
                 screenshots=screenshot_paths,
                 actions=action_trace,
-                trace_path=trace_path,
+                path=trace_path,
             ),
         )
 

@@ -55,8 +55,8 @@ class CTRFReporter:
             summary_counts[ctrf_status] += 1
 
             extra: dict[str, Any] = {"claimResult": claim_result.model_dump(mode="json")}
-            history = claim_result.history
-            screenshots = history.screenshots
+            trace = claim_result.trace
+            screenshots = trace.screenshots
             attachments = [
                 {
                     "name": Path(screenshot_path).name,
@@ -65,7 +65,7 @@ class CTRFReporter:
                 }
                 for screenshot_path in screenshots
             ]
-            trace_path = history.trace_path
+            trace_path = trace.path
             if trace_path:
                 attachments.append({
                     "name": Path(trace_path).name,

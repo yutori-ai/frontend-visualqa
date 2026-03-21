@@ -274,7 +274,7 @@ def _result(name: str, status: str, viewport: ViewportConfig) -> ClaimResult:
             "text": f"{name}: {status}",
         },
         page={"url": "http://fixture.local/page", "viewport": viewport},
-        history={
+        trace={
             "steps_taken": 1,
             "wrong_page_recovered": False,
             "screenshots": [
@@ -282,7 +282,7 @@ def _result(name: str, status: str, viewport: ViewportConfig) -> ClaimResult:
                 "artifacts/run-001/claim-01/step-01.webp",
             ],
             "actions": ["extract_elements()"],
-            "trace_path": "artifacts/run-001/claim-01/action_trace.json",
+            "path": "artifacts/run-001/claim-01/action_trace.json",
         },
     )
 
@@ -321,7 +321,7 @@ async def test_runner_run_aggregates_claim_results_and_resets_between_claims(
     assert result.summary
     assert result.results[0].finding == "Claim one: passed"
     assert result.results[0].page.url == "http://fixture.local/page"
-    assert result.results[0].history.steps_taken == 1
+    assert result.results[0].trace.steps_taken == 1
     assert result.results[0].proof.screenshot.endswith("step-01.webp")
     assert len([call for call in browser.goto_calls if call == ("qa-session", "http://fixture.local/page")]) >= 2
     assert verifier.calls
@@ -708,12 +708,12 @@ async def test_runner_uses_partial_claim_result_when_timeout_interrupts_verifier
             "text": None,
         },
         page={"url": "http://fixture.local/page", "viewport": viewport},
-        history={
+        trace={
             "steps_taken": 1,
             "wrong_page_recovered": False,
             "screenshots": ["artifacts/run-001/claim-01/step-00-initial.webp"],
             "actions": ["scroll(direction='down', amount=300)"],
-            "trace_path": "artifacts/run-001/claim-01/action_trace.json",
+            "path": "artifacts/run-001/claim-01/action_trace.json",
         },
     )
     verifier = RunTimeoutClaimVerifier(partial_result=partial_result)
@@ -740,8 +740,8 @@ async def test_runner_uses_partial_claim_result_when_timeout_interrupts_verifier
     assert [item.status for item in result.results] == ["inconclusive"]
     assert result.results[0].proof is not None
     assert result.results[0].proof.screenshot.endswith("step-00-initial.webp")
-    assert result.results[0].history.steps_taken == 1
-    assert result.results[0].history.actions == ["scroll(direction='down', amount=300)"]
+    assert result.results[0].trace.steps_taken == 1
+    assert result.results[0].trace.actions == ["scroll(direction='down', amount=300)"]
 
 
 @pytest.mark.asyncio
@@ -762,7 +762,7 @@ async def test_runner_uses_partial_claim_result_when_verifier_crashes(
             "text": "Visible text included 'Dashboard'.",
         },
         page={"url": "http://fixture.local/page", "viewport": viewport},
-        history={
+        trace={
             "steps_taken": 1,
             "wrong_page_recovered": False,
             "screenshots": [
@@ -770,7 +770,7 @@ async def test_runner_uses_partial_claim_result_when_verifier_crashes(
                 "artifacts/run-001/claim-01/step-01.webp",
             ],
             "actions": ["extract_elements()"],
-            "trace_path": "artifacts/run-001/claim-01/action_trace.json",
+            "path": "artifacts/run-001/claim-01/action_trace.json",
         },
     )
     verifier = PartialExplodingClaimVerifier(partial_result)
@@ -796,7 +796,7 @@ async def test_runner_uses_partial_claim_result_when_verifier_crashes(
     assert [item.status for item in result.results] == ["inconclusive"]
     assert result.results[0].proof is not None
     assert result.results[0].proof.after_action == "extract_elements()"
-    assert result.results[0].history.trace_path == "artifacts/run-001/claim-01/action_trace.json"
+    assert result.results[0].trace.path == "artifacts/run-001/claim-01/action_trace.json"
 
 
 @pytest.mark.asyncio
@@ -850,7 +850,7 @@ async def test_runner_preserves_partial_claim_result_when_run_timeout_interrupts
             "text": "Visible text included 'Dashboard'.",
         },
         page={"url": "http://fixture.local/page", "viewport": viewport},
-        history={
+        trace={
             "steps_taken": 1,
             "wrong_page_recovered": False,
             "screenshots": [
@@ -858,7 +858,7 @@ async def test_runner_preserves_partial_claim_result_when_run_timeout_interrupts
                 "artifacts/run-001/claim-01/step-01.webp",
             ],
             "actions": ["extract_elements()"],
-            "trace_path": "artifacts/run-001/claim-01/action_trace.json",
+            "path": "artifacts/run-001/claim-01/action_trace.json",
         },
     )
     verifier = RunTimeoutClaimVerifier(partial_result=partial_result)
@@ -885,9 +885,9 @@ async def test_runner_preserves_partial_claim_result_when_run_timeout_interrupts
     assert [item.status for item in result.results] == ["inconclusive", "inconclusive"]
     assert result.results[0].proof is not None
     assert result.results[0].proof.after_action == "extract_elements()"
-    assert result.results[0].history.steps_taken == 1
+    assert result.results[0].trace.steps_taken == 1
     assert result.results[1].proof is None
-    assert result.results[1].history.steps_taken == 0
+    assert result.results[1].trace.steps_taken == 0
 
 
 def test_build_not_testable_run_uses_aggregate_summary() -> None:
@@ -1166,12 +1166,12 @@ async def test_runner_writes_both_native_and_ctrf_reports(
     assert native_path.exists()
     native_data = json.loads(native_path.read_text())
     first_result = native_data["results"][0]
-    assert set(first_result) == {"claim", "status", "finding", "proof", "page", "history"}
+    assert set(first_result) == {"claim", "status", "finding", "proof", "page", "trace"}
     assert set(first_result["proof"]) == {"screenshot", "step", "after_action", "text"}
     assert set(first_result["page"]) == {"url", "viewport"}
-    assert set(first_result["history"]) == {"steps_taken", "wrong_page_recovered", "screenshots", "actions", "trace_path"}
+    assert set(first_result["trace"]) == {"steps_taken", "wrong_page_recovered", "screenshots", "actions", "path"}
     assert first_result["finding"] == "Claim one: passed"
-    assert first_result["history"]["wrong_page_recovered"] is False
+    assert first_result["trace"]["wrong_page_recovered"] is False
     # CTRF report
     ctrf_path = run_dir / "ctrf-report.json"
     assert ctrf_path.exists()

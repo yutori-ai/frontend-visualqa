@@ -60,14 +60,14 @@ class ClaimPage(FrontendVisualQABaseModel):
     viewport: ViewportConfig
 
 
-class ClaimHistory(FrontendVisualQABaseModel):
-    """Complete claim execution history kept for traceability."""
+class ClaimTrace(FrontendVisualQABaseModel):
+    """Execution trace: actions taken and screenshots captured while verifying a claim."""
 
     steps_taken: int = Field(default=0, ge=0)
     wrong_page_recovered: bool = False
     screenshots: list[str] = Field(default_factory=list)
     actions: list[str] = Field(default_factory=list)
-    trace_path: str | None = None
+    path: str | None = None
 
 
 class BrowserConfig(FrontendVisualQABaseModel):
@@ -137,7 +137,7 @@ class ClaimResult(FrontendVisualQABaseModel):
     finding: str
     proof: ClaimProof | None = None
     page: ClaimPage
-    history: ClaimHistory = Field(default_factory=ClaimHistory)
+    trace: ClaimTrace = Field(default_factory=ClaimTrace)
 
 
 class RunResult(FrontendVisualQABaseModel):

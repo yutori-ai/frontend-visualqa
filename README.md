@@ -17,7 +17,7 @@ Playwright MCP can click, type, and assert against the DOM — but it cannot *se
 
 n1 is a pixels-to-actions model trained with RL on live websites. Two capabilities matter here:
 
-- **Self-correcting navigation** — Point the agent at `/tasks` instead of `/tasks/123` and n1 recognizes the wrong page, clicks through to the right one, and reports `history.wrong_page_recovered: true`. Playwright MCP would run assertions on the wrong page and silently pass — garbage in, garbage out.
+- **Self-correcting navigation** — Point the agent at `/tasks` instead of `/tasks/123` and n1 recognizes the wrong page, clicks through to the right one, and reports `trace.wrong_page_recovered: true`. Playwright MCP would run assertions on the wrong page and silently pass — garbage in, garbage out.
 
   <table border="0" cellspacing="0" cellpadding="8"><tr>
     <td align="center" width="47%"><img src="docs/images/nav-step0-wrong-page.png" alt="Dashboard — wrong page, overlay active" width="100%"><br><em>n1 analyzing the wrong page</em></td>
@@ -376,7 +376,7 @@ Each claim result contains:
 - **`finding`** — the verdict explanation (what was observed)
 - **`proof`** — the decisive screenshot, step number, and any extracted text
 - **`page`** — URL and viewport where the claim was evaluated
-- **`history`** — full screenshot and action trail for traceability
+- **`trace`** — the execution trace: actions taken and screenshots captured
 
 <details>
 <summary><strong>Example claim result</strong></summary>
@@ -396,7 +396,7 @@ Each claim result contains:
     "url": "http://localhost:8000/comprehensive_test.html",
     "viewport": { "width": 1280, "height": 800, "device_scale_factor": 1.0 }
   },
-  "history": { "steps_taken": 4, "screenshots": ["..."], "actions": ["..."] }
+  "trace": { "steps_taken": 4, "screenshots": ["..."], "actions": ["..."] }
 }
 ```
 

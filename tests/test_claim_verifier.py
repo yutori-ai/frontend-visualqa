@@ -296,7 +296,7 @@ async def test_claim_verifier_returns_structured_verdict_from_record_claim_resul
     assert _field(result, "status") == "passed"
     assert "red button" in _field(result, "finding")
     assert _field(result, "page").url == "http://fixture.local/page"
-    assert _field(result, "history").steps_taken == 0
+    assert _field(result, "trace").steps_taken == 0
     assert _field(result, "proof").screenshot.endswith("step-00-initial.webp")
     assert _field(result, "proof").step == 0
     assert _field(result, "proof").text is None
@@ -355,9 +355,9 @@ async def test_claim_verifier_executes_actions_before_final_verdict(tmp_path: Pa
     assert action_executor.calls == [("goto_url", {"url": "http://fixture.local/modal"})]
     assert _field(result, "status") == "passed"
     assert _field(result, "page").url == "http://fixture.local/modal"
-    assert _field(result, "history").steps_taken >= 1
-    assert _field(result, "history").wrong_page_recovered is True
-    assert _field(result, "proof").step == _field(result, "history").steps_taken
+    assert _field(result, "trace").steps_taken >= 1
+    assert _field(result, "trace").wrong_page_recovered is True
+    assert _field(result, "proof").step == _field(result, "trace").steps_taken
     assert _field(result, "proof").after_action == "goto_url({'url': 'http://fixture.local/modal'})"
     assert _field(result, "proof").text is None
 
@@ -1105,9 +1105,9 @@ async def test_claim_verifier_normalizes_post_action_screenshot_failures_to_not_
     assert _field(_field(result, "proof"), "screenshot").endswith("step-00-initial.webp")
     assert _field(_field(result, "proof"), "step") == 0
     assert _field(_field(result, "proof"), "after_action") is None
-    assert _field(_field(result, "history"), "steps_taken") == 1
-    assert _field(_field(result, "history"), "wrong_page_recovered") is True
-    assert _field(_field(result, "history"), "actions") == ["goto_url({'url': 'http://fixture.local/modal'})"]
+    assert _field(_field(result, "trace"), "steps_taken") == 1
+    assert _field(_field(result, "trace"), "wrong_page_recovered") is True
+    assert _field(_field(result, "trace"), "actions") == ["goto_url({'url': 'http://fixture.local/modal'})"]
 
 
 @pytest.mark.asyncio
@@ -1136,8 +1136,8 @@ async def test_claim_verifier_preserves_partial_result_on_cancellation(tmp_path:
     assert _field(partial, "status") == "inconclusive"
     assert _field(_field(partial, "proof"), "screenshot").endswith("step-00-initial.webp")
     assert _field(_field(partial, "proof"), "step") == 0
-    assert _field(_field(partial, "history"), "steps_taken") == 0
-    assert _field(_field(partial, "history"), "screenshots")[0].endswith("step-00-initial.webp")
+    assert _field(_field(partial, "trace"), "steps_taken") == 0
+    assert _field(_field(partial, "trace"), "screenshots")[0].endswith("step-00-initial.webp")
 
 
 @pytest.mark.asyncio

@@ -30,7 +30,7 @@ def _sample_claim_result(*, url: str, viewport: ViewportConfig) -> ClaimResult:
             "text": None,
         },
         page={"url": url, "viewport": viewport},
-        history={
+        trace={
             "steps_taken": 1,
             "wrong_page_recovered": False,
             "screenshots": [
@@ -38,7 +38,7 @@ def _sample_claim_result(*, url: str, viewport: ViewportConfig) -> ClaimResult:
                 "artifacts/run-fake/claim-01/step-01.webp",
             ],
             "actions": ["left_click([419, 348])"],
-            "trace_path": "artifacts/run-fake/claim-01/action_trace.json",
+            "path": "artifacts/run-fake/claim-01/action_trace.json",
         },
     )
 
@@ -126,7 +126,7 @@ async def _call_tool(module: Any, tool_name: str, arguments: dict[str, Any]) -> 
 
 
 def _assert_claim_result_payload_shape(result: dict[str, Any]) -> None:
-    assert set(result) == {"claim", "status", "finding", "proof", "page", "history"}
+    assert set(result) == {"claim", "status", "finding", "proof", "page", "trace"}
 
     proof = result["proof"]
     assert proof is not None
@@ -136,8 +136,8 @@ def _assert_claim_result_payload_shape(result: dict[str, Any]) -> None:
     assert set(page) == {"url", "viewport"}
     assert set(page["viewport"]) == {"width", "height", "device_scale_factor"}
 
-    history = result["history"]
-    assert set(history) == {"steps_taken", "wrong_page_recovered", "screenshots", "actions", "trace_path"}
+    trace = result["trace"]
+    assert set(trace) == {"steps_taken", "wrong_page_recovered", "screenshots", "actions", "path"}
 
 
 def _install_fake_runner(module: Any, fake_runner: FakeRunner, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -212,7 +212,7 @@ async def test_mcp_server_verify_visual_claims_delegates_to_runner(monkeypatch: 
     assert claim_result["finding"] == "The modal is visible."
     assert claim_result["proof"]["after_action"] == "left_click([419, 348])"
     assert claim_result["page"]["url"] == payload["url"]
-    assert claim_result["history"]["steps_taken"] == 1
+    assert claim_result["trace"]["steps_taken"] == 1
 
 
 @pytest.mark.asyncio

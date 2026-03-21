@@ -17,10 +17,10 @@ from frontend_visualqa.reporters import get_reporters
 from frontend_visualqa.schemas import (
     BrowserConfig,
     BrowserStatusResult,
-    ClaimHistory,
     ClaimPage,
     ClaimResult,
     ClaimStatus,
+    ClaimTrace,
     ManageBrowserInput,
     RunResult,
     ScreenshotResult,
@@ -478,7 +478,7 @@ class VisualQARunner:
                 finding=finding,
                 proof=None,
                 page=ClaimPage(url=request.url, viewport=request.viewport),
-                history=ClaimHistory(),
+                trace=ClaimTrace(),
             )
             for claim in request.claims
         ]
@@ -507,7 +507,7 @@ class VisualQARunner:
             finding=finding,
             proof=None,
             page=ClaimPage(url=final_url, viewport=viewport),
-            history=ClaimHistory(),
+            trace=ClaimTrace(),
         )
 
     def _consume_partial_claim_result(self, *, status: ClaimStatus, finding: str) -> ClaimResult | None:

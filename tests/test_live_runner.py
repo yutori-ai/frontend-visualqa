@@ -174,9 +174,9 @@ async def test_live_runner_executes_real_browser_flow_and_passes_modal_claim(
     assert result.overall_status == "completed"
     assert [item.status for item in result.results] == ["passed"]
     assert "Visible dialog title matched" in result.results[0].finding
-    assert result.results[0].history.actions == ["left_click([419, 348])"]
-    assert result.results[0].history.steps_taken == 1
-    assert all(Path(path).exists() for path in result.results[0].history.screenshots)
+    assert result.results[0].trace.actions == ["left_click([419, 348])"]
+    assert result.results[0].trace.steps_taken == 1
+    assert all(Path(path).exists() for path in result.results[0].trace.screenshots)
     assert result.results[0].proof is not None
     assert result.results[0].proof.step == 1
     assert result.results[0].proof.text is None
@@ -375,9 +375,9 @@ async def test_live_runner_headed_overlay_hides_restores_and_cleans_up(
     assert result.overall_status == "completed"
     assert [item.status for item in result.results] == ["passed"]
     assert "Visible dialog title matched" in result.results[0].finding
-    assert result.results[0].history.actions == ["left_click([419, 348])"]
-    assert result.results[0].history.steps_taken == 1
-    assert all(Path(path).exists() for path in result.results[0].history.screenshots)
+    assert result.results[0].trace.actions == ["left_click([419, 348])"]
+    assert result.results[0].trace.steps_taken == 1
+    assert all(Path(path).exists() for path in result.results[0].trace.screenshots)
 
     before_samples = [sample for sample in lifecycle_samples if sample["phase"] == "before_screenshot"]
     after_samples = [sample for sample in lifecycle_samples if sample["phase"] == "after_screenshot"]

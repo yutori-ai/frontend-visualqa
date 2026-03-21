@@ -21,18 +21,18 @@ def _sample_claim_result(*, url: str, viewport: ViewportConfig) -> ClaimResult:
             "text": None,
         },
         page={"url": url, "viewport": viewport},
-        history={
+        trace={
             "steps_taken": 0,
             "wrong_page_recovered": False,
             "screenshots": ["artifacts/run-fake/claim-01/step-00-initial.webp"],
             "actions": [],
-            "trace_path": None,
+            "path": None,
         },
     )
 
 
 def _assert_claim_result_payload_shape(result: dict[str, Any]) -> None:
-    assert set(result) == {"claim", "status", "finding", "proof", "page", "history"}
+    assert set(result) == {"claim", "status", "finding", "proof", "page", "trace"}
 
     proof = result["proof"]
     assert proof is not None
@@ -42,8 +42,8 @@ def _assert_claim_result_payload_shape(result: dict[str, Any]) -> None:
     assert set(page) == {"url", "viewport"}
     assert set(page["viewport"]) == {"width", "height", "device_scale_factor"}
 
-    history = result["history"]
-    assert set(history) == {"steps_taken", "wrong_page_recovered", "screenshots", "actions", "trace_path"}
+    trace = result["trace"]
+    assert set(trace) == {"steps_taken", "wrong_page_recovered", "screenshots", "actions", "path"}
 
 
 class FakeRunner:
@@ -192,7 +192,7 @@ def test_handle_verify_closes_runner_and_forwards_browser_config(monkeypatch: An
     assert claim_result["finding"] == "The modal title reads Edit Task."
     assert claim_result["proof"]["step"] == 0
     assert claim_result["page"]["url"] == "http://localhost:3000/tasks/123"
-    assert claim_result["history"]["screenshots"] == ["artifacts/run-fake/claim-01/step-00-initial.webp"]
+    assert claim_result["trace"]["screenshots"] == ["artifacts/run-fake/claim-01/step-00-initial.webp"]
 
 
 def test_handle_screenshot_closes_runner_and_forwards_browser_config(monkeypatch: Any) -> None:

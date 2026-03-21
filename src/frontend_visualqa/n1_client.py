@@ -128,7 +128,7 @@ class N1Client:
 
         if removed:
             logger.info(
-                "Trimmed %s screenshot(s) from the claim history; request size is now %.2f MB",
+                "Trimmed %s screenshot(s) from the claim trace; request size is now %.2f MB",
                 removed,
                 trimmed_size / (1024 * 1024),
             )

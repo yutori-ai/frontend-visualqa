@@ -35,12 +35,12 @@ def _sample_run_result(artifacts_dir: str) -> RunResult:
                     "text": "Visible heading matched 'Dashboard'.",
                 },
                 page={"url": "http://localhost:3000/dashboard", "viewport": viewport},
-                history={
+                trace={
                     "steps_taken": 0,
                     "wrong_page_recovered": False,
                     "screenshots": ["artifacts/run-001/claim-01/step-00-initial.webp"],
                     "actions": [],
-                    "trace_path": None,
+                    "path": None,
                 },
             ),
             ClaimResult(
@@ -54,7 +54,7 @@ def _sample_run_result(artifacts_dir: str) -> RunResult:
                     "text": "Visible text included '65%'.",
                 },
                 page={"url": "http://localhost:3000/dashboard", "viewport": viewport},
-                history={
+                trace={
                     "steps_taken": 1,
                     "wrong_page_recovered": False,
                     "screenshots": [
@@ -62,7 +62,7 @@ def _sample_run_result(artifacts_dir: str) -> RunResult:
                         "artifacts/run-001/claim-02/step-01.webp",
                     ],
                     "actions": ["extract_elements()"],
-                    "trace_path": "artifacts/run-001/claim-02/action_trace.json",
+                    "path": "artifacts/run-001/claim-02/action_trace.json",
                 },
             ),
         ],
@@ -72,7 +72,7 @@ def _sample_run_result(artifacts_dir: str) -> RunResult:
 
 
 def _assert_claim_result_payload_shape(result: dict[str, object]) -> None:
-    assert set(result) == {"claim", "status", "finding", "proof", "page", "history"}
+    assert set(result) == {"claim", "status", "finding", "proof", "page", "trace"}
 
     proof = result["proof"]
     assert proof is not None
@@ -85,9 +85,9 @@ def _assert_claim_result_payload_shape(result: dict[str, object]) -> None:
     assert isinstance(viewport, dict)
     assert set(viewport) == {"width", "height", "device_scale_factor"}
 
-    history = result["history"]
-    assert isinstance(history, dict)
-    assert set(history) == {"steps_taken", "wrong_page_recovered", "screenshots", "actions", "trace_path"}
+    trace = result["trace"]
+    assert isinstance(trace, dict)
+    assert set(trace) == {"steps_taken", "wrong_page_recovered", "screenshots", "actions", "path"}
 
 
 def test_native_reporter_writes_run_result_json(tmp_path: Path) -> None:
@@ -108,8 +108,8 @@ def test_native_reporter_writes_run_result_json(tmp_path: Path) -> None:
     assert first_result["finding"] == "Visible heading matched 'Dashboard'."
     assert second_result["proof"]["text"] == "Visible text included '65%'."
     assert first_result["page"]["url"] == "http://localhost:3000/dashboard"
-    assert first_result["history"]["wrong_page_recovered"] is False
-    assert second_result["history"]["actions"] == ["extract_elements()"]
+    assert first_result["trace"]["wrong_page_recovered"] is False
+    assert second_result["trace"]["actions"] == ["extract_elements()"]
 
 
 def test_native_reporter_name() -> None:
@@ -210,12 +210,12 @@ def test_ctrf_reporter_maps_inconclusive_and_not_testable(tmp_path: Path) -> Non
                 finding="Could not determine.",
                 proof=None,
                 page={"url": "http://localhost:3000", "viewport": viewport},
-                history={
+                trace={
                     "steps_taken": 0,
                     "wrong_page_recovered": False,
                     "screenshots": [],
                     "actions": [],
-                    "trace_path": None,
+                    "path": None,
                 },
             ),
             ClaimResult(
@@ -224,12 +224,12 @@ def test_ctrf_reporter_maps_inconclusive_and_not_testable(tmp_path: Path) -> Non
                 finding="Server was down.",
                 proof=None,
                 page={"url": "http://localhost:3000", "viewport": viewport},
-                history={
+                trace={
                     "steps_taken": 0,
                     "wrong_page_recovered": False,
                     "screenshots": [],
                     "actions": [],
-                    "trace_path": None,
+                    "path": None,
                 },
             ),
         ],
@@ -254,10 +254,10 @@ def test_ctrf_reporter_includes_extra_fields(tmp_path: Path) -> None:
     t1 = data["results"]["tests"][1]
     extra = t1["extra"]
     assert extra["claimResult"]["page"]["url"] == "http://localhost:3000/dashboard"
-    assert extra["claimResult"]["history"]["wrong_page_recovered"] is False
-    assert extra["claimResult"]["history"]["steps_taken"] == 1
+    assert extra["claimResult"]["trace"]["wrong_page_recovered"] is False
+    assert extra["claimResult"]["trace"]["steps_taken"] == 1
     assert extra["claimResult"]["page"]["viewport"] == {"width": 1280, "height": 800, "device_scale_factor": 1.0}
-    assert extra["claimResult"]["history"]["actions"] == ["extract_elements()"]
+    assert extra["claimResult"]["trace"]["actions"] == ["extract_elements()"]
 
 
 def test_ctrf_reporter_includes_screenshots_as_attachments(tmp_path: Path) -> None:
