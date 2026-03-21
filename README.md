@@ -21,24 +21,22 @@ n1 is a pixels-to-actions model trained with RL on live websites. Two capabiliti
 
   <details>
   <summary>See screenshots</summary>
-
-  Started on the wrong page → navigated to the correct page
-
-  ![Dashboard — wrong page](docs/images/nav-step0-wrong-page.png)
-  ![Task #123 — correct page](docs/images/nav-step6-correct-page.png)
-
+  <p>n1 analyzing the wrong page → landed on the correct page</p>
+  <p>
+    <img src="docs/images/nav-step0-wrong-page.png" alt="Dashboard — wrong page, overlay active" width="49%">
+    <img src="docs/images/nav-step6-correct-page.png" alt="Task #123 — correct page" width="49%">
+  </p>
   </details>
 
 - **Rich visual evaluation** — On the task detail page for Task #123, after clicking "Mark Complete", n1 reported three changes: status badge "In Progress"→"Done", button label→"Completed", toast notification appeared. Playwright MCP would need three hand-written assertions.
 
   <details>
   <summary>See screenshots</summary>
-
-  Before → after clicking "Mark Complete"
-
-  ![Before — In Progress](docs/images/mark-complete-before.png)
-  ![After — Done + toast](docs/images/mark-complete-after.png)
-
+  <p>n1 analyzing the page before clicking → result after clicking "Mark Complete"</p>
+  <p>
+    <img src="docs/images/mark-complete-before.png" alt="Before — In Progress, overlay active" width="49%">
+    <img src="docs/images/mark-complete-after.png" alt="After — Done + toast" width="49%">
+  </p>
   </details>
 
 ## Install
