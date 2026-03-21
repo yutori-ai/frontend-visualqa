@@ -58,6 +58,13 @@ class ArtifactManager:
         path.write_text(json.dumps(action_trace, indent=2))
         return str(path)
 
+    def save_proof_text(self, run: RunArtifacts, claim_index: int, label: str, text: str) -> str:
+        """Persist extracted proof text and return its path."""
+
+        path = self.claim_dir(run, claim_index) / f"{label}-proof.txt"
+        path.write_text(text, encoding="utf-8")
+        return str(path)
+
     def save_json(self, run: RunArtifacts, relative_path: str, payload: dict) -> str:
         """Persist arbitrary JSON within the run directory."""
 

@@ -29,18 +29,19 @@ def _sample_run_result(artifacts_dir: str) -> RunResult:
                 status="passed",
                 finding="Visible heading matched 'Dashboard'.",
                 proof={
-                    "screenshot": "artifacts/run-001/claim-01/step-00-initial.webp",
+                    "screenshot_path": "artifacts/run-001/claim-01/step-00-initial.webp",
                     "step": 0,
                     "after_action": None,
                     "text": "Visible heading matched 'Dashboard'.",
+                    "text_path": "artifacts/run-001/claim-01/step-00-initial-proof.txt",
                 },
                 page={"url": "http://localhost:3000/dashboard", "viewport": viewport},
                 trace={
                     "steps_taken": 0,
                     "wrong_page_recovered": False,
-                    "screenshots": ["artifacts/run-001/claim-01/step-00-initial.webp"],
+                    "screenshot_paths": ["artifacts/run-001/claim-01/step-00-initial.webp"],
                     "actions": [],
-                    "path": None,
+                    "trace_path": None,
                 },
             ),
             ClaimResult(
@@ -48,21 +49,22 @@ def _sample_run_result(artifacts_dir: str) -> RunResult:
                 status="failed",
                 finding="Progress bar shows 65%, not 100%.",
                 proof={
-                    "screenshot": "artifacts/run-001/claim-02/step-01.webp",
+                    "screenshot_path": "artifacts/run-001/claim-02/step-01.webp",
                     "step": 1,
                     "after_action": "extract_elements()",
                     "text": "Visible text included '65%'.",
+                    "text_path": "artifacts/run-001/claim-02/step-01-proof.txt",
                 },
                 page={"url": "http://localhost:3000/dashboard", "viewport": viewport},
                 trace={
                     "steps_taken": 1,
                     "wrong_page_recovered": False,
-                    "screenshots": [
+                    "screenshot_paths": [
                         "artifacts/run-001/claim-02/step-00-initial.webp",
                         "artifacts/run-001/claim-02/step-01.webp",
                     ],
                     "actions": ["extract_elements()"],
-                    "path": "artifacts/run-001/claim-02/action_trace.json",
+                    "trace_path": "artifacts/run-001/claim-02/action_trace.json",
                 },
             ),
         ],
@@ -76,7 +78,7 @@ def _assert_claim_result_payload_shape(result: dict[str, object]) -> None:
 
     proof = result["proof"]
     assert proof is not None
-    assert set(proof) == {"screenshot", "step", "after_action", "text"}
+    assert set(proof) == {"screenshot_path", "step", "after_action", "text", "text_path"}
 
     page = result["page"]
     assert isinstance(page, dict)
@@ -87,7 +89,7 @@ def _assert_claim_result_payload_shape(result: dict[str, object]) -> None:
 
     trace = result["trace"]
     assert isinstance(trace, dict)
-    assert set(trace) == {"steps_taken", "wrong_page_recovered", "screenshots", "actions", "path"}
+    assert set(trace) == {"steps_taken", "wrong_page_recovered", "screenshot_paths", "actions", "trace_path"}
 
 
 def test_native_reporter_writes_run_result_json(tmp_path: Path) -> None:
@@ -107,6 +109,7 @@ def test_native_reporter_writes_run_result_json(tmp_path: Path) -> None:
     assert second_result["status"] == "failed"
     assert first_result["finding"] == "Visible heading matched 'Dashboard'."
     assert second_result["proof"]["text"] == "Visible text included '65%'."
+    assert second_result["proof"]["text_path"] == "artifacts/run-001/claim-02/step-01-proof.txt"
     assert first_result["page"]["url"] == "http://localhost:3000/dashboard"
     assert first_result["trace"]["wrong_page_recovered"] is False
     assert second_result["trace"]["actions"] == ["extract_elements()"]
@@ -213,9 +216,9 @@ def test_ctrf_reporter_maps_inconclusive_and_not_testable(tmp_path: Path) -> Non
                 trace={
                     "steps_taken": 0,
                     "wrong_page_recovered": False,
-                    "screenshots": [],
+                    "screenshot_paths": [],
                     "actions": [],
-                    "path": None,
+                    "trace_path": None,
                 },
             ),
             ClaimResult(
@@ -227,9 +230,9 @@ def test_ctrf_reporter_maps_inconclusive_and_not_testable(tmp_path: Path) -> Non
                 trace={
                     "steps_taken": 0,
                     "wrong_page_recovered": False,
-                    "screenshots": [],
+                    "screenshot_paths": [],
                     "actions": [],
-                    "path": None,
+                    "trace_path": None,
                 },
             ),
         ],
@@ -268,9 +271,11 @@ def test_ctrf_reporter_includes_screenshots_as_attachments(tmp_path: Path) -> No
     data = json.loads((tmp_path / "ctrf-report.json").read_text())
     t0 = data["results"]["tests"][0]
     assert "attachments" in t0
-    assert len(t0["attachments"]) == 1
+    assert len(t0["attachments"]) == 2
     assert t0["attachments"][0]["name"] == "step-00-initial.webp"
     assert t0["attachments"][0]["contentType"] == "image/webp"
+    assert t0["attachments"][1]["name"] == "step-00-initial-proof.txt"
+    assert t0["attachments"][1]["contentType"] == "text/plain"
 
 
 def test_ctrf_reporter_includes_trace_path_as_attachment(tmp_path: Path) -> None:
@@ -280,7 +285,10 @@ def test_ctrf_reporter_includes_trace_path_as_attachment(tmp_path: Path) -> None
     reporter.write(run_result, tmp_path)
     data = json.loads((tmp_path / "ctrf-report.json").read_text())
     t1 = data["results"]["tests"][1]
-    assert len(t1["attachments"]) == 3  # 2 screenshots + 1 trace
+    assert len(t1["attachments"]) == 4  # 2 screenshots + 1 proof text + 1 trace
+    proof_text_attachment = t1["attachments"][-2]
+    assert proof_text_attachment["name"] == "step-01-proof.txt"
+    assert proof_text_attachment["contentType"] == "text/plain"
     trace_attachment = t1["attachments"][-1]
     assert trace_attachment["name"] == "action_trace.json"
     assert trace_attachment["contentType"] == "application/json"

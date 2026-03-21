@@ -15,18 +15,19 @@ def _sample_claim_result(*, url: str, viewport: ViewportConfig) -> ClaimResult:
         status="passed",
         finding="The modal title reads Edit Task.",
         proof={
-            "screenshot": "artifacts/run-fake/claim-01/step-00-initial.webp",
+            "screenshot_path": "artifacts/run-fake/claim-01/step-00-initial.webp",
             "step": 0,
             "after_action": None,
             "text": None,
+            "text_path": None,
         },
         page={"url": url, "viewport": viewport},
         trace={
             "steps_taken": 0,
             "wrong_page_recovered": False,
-            "screenshots": ["artifacts/run-fake/claim-01/step-00-initial.webp"],
+            "screenshot_paths": ["artifacts/run-fake/claim-01/step-00-initial.webp"],
             "actions": [],
-            "path": None,
+            "trace_path": None,
         },
     )
 
@@ -36,14 +37,14 @@ def _assert_claim_result_payload_shape(result: dict[str, Any]) -> None:
 
     proof = result["proof"]
     assert proof is not None
-    assert set(proof) == {"screenshot", "step", "after_action", "text"}
+    assert set(proof) == {"screenshot_path", "step", "after_action", "text", "text_path"}
 
     page = result["page"]
     assert set(page) == {"url", "viewport"}
     assert set(page["viewport"]) == {"width", "height", "device_scale_factor"}
 
     trace = result["trace"]
-    assert set(trace) == {"steps_taken", "wrong_page_recovered", "screenshots", "actions", "path"}
+    assert set(trace) == {"steps_taken", "wrong_page_recovered", "screenshot_paths", "actions", "trace_path"}
 
 
 class FakeRunner:
@@ -192,7 +193,7 @@ def test_handle_verify_closes_runner_and_forwards_browser_config(monkeypatch: An
     assert claim_result["finding"] == "The modal title reads Edit Task."
     assert claim_result["proof"]["step"] == 0
     assert claim_result["page"]["url"] == "http://localhost:3000/tasks/123"
-    assert claim_result["trace"]["screenshots"] == ["artifacts/run-fake/claim-01/step-00-initial.webp"]
+    assert claim_result["trace"]["screenshot_paths"] == ["artifacts/run-fake/claim-01/step-00-initial.webp"]
 
 
 def test_handle_screenshot_closes_runner_and_forwards_browser_config(monkeypatch: Any) -> None:

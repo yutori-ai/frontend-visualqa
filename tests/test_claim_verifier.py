@@ -116,6 +116,13 @@ class FakeArtifactManager:
         path.write_text(json.dumps(action_trace))
         return str(path)
 
+    def save_proof_text(self, run: RunArtifacts, claim_index: int, label: str, text: str) -> str:
+        claim_dir = run.run_dir / f"claim-{claim_index:02d}"
+        claim_dir.mkdir(parents=True, exist_ok=True)
+        path = claim_dir / f"{label}-proof.txt"
+        path.write_text(text, encoding="utf-8")
+        return str(path)
+
 
 @dataclass
 class FakeFunction:
@@ -297,7 +304,7 @@ async def test_claim_verifier_returns_structured_verdict_from_record_claim_resul
     assert "red button" in _field(result, "finding")
     assert _field(result, "page").url == "http://fixture.local/page"
     assert _field(result, "trace").steps_taken == 0
-    assert _field(result, "proof").screenshot.endswith("step-00-initial.webp")
+    assert _field(result, "proof").screenshot_path.endswith("step-00-initial.webp")
     assert _field(result, "proof").step == 0
     assert _field(result, "proof").text is None
     assert n1_client.calls
@@ -885,6 +892,63 @@ async def test_claim_verifier_records_proof_text_for_read_only_final_action(tmp_
     assert _field(result, "proof").step == 1
     assert _field(result, "proof").after_action == "extract_elements({'filter': 'Save'})"
     assert _field(result, "proof").text == "Visible buttons:\n- Save"
+    assert _field(result, "proof").text_path.endswith("step-01-proof.txt")
+    assert Path(_field(result, "proof").text_path).read_text(encoding="utf-8") == "Visible buttons:\n- Save"
+
+
+@pytest.mark.asyncio
+async def test_claim_verifier_truncates_inline_proof_text_but_saves_full_artifact(tmp_path: Path) -> None:
+    module = _import_claim_verifier_module()
+    full_proof_text = "Page text:\n" + " ".join(f"token-{index:03d}" for index in range(80))
+
+    class ReadOnlyActionExecutor(FakeActionExecutor):
+        async def execute_tool_call(self, session: FakeSession, tool_call: Any) -> Any:
+            result = await super().execute_tool_call(session, tool_call)
+            if tool_call.function.name == "extract_content":
+                result.output_text = full_proof_text
+            return result
+
+    verifier, _, _ = _build_claim_verifier(
+        module,
+        tmp_path,
+        responses=[
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-1",
+                        function=FakeFunction(name="extract_content", arguments=json.dumps({})),
+                    )
+                ]
+            ),
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-2",
+                        function=FakeFunction(
+                            name="record_claim_result",
+                            arguments=json.dumps({"status": "failed", "finding": "The page text does not match."}),
+                        ),
+                    )
+                ]
+            ),
+        ],
+        action_executor=ReadOnlyActionExecutor(),
+    )
+
+    result = await _call_verify(
+        verifier,
+        page=FakePage(url="http://fixture.local/page"),
+        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+        claim="The page text matches exactly",
+        url="http://fixture.local/page",
+        navigation_hint=None,
+    )
+
+    assert _field(result, "proof").text is not None
+    assert _field(result, "proof").text != full_proof_text
+    assert _field(result, "proof").text.endswith("...")
+    assert _field(result, "proof").text_path.endswith("step-01-proof.txt")
+    assert Path(_field(result, "proof").text_path).read_text(encoding="utf-8") == full_proof_text
 
 
 @pytest.mark.asyncio
@@ -1102,7 +1166,7 @@ async def test_claim_verifier_normalizes_post_action_screenshot_failures_to_not_
     assert action_executor.calls == [("goto_url", {"url": "http://fixture.local/modal"})]
     assert _field(result, "status") == "not_testable"
     assert "Failed to capture screenshot for step-01" in _field(result, "finding")
-    assert _field(_field(result, "proof"), "screenshot").endswith("step-00-initial.webp")
+    assert _field(_field(result, "proof"), "screenshot_path").endswith("step-00-initial.webp")
     assert _field(_field(result, "proof"), "step") == 0
     assert _field(_field(result, "proof"), "after_action") is None
     assert _field(_field(result, "trace"), "steps_taken") == 1
@@ -1134,10 +1198,10 @@ async def test_claim_verifier_preserves_partial_result_on_cancellation(tmp_path:
 
     assert partial is not None
     assert _field(partial, "status") == "inconclusive"
-    assert _field(_field(partial, "proof"), "screenshot").endswith("step-00-initial.webp")
+    assert _field(_field(partial, "proof"), "screenshot_path").endswith("step-00-initial.webp")
     assert _field(_field(partial, "proof"), "step") == 0
     assert _field(_field(partial, "trace"), "steps_taken") == 0
-    assert _field(_field(partial, "trace"), "screenshots")[0].endswith("step-00-initial.webp")
+    assert _field(_field(partial, "trace"), "screenshot_paths")[0].endswith("step-00-initial.webp")
 
 
 @pytest.mark.asyncio

@@ -24,21 +24,22 @@ def _sample_claim_result(*, url: str, viewport: ViewportConfig) -> ClaimResult:
         status="passed",
         finding="The modal is visible.",
         proof={
-            "screenshot": "artifacts/run-fake/claim-01/step-01.webp",
+            "screenshot_path": "artifacts/run-fake/claim-01/step-01.webp",
             "step": 1,
             "after_action": "left_click([419, 348])",
             "text": None,
+            "text_path": None,
         },
         page={"url": url, "viewport": viewport},
         trace={
             "steps_taken": 1,
             "wrong_page_recovered": False,
-            "screenshots": [
+            "screenshot_paths": [
                 "artifacts/run-fake/claim-01/step-00-initial.webp",
                 "artifacts/run-fake/claim-01/step-01.webp",
             ],
             "actions": ["left_click([419, 348])"],
-            "path": "artifacts/run-fake/claim-01/action_trace.json",
+            "trace_path": "artifacts/run-fake/claim-01/action_trace.json",
         },
     )
 
@@ -130,14 +131,14 @@ def _assert_claim_result_payload_shape(result: dict[str, Any]) -> None:
 
     proof = result["proof"]
     assert proof is not None
-    assert set(proof) == {"screenshot", "step", "after_action", "text"}
+    assert set(proof) == {"screenshot_path", "step", "after_action", "text", "text_path"}
 
     page = result["page"]
     assert set(page) == {"url", "viewport"}
     assert set(page["viewport"]) == {"width", "height", "device_scale_factor"}
 
     trace = result["trace"]
-    assert set(trace) == {"steps_taken", "wrong_page_recovered", "screenshots", "actions", "path"}
+    assert set(trace) == {"steps_taken", "wrong_page_recovered", "screenshot_paths", "actions", "trace_path"}
 
 
 def _install_fake_runner(module: Any, fake_runner: FakeRunner, monkeypatch: pytest.MonkeyPatch) -> None:

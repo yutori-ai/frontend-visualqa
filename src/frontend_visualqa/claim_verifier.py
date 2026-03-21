@@ -45,6 +45,8 @@ MODAL_TITLE_READS_PATTERN = re.compile(r"""^The\s+modal\s+title\s+reads\s+["'](?
 logger = logging.getLogger(__name__)
 
 MAX_NON_ACTION_REPROMPTS = 2
+MAX_INLINE_PROOF_TEXT_CHARS = 280
+MAX_INLINE_PROOF_TEXT_LINES = 6
 
 
 @dataclass
@@ -59,6 +61,7 @@ class _VerificationProgress:
     action_trace: list[str]
     url_history: list[str]
     proof_text: str | None = None
+    proof_text_path: str | None = None
 
 
 def _create_overlay_controller(page: Any) -> Any | None:
@@ -116,6 +119,7 @@ class ClaimVerifier:
         step_count = 0
         non_action_reprompts = 0
         last_proof_text: str | None = None
+        last_proof_text_path: str | None = None
         should_visualize = self._visualize if visualize is None else visualize
         progress = _VerificationProgress(
             claim=claim,
@@ -180,6 +184,7 @@ class ClaimVerifier:
                             screenshot_paths=screenshot_paths,
                             action_trace=action_trace,
                             proof_text=last_proof_text,
+                            proof_text_path=last_proof_text_path,
                             url_history=url_history,
                             url=url,
                             run_artifacts=run_artifacts,
@@ -209,6 +214,7 @@ class ClaimVerifier:
                                 screenshot_paths=screenshot_paths,
                                 action_trace=action_trace,
                                 proof_text=last_proof_text,
+                                proof_text_path=last_proof_text_path,
                                 url_history=url_history,
                                 url=url,
                                 run_artifacts=run_artifacts,
@@ -226,6 +232,7 @@ class ClaimVerifier:
                                 screenshot_paths=screenshot_paths,
                                 action_trace=action_trace,
                                 proof_text=last_proof_text,
+                                proof_text_path=last_proof_text_path,
                                 url_history=url_history,
                                 url=url,
                                 run_artifacts=run_artifacts,
@@ -252,7 +259,14 @@ class ClaimVerifier:
                     )
                     screenshot_paths.append(screenshot_path)
                     last_proof_text = pending_proof_text
+                    last_proof_text_path = self._save_proof_text(
+                        run_artifacts=run_artifacts,
+                        claim_index=claim_index,
+                        label=f"step-{step_count:02d}",
+                        proof_text=pending_proof_text,
+                    )
                     progress.proof_text = last_proof_text
+                    progress.proof_text_path = last_proof_text_path
                     messages.append(
                         {
                             "role": "tool",
@@ -282,6 +296,7 @@ class ClaimVerifier:
                 screenshot_paths=screenshot_paths,
                 action_trace=action_trace,
                 proof_text=last_proof_text,
+                proof_text_path=last_proof_text_path,
                 url_history=url_history,
                 url=url,
                 run_artifacts=run_artifacts,
@@ -300,6 +315,7 @@ class ClaimVerifier:
                 screenshot_paths=screenshot_paths,
                 action_trace=action_trace,
                 proof_text=last_proof_text,
+                proof_text_path=last_proof_text_path,
                 url_history=url_history,
                 url=url,
                 run_artifacts=run_artifacts,
@@ -316,6 +332,7 @@ class ClaimVerifier:
                 screenshot_paths=screenshot_paths,
                 action_trace=action_trace,
                 proof_text=last_proof_text,
+                proof_text_path=last_proof_text_path,
                 url_history=url_history,
                 url=url,
                 run_artifacts=run_artifacts,
@@ -363,6 +380,7 @@ class ClaimVerifier:
         screenshot_paths: list[str],
         action_trace: list[str],
         proof_text: str | None,
+        proof_text_path: str | None,
         url_history: list[str],
         url: str,
         run_artifacts: RunArtifacts,
@@ -395,6 +413,7 @@ class ClaimVerifier:
             screenshot_paths=screenshot_paths,
             action_trace=action_trace,
             proof_text=proof_text,
+            proof_text_path=proof_text_path,
             url_history=url_history,
             url=url,
             run_artifacts=run_artifacts,
@@ -424,6 +443,7 @@ class ClaimVerifier:
         screenshot_paths: list[str],
         action_trace: list[str],
         proof_text: str | None,
+        proof_text_path: str | None,
         url_history: list[str],
         url: str,
         run_artifacts: RunArtifacts,
@@ -437,10 +457,11 @@ class ClaimVerifier:
         if screenshot_paths:
             proof_step = max(len(screenshot_paths) - 1, 0)
             proof = ClaimProof(
-                screenshot=screenshot_paths[-1],
+                screenshot_path=screenshot_paths[-1],
                 step=proof_step,
                 after_action=action_trace[proof_step - 1] if proof_step > 0 and len(action_trace) >= proof_step else None,
-                text=proof_text,
+                text=self._build_inline_proof_text(proof_text),
+                text_path=proof_text_path,
             )
         return ClaimResult(
             claim=claim,
@@ -451,9 +472,9 @@ class ClaimVerifier:
             trace=ClaimTrace(
                 steps_taken=step_count,
                 wrong_page_recovered=self._wrong_page_recovered(url_history, url, action_trace),
-                screenshots=screenshot_paths,
+                screenshot_paths=screenshot_paths,
                 actions=action_trace,
-                path=trace_path,
+                trace_path=trace_path,
             ),
         )
 
@@ -471,6 +492,7 @@ class ClaimVerifier:
             screenshot_paths=progress.screenshot_paths,
             action_trace=progress.action_trace,
             proof_text=progress.proof_text,
+            proof_text_path=progress.proof_text_path,
             url_history=progress.url_history,
             url=progress.url,
             run_artifacts=progress.run_artifacts,
@@ -492,6 +514,64 @@ class ClaimVerifier:
         if output_text:
             return f"{output_text}\nCurrent URL: {current_url}"
         return f"Executed {trace}.\nCurrent URL: {current_url}"
+
+    def _save_proof_text(
+        self,
+        *,
+        run_artifacts: RunArtifacts,
+        claim_index: int,
+        label: str,
+        proof_text: str | None,
+    ) -> str | None:
+        if not proof_text:
+            return None
+        try:
+            return self.artifact_manager.save_proof_text(run_artifacts, claim_index, label, proof_text)
+        except Exception:
+            logger.warning("Failed to save proof text for %s", label, exc_info=True)
+            return None
+
+    @staticmethod
+    def _build_inline_proof_text(proof_text: str | None) -> str | None:
+        if proof_text is None:
+            return None
+        normalized = proof_text.strip()
+        if not normalized:
+            return None
+
+        lines = normalized.splitlines()
+        preview_lines: list[str] = []
+        used_chars = 0
+        truncated = False
+        for line in lines:
+            cleaned_line = line.rstrip()
+            if not preview_lines and not cleaned_line:
+                continue
+            additional_chars = len(cleaned_line) + (1 if preview_lines else 0)
+            if (
+                len(preview_lines) >= MAX_INLINE_PROOF_TEXT_LINES
+                or used_chars + additional_chars > MAX_INLINE_PROOF_TEXT_CHARS
+            ):
+                truncated = True
+                break
+            preview_lines.append(cleaned_line)
+            used_chars += additional_chars
+
+        if preview_lines:
+            preview = "\n".join(preview_lines).rstrip()
+        else:
+            preview = normalized[:MAX_INLINE_PROOF_TEXT_CHARS].rstrip()
+            truncated = len(preview) < len(normalized)
+
+        if not truncated and len(preview) < len(normalized):
+            truncated = True
+
+        if truncated:
+            suffix = "\n..." if "\n" in preview else "..."
+            if len(preview) + len(suffix) > MAX_INLINE_PROOF_TEXT_CHARS:
+                preview = preview[: MAX_INLINE_PROOF_TEXT_CHARS - len(suffix)].rstrip()
+            preview = f"{preview}{suffix}"
+        return preview
 
     @staticmethod
     def _message_to_dict(message: Any) -> dict[str, Any]:
@@ -614,6 +694,7 @@ class ClaimVerifier:
         screenshot_paths: list[str],
         action_trace: list[str],
         proof_text: str | None,
+        proof_text_path: str | None,
         url_history: list[str],
         url: str,
         run_artifacts: RunArtifacts,
@@ -635,6 +716,7 @@ class ClaimVerifier:
             screenshot_paths=screenshot_paths,
             action_trace=action_trace,
             proof_text=proof_text,
+            proof_text_path=proof_text_path,
             url_history=url_history,
             url=url,
             run_artifacts=run_artifacts,

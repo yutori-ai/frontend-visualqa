@@ -374,9 +374,9 @@ Output format for persisted artifacts. Does not affect CLI stdout or MCP tool re
 
 Each claim result contains:
 - **`finding`** — the verdict explanation (what was observed)
-- **`proof`** — the decisive screenshot, step number, and any extracted text
+- **`proof`** — the decisive artifact paths, step number, and a compact extracted-text preview
 - **`page`** — URL and viewport where the claim was evaluated
-- **`trace`** — the execution trace: actions taken and screenshots captured
+- **`trace`** — the execution trace: actions taken, screenshot paths, and the saved trace path
 
 <details>
 <summary><strong>Example claim result</strong></summary>
@@ -387,20 +387,29 @@ Each claim result contains:
   "status": "failed",
   "finding": "The progress bar shows 65%, not 100%.",
   "proof": {
-    "screenshot": "artifacts/run-.../claim-02/step-04.webp",
+    "screenshot_path": "artifacts/run-.../claim-02/step-04.webp",
     "step": 4,
     "after_action": "extract_elements()",
-    "text": null
+    "text": "Page text:\nProject Progress 65%\n...",
+    "text_path": "artifacts/run-.../claim-02/step-04-proof.txt"
   },
   "page": {
     "url": "http://localhost:8000/comprehensive_test.html",
     "viewport": { "width": 1280, "height": 800, "device_scale_factor": 1.0 }
   },
-  "trace": { "steps_taken": 4, "screenshots": ["..."], "actions": ["..."] }
+  "trace": {
+    "steps_taken": 4,
+    "wrong_page_recovered": false,
+    "screenshot_paths": ["..."],
+    "actions": ["..."],
+    "trace_path": "artifacts/run-.../claim-02/action_trace.json"
+  }
 }
 ```
 
-`proof.screenshot` points to the screenshot n1 was examining when it rendered the verdict — open this first when investigating a failure.
+`proof.screenshot_path` points to the screenshot n1 was examining when it rendered the verdict.
+`proof.text` is intentionally compact for token efficiency; if `proof.text_path` is present, open that file for the full extracted DOM/content readout.
+`trace.trace_path` remains action-only, so large text payloads do not bloat the action trace.
 
 </details>
 

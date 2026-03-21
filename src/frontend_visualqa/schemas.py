@@ -47,10 +47,11 @@ class ViewportConfig(FrontendVisualQABaseModel):
 class ClaimProof(FrontendVisualQABaseModel):
     """Primary evidence for a claim verdict."""
 
-    screenshot: str
+    screenshot_path: str
     step: int = Field(ge=0)
     after_action: str | None = None
     text: str | None = None
+    text_path: str | None = None
 
 
 class ClaimPage(FrontendVisualQABaseModel):
@@ -65,9 +66,9 @@ class ClaimTrace(FrontendVisualQABaseModel):
 
     steps_taken: int = Field(default=0, ge=0)
     wrong_page_recovered: bool = False
-    screenshots: list[str] = Field(default_factory=list)
+    screenshot_paths: list[str] = Field(default_factory=list)
     actions: list[str] = Field(default_factory=list)
-    path: str | None = None
+    trace_path: str | None = None
 
 
 class BrowserConfig(FrontendVisualQABaseModel):

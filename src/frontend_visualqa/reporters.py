@@ -56,7 +56,7 @@ class CTRFReporter:
 
             extra: dict[str, Any] = {"claimResult": claim_result.model_dump(mode="json")}
             trace = claim_result.trace
-            screenshots = trace.screenshots
+            screenshots = trace.screenshot_paths
             attachments = [
                 {
                     "name": Path(screenshot_path).name,
@@ -65,7 +65,15 @@ class CTRFReporter:
                 }
                 for screenshot_path in screenshots
             ]
-            trace_path = trace.path
+            proof = claim_result.proof
+            proof_text_path = proof.text_path if proof is not None else None
+            if proof_text_path:
+                attachments.append({
+                    "name": Path(proof_text_path).name,
+                    "contentType": "text/plain",
+                    "path": proof_text_path,
+                })
+            trace_path = trace.trace_path
             if trace_path:
                 attachments.append({
                     "name": Path(trace_path).name,
