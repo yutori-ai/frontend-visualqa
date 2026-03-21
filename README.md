@@ -19,15 +19,27 @@ n1 is a pixels-to-actions model trained with RL on live websites. Two capabiliti
 
 - **Self-correcting navigation** — Point the agent at `/tasks` instead of `/tasks/123` and n1 recognizes the wrong page, clicks through to the right one, and reports `wrong_page_recovered: true`. Playwright MCP would run assertions on the wrong page and silently pass — garbage in, garbage out.
 
-  | Started on the wrong page | Navigated to the correct page |
-  |:---:|:---:|
-  | ![Dashboard — wrong page](docs/images/nav-step0-wrong-page.webp) | ![Task #123 — correct page](docs/images/nav-step6-correct-page.webp) |
+  <details>
+  <summary>See screenshots</summary>
+
+  Started on the wrong page → navigated to the correct page
+
+  ![Dashboard — wrong page](docs/images/nav-step0-wrong-page.png)
+  ![Task #123 — correct page](docs/images/nav-step6-correct-page.png)
+
+  </details>
 
 - **Rich visual evaluation** — On the task detail page for Task #123, after clicking "Mark Complete", n1 reported three changes: status badge "In Progress"→"Done", button label→"Completed", toast notification appeared. Playwright MCP would need three hand-written assertions.
 
-  | Before | After clicking "Mark Complete" |
-  |:---:|:---:|
-  | ![Before — In Progress](docs/images/mark-complete-before.webp) | ![After — Done + toast](docs/images/mark-complete-after.webp) |
+  <details>
+  <summary>See screenshots</summary>
+
+  Before → after clicking "Mark Complete"
+
+  ![Before — In Progress](docs/images/mark-complete-before.png)
+  ![After — Done + toast](docs/images/mark-complete-after.png)
+
+  </details>
 
 ## Install
 
