@@ -24,17 +24,24 @@ n1 is a pixels-to-actions model trained with RL on live websites. Two capabiliti
 
 ### Quick install (recommended)
 
-1. Install and authenticate:
+1. Install:
 
     ```bash
     uv tool install frontend-visualqa \
       --with-executables-from yutori \
       --with-executables-from playwright
     playwright install chromium
+    ```
+
+    This installs the `frontend-visualqa`, `yutori`, and `playwright` CLIs and downloads the Chromium browser binary.
+
+2. Authenticate:
+
+    ```bash
     yutori auth login
     ```
 
-    This installs the `frontend-visualqa`, `yutori`, and `playwright` CLIs, downloads the Chromium browser binary, and opens your browser to save your Yutori API key to `~/.yutori/config.json`.
+    This opens your browser to save your Yutori API key to `~/.yutori/config.json`.
 
     <details>
     <summary>Or, manually add your API key</summary>
@@ -48,7 +55,7 @@ n1 is a pixels-to-actions model trained with RL on live websites. Two capabiliti
     ```
     </details>
 
-2. Register the MCP server using [add-mcp](https://github.com/nicobailon/add-mcp) (works with all clients):
+3. Register the MCP server using [add-mcp](https://github.com/nicobailon/add-mcp) (works with all clients):
 
     ```bash
     npx add-mcp -g -n frontend-visualqa "frontend-visualqa serve"
@@ -56,7 +63,7 @@ n1 is a pixels-to-actions model trained with RL on live websites. Two capabiliti
 
     Pick the clients you want to configure.
 
-3. Install workflow skills using [skills.sh](https://skills.sh):
+4. Install workflow skills using [skills.sh](https://skills.sh):
 
     ```bash
     npx skills add yutori-ai/frontend-visualqa -g
@@ -66,7 +73,7 @@ n1 is a pixels-to-actions model trained with RL on live websites. Two capabiliti
 
     `-g` installs at user scope. Omit `-g` for project-local install.
 
-4. Restart the agent client.
+5. Restart the agent client.
 
    <details>
    <summary>To uninstall later:</summary>
