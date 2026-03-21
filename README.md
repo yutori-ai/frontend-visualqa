@@ -11,7 +11,7 @@ Gives coding agents eyes for frontend work — visual QA and verification powere
 
 Does not start your dev server. If the URL is unreachable, claims return `not_testable`.
 
-## Why n1
+## Why visualqa?
 
 Playwright MCP can click, type, and assert against the DOM — but it cannot *see* the page. It can run cleanly on the wrong page, assert `modal.isVisible()` on a modal rendered off-screen, or miss a layout that broke on mobile.
 
