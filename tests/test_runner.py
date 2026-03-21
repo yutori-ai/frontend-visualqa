@@ -266,12 +266,24 @@ def _result(name: str, status: str, viewport: ViewportConfig) -> ClaimResult:
     return ClaimResult(
         claim=name,
         status=status,
-        summary=f"{name}: {status}",
-        final_url="http://fixture.local/page",
-        steps_taken=1,
-        viewport=viewport,
-        screenshots=[],
-        action_trace=[],
+        finding=f"{name}: {status}",
+        proof={
+            "screenshot": "artifacts/run-001/claim-01/step-01.webp",
+            "step": 1,
+            "after_action": "extract_elements()",
+            "text": f"{name}: {status}",
+        },
+        page={"url": "http://fixture.local/page", "viewport": viewport},
+        trace={
+            "steps_taken": 1,
+            "wrong_page_recovered": False,
+            "screenshots": [
+                "artifacts/run-001/claim-01/step-00-initial.webp",
+                "artifacts/run-001/claim-01/step-01.webp",
+            ],
+            "actions": ["extract_elements()"],
+            "path": "artifacts/run-001/claim-01/action_trace.json",
+        },
     )
 
 
@@ -307,6 +319,10 @@ async def test_runner_run_aggregates_claim_results_and_resets_between_claims(
     assert [item.status for item in result.results] == ["passed", "failed"]
     assert result.artifacts_dir
     assert result.summary
+    assert result.results[0].finding == "Claim one: passed"
+    assert result.results[0].page.url == "http://fixture.local/page"
+    assert result.results[0].trace.steps_taken == 1
+    assert result.results[0].proof.screenshot.endswith("step-01.webp")
     assert len([call for call in browser.goto_calls if call == ("qa-session", "http://fixture.local/page")]) >= 2
     assert verifier.calls
     assert verifier.calls[0]["claim"] == "Claim one"
@@ -461,6 +477,58 @@ class SlowClaimVerifier:
         return self.result
 
 
+class TimeoutClaimVerifier:
+    def __init__(self, partial_result: ClaimResult | None = None) -> None:
+        self.calls: list[dict[str, Any]] = []
+        self.partial_result = partial_result
+
+    async def verify(self, *args: Any, **kwargs: Any) -> ClaimResult:
+        if args:
+            kwargs["session"] = args[0]
+        self.calls.append(kwargs)
+        raise TimeoutError("verifier timed out internally")
+
+    def consume_partial_result(self, *, status: str, finding: str) -> ClaimResult | None:
+        del status, finding
+        return self.partial_result
+
+
+class RunTimeoutClaimVerifier:
+    def __init__(self, partial_result: ClaimResult, delay_seconds: float = 1.0) -> None:
+        self.calls: list[dict[str, Any]] = []
+        self.partial_result = partial_result
+        self.delay_seconds = delay_seconds
+
+    async def verify(self, *args: Any, **kwargs: Any) -> ClaimResult:
+        import asyncio
+
+        if args:
+            kwargs["session"] = args[0]
+        self.calls.append(kwargs)
+        await asyncio.sleep(self.delay_seconds)
+        return self.partial_result
+
+    def consume_partial_result(self, *, status: str, finding: str) -> ClaimResult | None:
+        del status, finding
+        return self.partial_result
+
+
+class PartialExplodingClaimVerifier:
+    def __init__(self, partial_result: ClaimResult) -> None:
+        self.calls: list[dict[str, Any]] = []
+        self.partial_result = partial_result
+
+    async def verify(self, *args: Any, **kwargs: Any) -> ClaimResult:
+        if args:
+            kwargs["session"] = args[0]
+        self.calls.append(kwargs)
+        raise RuntimeError("unexpected verifier crash")
+
+    def consume_partial_result(self, *, status: str, finding: str) -> ClaimResult | None:
+        del status, finding
+        return self.partial_result
+
+
 class NavigationFailingBrowserManager(FakeBrowserManager):
     async def goto(self, session: FakeSession, url: str) -> str:
         del session, url
@@ -495,7 +563,7 @@ async def test_runner_marks_claim_not_testable_when_reset_between_claims_fails(
     )
 
     assert [item.status for item in result.results] == ["passed", "not_testable"]
-    assert "Could not prepare browser state" in result.results[1].summary
+    assert "Could not prepare browser state" in result.results[1].finding
     assert len(verifier.calls) == 1
 
 
@@ -527,7 +595,7 @@ async def test_runner_marks_claim_not_testable_when_verifier_raises(
     )
 
     assert [item.status for item in result.results] == ["inconclusive"]
-    assert "Verification crashed unexpectedly before returning a verdict" in result.results[0].summary
+    assert "Verification crashed unexpectedly before returning a verdict" in result.results[0].finding
     assert exploding_verifier.calls
 
 
@@ -587,7 +655,148 @@ async def test_runner_marks_claim_inconclusive_when_claim_timeout_expires(
     )
 
     assert [item.status for item in result.results] == ["inconclusive"]
-    assert "Claim verification timed out" in result.results[0].summary
+    assert "Claim verification timed out" in result.results[0].finding
+
+
+@pytest.mark.asyncio
+async def test_runner_handles_timeout_error_when_claim_timeout_is_disabled(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _import_runner_module()
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    verifier = TimeoutClaimVerifier()
+    runner, _, _ = _build_runner(
+        module,
+        tmp_path,
+        verifier_results=[],
+        monkeypatch=monkeypatch,
+        claim_verifier=verifier,
+    )
+
+    result = await _call_run(
+        runner,
+        url="http://fixture.local/page",
+        claims=["Claim one"],
+        viewport=viewport,
+        session_key="qa-session",
+        reuse_session=True,
+        reset_between_claims=True,
+        max_steps_per_claim=5,
+        claim_timeout_seconds=None,
+    )
+
+    assert [item.status for item in result.results] == ["inconclusive"]
+    assert result.results[0].finding == "Claim verification timed out before a verdict was recorded."
+
+
+@pytest.mark.asyncio
+async def test_runner_uses_partial_claim_result_when_timeout_interrupts_verifier(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _import_runner_module()
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    partial_result = ClaimResult(
+        claim="Claim one",
+        status="inconclusive",
+        finding="Claim verification timed out after 1s before a verdict was recorded.",
+        proof={
+            "screenshot": "artifacts/run-001/claim-01/step-00-initial.webp",
+            "step": 0,
+            "after_action": None,
+            "text": None,
+        },
+        page={"url": "http://fixture.local/page", "viewport": viewport},
+        trace={
+            "steps_taken": 1,
+            "wrong_page_recovered": False,
+            "screenshots": ["artifacts/run-001/claim-01/step-00-initial.webp"],
+            "actions": ["scroll(direction='down', amount=300)"],
+            "path": "artifacts/run-001/claim-01/action_trace.json",
+        },
+    )
+    verifier = RunTimeoutClaimVerifier(partial_result=partial_result)
+    runner, _, _ = _build_runner(
+        module,
+        tmp_path,
+        verifier_results=[],
+        monkeypatch=monkeypatch,
+        claim_verifier=verifier,
+    )
+
+    result = await _call_run(
+        runner,
+        url="http://fixture.local/page",
+        claims=["Claim one"],
+        viewport=viewport,
+        session_key="qa-session",
+        reuse_session=True,
+        reset_between_claims=True,
+        max_steps_per_claim=5,
+        claim_timeout_seconds=1.0,
+    )
+
+    assert [item.status for item in result.results] == ["inconclusive"]
+    assert result.results[0].proof is not None
+    assert result.results[0].proof.screenshot.endswith("step-00-initial.webp")
+    assert result.results[0].trace.steps_taken == 1
+    assert result.results[0].trace.actions == ["scroll(direction='down', amount=300)"]
+
+
+@pytest.mark.asyncio
+async def test_runner_uses_partial_claim_result_when_verifier_crashes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _import_runner_module()
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    partial_result = ClaimResult(
+        claim="Claim one",
+        status="inconclusive",
+        finding="Verification crashed unexpectedly before returning a verdict: unexpected verifier crash",
+        proof={
+            "screenshot": "artifacts/run-001/claim-01/step-01.webp",
+            "step": 1,
+            "after_action": "extract_elements()",
+            "text": "Visible text included 'Dashboard'.",
+        },
+        page={"url": "http://fixture.local/page", "viewport": viewport},
+        trace={
+            "steps_taken": 1,
+            "wrong_page_recovered": False,
+            "screenshots": [
+                "artifacts/run-001/claim-01/step-00-initial.webp",
+                "artifacts/run-001/claim-01/step-01.webp",
+            ],
+            "actions": ["extract_elements()"],
+            "path": "artifacts/run-001/claim-01/action_trace.json",
+        },
+    )
+    verifier = PartialExplodingClaimVerifier(partial_result)
+    runner, _, _ = _build_runner(
+        module,
+        tmp_path,
+        verifier_results=[],
+        monkeypatch=monkeypatch,
+        claim_verifier=verifier,
+    )
+
+    result = await _call_run(
+        runner,
+        url="http://fixture.local/page",
+        claims=["Claim one"],
+        viewport=viewport,
+        session_key="qa-session",
+        reuse_session=True,
+        reset_between_claims=True,
+        max_steps_per_claim=5,
+    )
+
+    assert [item.status for item in result.results] == ["inconclusive"]
+    assert result.results[0].proof is not None
+    assert result.results[0].proof.after_action == "extract_elements()"
+    assert result.results[0].trace.path == "artifacts/run-001/claim-01/action_trace.json"
 
 
 @pytest.mark.asyncio
@@ -620,7 +829,88 @@ async def test_runner_marks_remaining_claims_inconclusive_when_run_timeout_expir
     )
 
     assert [item.status for item in result.results] == ["inconclusive", "inconclusive"]
-    assert all("Run timed out" in item.summary for item in result.results)
+    assert all("Run timed out" in item.finding for item in result.results)
+
+
+@pytest.mark.asyncio
+async def test_runner_preserves_partial_claim_result_when_run_timeout_interrupts_current_claim(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _import_runner_module()
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    partial_result = ClaimResult(
+        claim="Claim one",
+        status="inconclusive",
+        finding="Run timed out after 0.01s before this claim could finish.",
+        proof={
+            "screenshot": "artifacts/run-001/claim-01/step-01.webp",
+            "step": 1,
+            "after_action": "extract_elements()",
+            "text": "Visible text included 'Dashboard'.",
+        },
+        page={"url": "http://fixture.local/page", "viewport": viewport},
+        trace={
+            "steps_taken": 1,
+            "wrong_page_recovered": False,
+            "screenshots": [
+                "artifacts/run-001/claim-01/step-00-initial.webp",
+                "artifacts/run-001/claim-01/step-01.webp",
+            ],
+            "actions": ["extract_elements()"],
+            "path": "artifacts/run-001/claim-01/action_trace.json",
+        },
+    )
+    verifier = RunTimeoutClaimVerifier(partial_result=partial_result)
+    runner, _, _ = _build_runner(
+        module,
+        tmp_path,
+        verifier_results=[],
+        monkeypatch=monkeypatch,
+        claim_verifier=verifier,
+    )
+
+    result = await _call_run(
+        runner,
+        url="http://fixture.local/page",
+        claims=["Claim one", "Claim two"],
+        viewport=viewport,
+        session_key="qa-session",
+        reuse_session=True,
+        reset_between_claims=True,
+        max_steps_per_claim=5,
+        run_timeout_seconds=0.01,
+    )
+
+    assert [item.status for item in result.results] == ["inconclusive", "inconclusive"]
+    assert result.results[0].proof is not None
+    assert result.results[0].proof.after_action == "extract_elements()"
+    assert result.results[0].trace.steps_taken == 1
+    assert result.results[1].proof is None
+    assert result.results[1].trace.steps_taken == 0
+
+
+def test_build_not_testable_run_uses_aggregate_summary() -> None:
+    module = _import_runner_module()
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    request = VerifyVisualClaimsInput(
+        url="http://fixture.local/page",
+        claims=["Claim one", "Claim two"],
+        viewport=viewport,
+        session_key="qa-session",
+    )
+
+    result = module.VisualQARunner._build_not_testable_run(
+        request=request,
+        run_dir="artifacts/run-001",
+        finding="Could not reach the page before opening the browser.",
+        started_at=1.0,
+        completed_at=2.0,
+    )
+
+    assert result.overall_status == "not_testable"
+    assert result.summary == "0/2 claims passed. 2 not testable."
+    assert all(item.finding == "Could not reach the page before opening the browser." for item in result.results)
 
 
 def test_runner_passes_browser_config_to_browser_manager(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -691,7 +981,7 @@ def test_runner_passes_browser_config_visualize_to_default_claim_verifier(
         headless=False,
         visualize=True,
     )
-    runner = module.VisualQARunner(browser_config=browser_config)
+    module.VisualQARunner(browser_config=browser_config)
 
     assert captured["browser_config"] == browser_config
     assert captured["visualize"] is True
@@ -875,7 +1165,13 @@ async def test_runner_writes_both_native_and_ctrf_reports(
     native_path = run_dir / "run_result.json"
     assert native_path.exists()
     native_data = json.loads(native_path.read_text())
-    assert native_data["results"][0]["wrong_page_recovered"] is False
+    first_result = native_data["results"][0]
+    assert set(first_result) == {"claim", "status", "finding", "proof", "page", "trace"}
+    assert set(first_result["proof"]) == {"screenshot", "step", "after_action", "text"}
+    assert set(first_result["page"]) == {"url", "viewport"}
+    assert set(first_result["trace"]) == {"steps_taken", "wrong_page_recovered", "screenshots", "actions", "path"}
+    assert first_result["finding"] == "Claim one: passed"
+    assert first_result["trace"]["wrong_page_recovered"] is False
     # CTRF report
     ctrf_path = run_dir / "ctrf-report.json"
     assert ctrf_path.exists()

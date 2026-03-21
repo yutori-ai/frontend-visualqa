@@ -54,33 +54,30 @@ class CTRFReporter:
             ctrf_status = _CTRF_STATUS_MAP.get(claim_result.status, "other")
             summary_counts[ctrf_status] += 1
 
-            extra: dict[str, Any] = {
-                "finalUrl": claim_result.final_url,
-                "wrongPageRecovered": claim_result.wrong_page_recovered,
-                "stepsTaken": claim_result.steps_taken,
-                "viewport": claim_result.viewport.model_dump(mode="json"),
-                "actionTrace": claim_result.action_trace,
-            }
+            extra: dict[str, Any] = {"claimResult": claim_result.model_dump(mode="json")}
+            trace = claim_result.trace
+            screenshots = trace.screenshots
             attachments = [
                 {
                     "name": Path(screenshot_path).name,
                     "contentType": "image/webp",
                     "path": screenshot_path,
                 }
-                for screenshot_path in claim_result.screenshots
+                for screenshot_path in screenshots
             ]
-            if claim_result.trace_path:
+            trace_path = trace.path
+            if trace_path:
                 attachments.append({
-                    "name": Path(claim_result.trace_path).name,
+                    "name": Path(trace_path).name,
                     "contentType": "application/json",
-                    "path": claim_result.trace_path,
+                    "path": trace_path,
                 })
 
             ctrf_test: dict[str, Any] = {
                 "name": claim_result.claim,
                 "status": ctrf_status,
                 "duration": 0,
-                "message": claim_result.summary,
+                "message": claim_result.finding,
                 "extra": extra,
             }
             if claim_result.status not in ("passed", "failed"):

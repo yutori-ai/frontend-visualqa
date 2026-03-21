@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -28,33 +27,67 @@ def _sample_run_result(artifacts_dir: str) -> RunResult:
             ClaimResult(
                 claim="The heading reads 'Dashboard'",
                 status="passed",
-                summary="Visible heading matched 'Dashboard'.",
-                final_url="http://localhost:3000/dashboard",
-                wrong_page_recovered=False,
-                steps_taken=0,
-                viewport=viewport,
-                screenshots=["artifacts/run-001/claim-01/step-00-initial.webp"],
-                action_trace=[],
+                finding="Visible heading matched 'Dashboard'.",
+                proof={
+                    "screenshot": "artifacts/run-001/claim-01/step-00-initial.webp",
+                    "step": 0,
+                    "after_action": None,
+                    "text": "Visible heading matched 'Dashboard'.",
+                },
+                page={"url": "http://localhost:3000/dashboard", "viewport": viewport},
+                trace={
+                    "steps_taken": 0,
+                    "wrong_page_recovered": False,
+                    "screenshots": ["artifacts/run-001/claim-01/step-00-initial.webp"],
+                    "actions": [],
+                    "path": None,
+                },
             ),
             ClaimResult(
                 claim="The progress bar shows 100%",
                 status="failed",
-                summary="Progress bar shows 65%, not 100%.",
-                final_url="http://localhost:3000/dashboard",
-                wrong_page_recovered=False,
-                steps_taken=2,
-                viewport=viewport,
-                screenshots=[
-                    "artifacts/run-001/claim-02/step-00-initial.webp",
-                    "artifacts/run-001/claim-02/step-01.webp",
-                ],
-                action_trace=["scroll(direction='down', amount=300)"],
-                trace_path="artifacts/run-001/claim-02/action_trace.json",
+                finding="Progress bar shows 65%, not 100%.",
+                proof={
+                    "screenshot": "artifacts/run-001/claim-02/step-01.webp",
+                    "step": 1,
+                    "after_action": "extract_elements()",
+                    "text": "Visible text included '65%'.",
+                },
+                page={"url": "http://localhost:3000/dashboard", "viewport": viewport},
+                trace={
+                    "steps_taken": 1,
+                    "wrong_page_recovered": False,
+                    "screenshots": [
+                        "artifacts/run-001/claim-02/step-00-initial.webp",
+                        "artifacts/run-001/claim-02/step-01.webp",
+                    ],
+                    "actions": ["extract_elements()"],
+                    "path": "artifacts/run-001/claim-02/action_trace.json",
+                },
             ),
         ],
         summary="1/2 claims passed. 1 failed.",
         artifacts_dir=artifacts_dir,
     )
+
+
+def _assert_claim_result_payload_shape(result: dict[str, object]) -> None:
+    assert set(result) == {"claim", "status", "finding", "proof", "page", "trace"}
+
+    proof = result["proof"]
+    assert proof is not None
+    assert set(proof) == {"screenshot", "step", "after_action", "text"}
+
+    page = result["page"]
+    assert isinstance(page, dict)
+    assert set(page) == {"url", "viewport"}
+    viewport = page["viewport"]
+    assert isinstance(viewport, dict)
+    assert set(viewport) == {"width", "height", "device_scale_factor"}
+
+    trace = result["trace"]
+    assert isinstance(trace, dict)
+    assert set(trace) == {"steps_taken", "wrong_page_recovered", "screenshots", "actions", "path"}
 
 
 def test_native_reporter_writes_run_result_json(tmp_path: Path) -> None:
@@ -66,10 +99,17 @@ def test_native_reporter_writes_run_result_json(tmp_path: Path) -> None:
     assert output_path.exists()
     data = json.loads(output_path.read_text())
     assert data["overall_status"] == "completed"
-    assert data["results"][0]["status"] == "passed"
-    assert data["results"][1]["status"] == "failed"
-    assert data["results"][0]["wrong_page_recovered"] is False
-    assert data["results"][1]["action_trace"] == ["scroll(direction='down', amount=300)"]
+    first_result = data["results"][0]
+    second_result = data["results"][1]
+    _assert_claim_result_payload_shape(first_result)
+    _assert_claim_result_payload_shape(second_result)
+    assert first_result["status"] == "passed"
+    assert second_result["status"] == "failed"
+    assert first_result["finding"] == "Visible heading matched 'Dashboard'."
+    assert second_result["proof"]["text"] == "Visible text included '65%'."
+    assert first_result["page"]["url"] == "http://localhost:3000/dashboard"
+    assert first_result["trace"]["wrong_page_recovered"] is False
+    assert second_result["trace"]["actions"] == ["extract_elements()"]
 
 
 def test_native_reporter_name() -> None:
@@ -167,16 +207,30 @@ def test_ctrf_reporter_maps_inconclusive_and_not_testable(tmp_path: Path) -> Non
             ClaimResult(
                 claim="Inconclusive claim",
                 status="inconclusive",
-                summary="Could not determine.",
-                final_url="http://localhost:3000",
-                viewport=viewport,
+                finding="Could not determine.",
+                proof=None,
+                page={"url": "http://localhost:3000", "viewport": viewport},
+                trace={
+                    "steps_taken": 0,
+                    "wrong_page_recovered": False,
+                    "screenshots": [],
+                    "actions": [],
+                    "path": None,
+                },
             ),
             ClaimResult(
                 claim="Not testable claim",
                 status="not_testable",
-                summary="Server was down.",
-                final_url="http://localhost:3000",
-                viewport=viewport,
+                finding="Server was down.",
+                proof=None,
+                page={"url": "http://localhost:3000", "viewport": viewport},
+                trace={
+                    "steps_taken": 0,
+                    "wrong_page_recovered": False,
+                    "screenshots": [],
+                    "actions": [],
+                    "path": None,
+                },
             ),
         ],
         summary="0/2 claims passed. 2 inconclusive.",
@@ -199,11 +253,11 @@ def test_ctrf_reporter_includes_extra_fields(tmp_path: Path) -> None:
     data = json.loads((tmp_path / "ctrf-report.json").read_text())
     t1 = data["results"]["tests"][1]
     extra = t1["extra"]
-    assert extra["finalUrl"] == "http://localhost:3000/dashboard"
-    assert extra["wrongPageRecovered"] is False
-    assert extra["stepsTaken"] == 2
-    assert extra["viewport"] == {"width": 1280, "height": 800, "device_scale_factor": 1.0}
-    assert extra["actionTrace"] == ["scroll(direction='down', amount=300)"]
+    assert extra["claimResult"]["page"]["url"] == "http://localhost:3000/dashboard"
+    assert extra["claimResult"]["trace"]["wrong_page_recovered"] is False
+    assert extra["claimResult"]["trace"]["steps_taken"] == 1
+    assert extra["claimResult"]["page"]["viewport"] == {"width": 1280, "height": 800, "device_scale_factor": 1.0}
+    assert extra["claimResult"]["trace"]["actions"] == ["extract_elements()"]
 
 
 def test_ctrf_reporter_includes_screenshots_as_attachments(tmp_path: Path) -> None:

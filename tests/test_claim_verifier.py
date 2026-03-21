@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import inspect
 import json
 from dataclasses import dataclass
@@ -85,7 +86,7 @@ class FakeActionExecutor:
             session.page.url = resolved_args["url"]
         return SimpleNamespace(
             trace=f"{resolved_name}({resolved_args})",
-            output_text=f"Executed {resolved_name}",
+            output_text=(f"Executed {resolved_name}" if resolved_name in {"extract_elements", "extract_content", "find"} else None),
             current_url=session.page.url,
             success=True,
         )
@@ -164,6 +165,13 @@ class FakeN1Client:
     async def create(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]]) -> FakeMessage:
         self.calls.append({"messages": messages, "tools": tools})
         return self.responses.pop(0)
+
+
+class BlockingN1Client(FakeN1Client):
+    async def create(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]]) -> FakeMessage:
+        self.calls.append({"messages": messages, "tools": tools})
+        await asyncio.sleep(1.0)
+        raise AssertionError("BlockingN1Client should be cancelled before returning")
 
 
 def _build_claim_verifier(
@@ -265,7 +273,7 @@ async def test_claim_verifier_returns_structured_verdict_from_record_claim_resul
                             arguments=json.dumps(
                                 {
                                     "status": "passed",
-                                    "summary": "The red button is visible in the hero panel.",
+                                    "finding": "The red button is visible in the hero panel.",
                                 }
                             ),
                         ),
@@ -286,8 +294,12 @@ async def test_claim_verifier_returns_structured_verdict_from_record_claim_resul
 
     assert _field(result, "claim") == "The page has a red button"
     assert _field(result, "status") == "passed"
-    assert "red button" in _field(result, "summary")
-    assert _field(result, "final_url") == "http://fixture.local/page"
+    assert "red button" in _field(result, "finding")
+    assert _field(result, "page").url == "http://fixture.local/page"
+    assert _field(result, "trace").steps_taken == 0
+    assert _field(result, "proof").screenshot.endswith("step-00-initial.webp")
+    assert _field(result, "proof").step == 0
+    assert _field(result, "proof").text is None
     assert n1_client.calls
     assert any(tool["function"]["name"] == "goto_url" for tool in n1_client.calls[0]["tools"])
     assert any(tool["function"]["name"] == "record_claim_result" for tool in n1_client.calls[0]["tools"])
@@ -320,7 +332,7 @@ async def test_claim_verifier_executes_actions_before_final_verdict(tmp_path: Pa
                             arguments=json.dumps(
                                 {
                                     "status": "passed",
-                                    "summary": "The modal is now visible and titled Edit Task.",
+                                    "finding": "The modal is now visible and titled Edit Task.",
                                 }
                             ),
                         ),
@@ -342,9 +354,12 @@ async def test_claim_verifier_executes_actions_before_final_verdict(tmp_path: Pa
 
     assert action_executor.calls == [("goto_url", {"url": "http://fixture.local/modal"})]
     assert _field(result, "status") == "passed"
-    assert _field(result, "final_url") == "http://fixture.local/modal"
-    assert _field(result, "steps_taken") >= 1
-    assert _field(result, "wrong_page_recovered") is True
+    assert _field(result, "page").url == "http://fixture.local/modal"
+    assert _field(result, "trace").steps_taken >= 1
+    assert _field(result, "trace").wrong_page_recovered is True
+    assert _field(result, "proof").step == _field(result, "trace").steps_taken
+    assert _field(result, "proof").after_action == "goto_url({'url': 'http://fixture.local/modal'})"
+    assert _field(result, "proof").text is None
 
 
 def test_claim_verifier_accepts_visualize_flag(tmp_path: Path) -> None:
@@ -409,7 +424,7 @@ async def test_claim_verifier_uses_overlay_lifecycle_when_visualize_enabled(
                             arguments=json.dumps(
                                 {
                                     "status": "passed",
-                                    "summary": "The modal is now visible and titled Edit Task.",
+                                    "finding": "The modal is now visible and titled Edit Task.",
                                 }
                             ),
                         ),
@@ -465,7 +480,7 @@ async def test_claim_verifier_reprompts_after_plain_text_thought_and_continues(t
                         id="tool-2",
                         function=FakeFunction(
                             name="record_claim_result",
-                            arguments=json.dumps({"status": "passed", "summary": "The Task Details heading is visible."}),
+                            arguments=json.dumps({"status": "passed", "finding": "The Task Details heading is visible."}),
                         ),
                     )
                 ]
@@ -514,7 +529,7 @@ async def test_claim_verifier_preserves_tool_call_order_when_action_and_verdict_
                         id="tool-2",
                         function=FakeFunction(
                             name="record_claim_result",
-                            arguments=json.dumps({"status": "passed", "summary": "The modal is visible."}),
+                            arguments=json.dumps({"status": "passed", "finding": "The modal is visible."}),
                         ),
                     ),
                 ]
@@ -534,7 +549,7 @@ async def test_claim_verifier_preserves_tool_call_order_when_action_and_verdict_
 
     assert action_executor.calls == [("goto_url", {"url": "http://fixture.local/modal"})]
     assert _field(result, "status") == "passed"
-    assert _field(result, "final_url") == "http://fixture.local/modal"
+    assert _field(result, "page").url == "http://fixture.local/modal"
 
 
 @pytest.mark.asyncio
@@ -553,7 +568,7 @@ async def test_claim_verifier_downgrades_pass_when_button_grounding_disagrees(tm
                             arguments=json.dumps(
                                 {
                                     "status": "passed",
-                                    "summary": "The Show Save Confirmation button is visible in the header.",
+                                    "finding": "The Show Save Confirmation button is visible in the header.",
                                 }
                             ),
                         ),
@@ -584,7 +599,7 @@ async def test_claim_verifier_downgrades_pass_when_button_grounding_disagrees(tm
     )
 
     assert _field(result, "status") == "failed"
-    assert "No visible button label matched" in _field(result, "summary")
+    assert "No visible button label matched" in _field(result, "finding")
 
 
 @pytest.mark.asyncio
@@ -603,7 +618,7 @@ async def test_claim_verifier_converts_inconclusive_full_visibility_button_claim
                             arguments=json.dumps(
                                 {
                                     "status": "inconclusive",
-                                    "summary": "I could not tell whether the button was fully visible.",
+                                    "finding": "I could not tell whether the button was fully visible.",
                                 }
                             ),
                         ),
@@ -631,7 +646,7 @@ async def test_claim_verifier_converts_inconclusive_full_visibility_button_claim
     )
 
     assert _field(result, "status") == "failed"
-    assert "not fully visible" in _field(result, "summary")
+    assert "not fully visible" in _field(result, "finding")
 
 
 @pytest.mark.asyncio
@@ -648,7 +663,7 @@ async def test_claim_verifier_fuzzy_matches_button_with_decorative_chars_and_quo
                         id="tool-1",
                         function=FakeFunction(
                             name="record_claim_result",
-                            arguments=json.dumps({"status": "passed", "summary": "Button visible."}),
+                            arguments=json.dumps({"status": "passed", "finding": "Button visible."}),
                         ),
                     )
                 ]
@@ -674,7 +689,7 @@ async def test_claim_verifier_fuzzy_matches_button_with_decorative_chars_and_quo
     )
 
     assert _field(result, "status") == "passed"
-    assert "Select Priority" in _field(result, "summary")
+    assert "Select Priority" in _field(result, "finding")
 
 
 @pytest.mark.asyncio
@@ -691,7 +706,7 @@ async def test_claim_verifier_skips_grounding_for_compound_claims(tmp_path: Path
                         id="tool-1",
                         function=FakeFunction(
                             name="record_claim_result",
-                            arguments=json.dumps({"status": "passed", "summary": "Both conditions met."}),
+                            arguments=json.dumps({"status": "passed", "finding": "Both conditions met."}),
                         ),
                     )
                 ]
@@ -749,7 +764,7 @@ async def test_claim_verifier_reuses_trimmed_history_across_requests(
                             arguments=json.dumps(
                                 {
                                     "status": "passed",
-                                    "summary": "The modal is now visible and titled Edit Task.",
+                                    "finding": "The modal is now visible and titled Edit Task.",
                                 }
                             ),
                         ),
@@ -815,8 +830,158 @@ async def test_claim_verifier_treats_stop_tool_call_as_a_final_inconclusive_verd
     )
 
     assert _field(result, "status") == "inconclusive"
-    assert "Need a human" in _field(result, "summary")
+    assert "Need a human" in _field(result, "finding")
     assert action_executor.calls == []
+
+
+@pytest.mark.asyncio
+async def test_claim_verifier_records_proof_text_for_read_only_final_action(tmp_path: Path) -> None:
+    module = _import_claim_verifier_module()
+
+    class ReadOnlyActionExecutor(FakeActionExecutor):
+        async def execute_tool_call(self, session: FakeSession, tool_call: Any) -> Any:
+            result = await super().execute_tool_call(session, tool_call)
+            if tool_call.function.name == "extract_elements":
+                result.output_text = "Visible buttons:\n- Save"
+            return result
+
+    verifier, _, action_executor = _build_claim_verifier(
+        module,
+        tmp_path,
+        responses=[
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-1",
+                        function=FakeFunction(name="extract_elements", arguments=json.dumps({"filter": "Save"})),
+                    )
+                ]
+            ),
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-2",
+                        function=FakeFunction(
+                            name="record_claim_result",
+                            arguments=json.dumps({"status": "passed", "finding": "The Save button is visible."}),
+                        ),
+                    )
+                ]
+            ),
+        ],
+        action_executor=ReadOnlyActionExecutor(),
+    )
+
+    result = await _call_verify(
+        verifier,
+        page=FakePage(url="http://fixture.local/page"),
+        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+        claim="The Save button is visible",
+        url="http://fixture.local/page",
+        navigation_hint=None,
+    )
+
+    assert action_executor.calls == [("extract_elements", {"filter": "Save"})]
+    assert _field(result, "proof").step == 1
+    assert _field(result, "proof").after_action == "extract_elements({'filter': 'Save'})"
+    assert _field(result, "proof").text == "Visible buttons:\n- Save"
+
+
+@pytest.mark.asyncio
+async def test_claim_verifier_accepts_stop_finding_field(tmp_path: Path) -> None:
+    module = _import_claim_verifier_module()
+    verifier, _, _ = _build_claim_verifier(
+        module,
+        tmp_path,
+        responses=[
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-1",
+                        function=FakeFunction(
+                            name="stop",
+                            arguments=json.dumps({"finding": "The screenshot needs a human judgment."}),
+                        ),
+                    )
+                ]
+            )
+        ],
+    )
+
+    result = await _call_verify(
+        verifier,
+        page=FakePage(url="http://fixture.local/page"),
+        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+        claim="The promotion banner feels too crowded",
+        url="http://fixture.local/page",
+        navigation_hint=None,
+    )
+
+    assert _field(result, "status") == "inconclusive"
+    assert "human judgment" in _field(result, "finding")
+
+
+@pytest.mark.asyncio
+async def test_claim_verifier_clears_stale_read_only_proof_text_after_mutating_action(tmp_path: Path) -> None:
+    module = _import_claim_verifier_module()
+
+    class MixedActionExecutor(FakeActionExecutor):
+        async def execute_tool_call(self, session: FakeSession, tool_call: Any) -> Any:
+            result = await super().execute_tool_call(session, tool_call)
+            if tool_call.function.name == "extract_elements":
+                result.output_text = "Visible buttons:\n- Save"
+            return result
+
+    verifier, _, action_executor = _build_claim_verifier(
+        module,
+        tmp_path,
+        responses=[
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-1",
+                        function=FakeFunction(name="extract_elements", arguments=json.dumps({"filter": "Save"})),
+                    )
+                ]
+            ),
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-2",
+                        function=FakeFunction(name="goto_url", arguments=json.dumps({"url": "http://fixture.local/modal"})),
+                    )
+                ]
+            ),
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-3",
+                        function=FakeFunction(
+                            name="record_claim_result",
+                            arguments=json.dumps({"status": "passed", "finding": "The modal is visible."}),
+                        ),
+                    )
+                ]
+            ),
+        ],
+        action_executor=MixedActionExecutor(),
+    )
+
+    result = await _call_verify(
+        verifier,
+        page=FakePage(url="http://fixture.local/start"),
+        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+        claim="The modal opens on click",
+        url="http://fixture.local/modal",
+        navigation_hint=None,
+    )
+
+    assert action_executor.calls == [
+        ("extract_elements", {"filter": "Save"}),
+        ("goto_url", {"url": "http://fixture.local/modal"}),
+    ]
+    assert _field(result, "proof").after_action == "goto_url({'url': 'http://fixture.local/modal'})"
+    assert _field(result, "proof").text is None
 
 
 def test_parse_fallback_verdict_requires_explicit_status_markers() -> None:
@@ -900,7 +1065,7 @@ async def test_claim_verifier_normalizes_initial_screenshot_failures_to_not_test
     )
 
     assert _field(result, "status") == "not_testable"
-    assert "Failed to capture screenshot for step-00-initial" in _field(result, "summary")
+    assert "Failed to capture screenshot for step-00-initial" in _field(result, "finding")
 
 
 @pytest.mark.asyncio
@@ -936,7 +1101,43 @@ async def test_claim_verifier_normalizes_post_action_screenshot_failures_to_not_
 
     assert action_executor.calls == [("goto_url", {"url": "http://fixture.local/modal"})]
     assert _field(result, "status") == "not_testable"
-    assert "Failed to capture screenshot for step-01" in _field(result, "summary")
+    assert "Failed to capture screenshot for step-01" in _field(result, "finding")
+    assert _field(_field(result, "proof"), "screenshot").endswith("step-00-initial.webp")
+    assert _field(_field(result, "proof"), "step") == 0
+    assert _field(_field(result, "proof"), "after_action") is None
+    assert _field(_field(result, "trace"), "steps_taken") == 1
+    assert _field(_field(result, "trace"), "wrong_page_recovered") is True
+    assert _field(_field(result, "trace"), "actions") == ["goto_url({'url': 'http://fixture.local/modal'})"]
+
+
+@pytest.mark.asyncio
+async def test_claim_verifier_preserves_partial_result_on_cancellation(tmp_path: Path) -> None:
+    module = _import_claim_verifier_module()
+    verifier, _, _ = _build_claim_verifier(module, tmp_path, responses=[])
+    verifier.n1_client = BlockingN1Client([])
+
+    with pytest.raises(TimeoutError):
+        async with asyncio.timeout(0.01):
+            await _call_verify(
+                verifier,
+                page=FakePage(url="http://fixture.local/page"),
+                viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+                claim="The page has a red button",
+                url="http://fixture.local/page",
+                navigation_hint=None,
+            )
+
+    partial = verifier.consume_partial_result(
+        status="inconclusive",
+        finding="Claim verification timed out before a verdict was recorded.",
+    )
+
+    assert partial is not None
+    assert _field(partial, "status") == "inconclusive"
+    assert _field(_field(partial, "proof"), "screenshot").endswith("step-00-initial.webp")
+    assert _field(_field(partial, "proof"), "step") == 0
+    assert _field(_field(partial, "trace"), "steps_taken") == 0
+    assert _field(_field(partial, "trace"), "screenshots")[0].endswith("step-00-initial.webp")
 
 
 @pytest.mark.asyncio
@@ -982,4 +1183,4 @@ async def test_claim_verifier_uses_stop_reason_in_force_stop_path(tmp_path: Path
 
     assert action_executor.calls == [("goto_url", {"url": "http://fixture.local/modal"})]
     assert _field(result, "status") == "inconclusive"
-    assert "Reached the step limit" in _field(result, "summary")
+    assert "Reached the step limit" in _field(result, "finding")

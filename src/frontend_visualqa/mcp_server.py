@@ -8,6 +8,7 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
+from frontend_visualqa.serialization import serialize_result
 from frontend_visualqa.schemas import BrowserConfig, ManageBrowserInput, VerifyVisualClaimsInput, ViewportConfig, validate_url
 
 
@@ -90,14 +91,6 @@ async def _get_runner() -> Any:
         _config_frozen = True
         _runners_by_loop[loop_key] = runner
         return runner
-
-
-def _serialize_result(result: Any) -> dict[str, Any]:
-    if hasattr(result, "model_dump"):
-        return result.model_dump(mode="json")
-    if isinstance(result, dict):
-        return result
-    raise TypeError(f"Unsupported runner result type: {type(result)!r}")
 
 
 def _reset_server_state() -> None:
@@ -186,7 +179,7 @@ async def verify_visual_claims(
         run_timeout_seconds=run_timeout_seconds,
         navigation_hint=navigation_hint,
     )
-    return _serialize_result(await runner.run_request(request))
+    return serialize_result(await runner.run_request(request))
 
 
 @mcp.tool(
@@ -208,7 +201,7 @@ async def take_screenshot(
         session_key=session_key,
         reuse_session=reuse_session,
     )
-    return _serialize_result(result)
+    return serialize_result(result)
 
 
 @mcp.tool(
@@ -228,7 +221,7 @@ async def manage_browser(
         session_key=session_key,
         viewport=_coerce_viewport(viewport) if viewport is not None else None,
     )
-    return _serialize_result(await runner.manage_browser_request(request))
+    return serialize_result(await runner.manage_browser_request(request))
 
 
 def main() -> None:

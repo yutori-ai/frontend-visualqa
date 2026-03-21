@@ -17,7 +17,7 @@ Playwright MCP can click, type, and assert against the DOM — but it cannot *se
 
 n1 is a pixels-to-actions model trained with RL on live websites. Two capabilities matter here:
 
-- **Self-correcting navigation** — Point the agent at `/tasks` instead of `/tasks/123` and n1 recognizes the wrong page, clicks through to the right one, and reports `wrong_page_recovered: true`. Playwright MCP would run assertions on the wrong page and silently pass — garbage in, garbage out.
+- **Self-correcting navigation** — Point the agent at `/tasks` instead of `/tasks/123` and n1 recognizes the wrong page, clicks through to the right one, and reports `trace.wrong_page_recovered: true`. Playwright MCP would run assertions on the wrong page and silently pass — garbage in, garbage out.
 
   <table border="0" cellspacing="0" cellpadding="8"><tr>
     <td align="center" width="47%"><img src="docs/images/nav-step0-wrong-page.png" alt="Dashboard — wrong page, overlay active" width="100%"><br><em>n1 analyzing the wrong page</em></td>
@@ -371,6 +371,38 @@ Output format for persisted artifacts. Does not affect CLI stdout or MCP tool re
 |----------|------|-------------|
 | `native` *(default)* | `run_result.json` | Full domain-specific schema with all fields |
 | `ctrf` | `ctrf-report.json` | [CTRF](https://ctrf.io/) standard JSON for CI/CD integration |
+
+Each claim result contains:
+- **`finding`** — the verdict explanation (what was observed)
+- **`proof`** — the decisive screenshot, step number, and any extracted text
+- **`page`** — URL and viewport where the claim was evaluated
+- **`trace`** — the execution trace: actions taken and screenshots captured
+
+<details>
+<summary><strong>Example claim result</strong></summary>
+
+```json
+{
+  "claim": "The progress bar shows 100%",
+  "status": "failed",
+  "finding": "The progress bar shows 65%, not 100%.",
+  "proof": {
+    "screenshot": "artifacts/run-.../claim-02/step-04.webp",
+    "step": 4,
+    "after_action": "extract_elements()",
+    "text": null
+  },
+  "page": {
+    "url": "http://localhost:8000/comprehensive_test.html",
+    "viewport": { "width": 1280, "height": 800, "device_scale_factor": 1.0 }
+  },
+  "trace": { "steps_taken": 4, "screenshots": ["..."], "actions": ["..."] }
+}
+```
+
+`proof.screenshot` points to the screenshot n1 was examining when it rendered the verdict — open this first when investigating a failure.
+
+</details>
 
 ```bash
 frontend-visualqa verify http://localhost:3000 \

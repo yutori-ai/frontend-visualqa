@@ -44,6 +44,32 @@ class ViewportConfig(FrontendVisualQABaseModel):
     device_scale_factor: float = Field(default=1.0, gt=0, le=4)
 
 
+class ClaimProof(FrontendVisualQABaseModel):
+    """Primary evidence for a claim verdict."""
+
+    screenshot: str
+    step: int = Field(ge=0)
+    after_action: str | None = None
+    text: str | None = None
+
+
+class ClaimPage(FrontendVisualQABaseModel):
+    """Page context for a claim verdict."""
+
+    url: str
+    viewport: ViewportConfig
+
+
+class ClaimTrace(FrontendVisualQABaseModel):
+    """Execution trace: actions taken and screenshots captured while verifying a claim."""
+
+    steps_taken: int = Field(default=0, ge=0)
+    wrong_page_recovered: bool = False
+    screenshots: list[str] = Field(default_factory=list)
+    actions: list[str] = Field(default_factory=list)
+    path: str | None = None
+
+
 class BrowserConfig(FrontendVisualQABaseModel):
     """Browser lifecycle configuration shared by CLI and MCP flows."""
 
@@ -108,21 +134,17 @@ class ClaimResult(FrontendVisualQABaseModel):
 
     claim: str
     status: ClaimStatus
-    summary: str
-    final_url: str
-    wrong_page_recovered: bool = False
-    steps_taken: int = Field(default=0, ge=0)
-    viewport: ViewportConfig
-    screenshots: list[str] = Field(default_factory=list)
-    action_trace: list[str] = Field(default_factory=list)
-    trace_path: str | None = None
+    finding: str
+    proof: ClaimProof | None = None
+    page: ClaimPage
+    trace: ClaimTrace = Field(default_factory=ClaimTrace)
 
 
 class RunResult(FrontendVisualQABaseModel):
     """Structured output for a verification run."""
 
     overall_status: OverallStatus
-    runner_version: str = "0.2.1"
+    runner_version: str = "0.3.0"
     started_at: float | None = None
     completed_at: float | None = None
     session_key: str

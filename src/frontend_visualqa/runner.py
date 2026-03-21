@@ -17,8 +17,10 @@ from frontend_visualqa.reporters import get_reporters
 from frontend_visualqa.schemas import (
     BrowserConfig,
     BrowserStatusResult,
+    ClaimPage,
     ClaimResult,
     ClaimStatus,
+    ClaimTrace,
     ManageBrowserInput,
     RunResult,
     ScreenshotResult,
@@ -28,10 +30,7 @@ from frontend_visualqa.schemas import (
 
 logger = logging.getLogger(__name__)
 
-if TYPE_CHECKING:
-    from frontend_visualqa.claim_verifier import ClaimVerifier as ClaimVerifierType
-    from frontend_visualqa.n1_client import N1Client as N1ClientType
-else:
+if not TYPE_CHECKING:
     ClaimVerifier = None  # type: ignore[assignment]
     N1Client = None  # type: ignore[assignment]
 
@@ -157,7 +156,7 @@ class VisualQARunner:
                 result = self._build_not_testable_run(
                     request=request,
                     run_dir=str(run_artifacts.run_dir),
-                    summary=preflight_error,
+                    finding=preflight_error,
                     started_at=run_started_at,
                     completed_at=time.time(),
                 )
@@ -174,7 +173,7 @@ class VisualQARunner:
                 result = self._build_not_testable_run(
                     request=request,
                     run_dir=str(run_artifacts.run_dir),
-                    summary=f"Could not start a browser session for {request.url}: {exc}",
+                    finding=f"Could not start a browser session for {request.url}: {exc}",
                     started_at=run_started_at,
                     completed_at=time.time(),
                 )
@@ -187,7 +186,7 @@ class VisualQARunner:
                 result = self._build_not_testable_run(
                     request=request,
                     run_dir=str(run_artifacts.run_dir),
-                    summary=f"Could not navigate to {request.url}: {exc}",
+                    finding=f"Could not navigate to {request.url}: {exc}",
                     started_at=run_started_at,
                     completed_at=time.time(),
                 )
@@ -213,7 +212,7 @@ class VisualQARunner:
                                 self._build_claim(
                                     claim=claim,
                                     status="not_testable",
-                                    summary=f"Could not prepare browser state for this claim: {exc}",
+                                    finding=f"Could not prepare browser state for this claim: {exc}",
                                     final_url=getattr(session.page, "url", request.url) or request.url,
                                     viewport=getattr(session, "viewport", request.viewport),
                                 )
@@ -229,21 +228,26 @@ class VisualQARunner:
                                 claim_index=index,
                             )
                         except TimeoutError:
-                            result = self._build_claim(
+                            finding = self._format_claim_timeout_finding(request.claim_timeout_seconds)
+                            result = self._consume_partial_claim_result(
+                                status="inconclusive",
+                                finding=finding,
+                            ) or self._build_claim(
                                 claim=claim,
                                 status="inconclusive",
-                                summary=(
-                                    f"Claim verification timed out after {request.claim_timeout_seconds:.0f}s "
-                                    "before a verdict was recorded."
-                                ),
+                                finding=finding,
                                 final_url=getattr(session.page, "url", request.url) or request.url,
                                 viewport=getattr(session, "viewport", request.viewport),
                             )
                         except Exception as exc:
-                            result = self._build_claim(
+                            finding = f"Verification crashed unexpectedly before returning a verdict: {exc}"
+                            result = self._consume_partial_claim_result(
+                                status="inconclusive",
+                                finding=finding,
+                            ) or self._build_claim(
                                 claim=claim,
                                 status="inconclusive",
-                                summary=f"Verification crashed unexpectedly before returning a verdict: {exc}",
+                                finding=finding,
                                 final_url=getattr(session.page, "url", request.url) or request.url,
                                 viewport=getattr(session, "viewport", request.viewport),
                             )
@@ -251,18 +255,37 @@ class VisualQARunner:
                         next_claim_index = index + 1
             except TimeoutError:
                 timed_out_claims = request.claims[next_claim_index - 1 :]
+                remaining_claims = list(timed_out_claims)
+                timeout_finding = self._format_run_timeout_finding(request.run_timeout_seconds)
+                if remaining_claims:
+                    interrupted_result = self._consume_partial_claim_result(
+                        status="inconclusive",
+                        finding=timeout_finding,
+                    )
+                    if interrupted_result is not None:
+                        claim_results.append(interrupted_result)
+                    else:
+                        claim_results.append(
+                            self._build_claim(
+                                claim=remaining_claims[0],
+                                status="inconclusive",
+                                finding=timeout_finding,
+                                final_url=getattr(session.page, "url", request.url) or request.url,
+                                viewport=getattr(session, "viewport", request.viewport),
+                            )
+                        )
+                    remaining_claims = remaining_claims[1:]
+
                 claim_results.extend(
                     [
                         self._build_claim(
                             claim=claim,
                             status="inconclusive",
-                            summary=(
-                                f"Run timed out after {request.run_timeout_seconds:.0f}s before this claim could finish."
-                            ),
+                            finding=timeout_finding,
                             final_url=getattr(session.page, "url", request.url) or request.url,
                             viewport=getattr(session, "viewport", request.viewport),
                         )
-                        for claim in timed_out_claims
+                        for claim in remaining_claims
                     ]
                 )
 
@@ -444,7 +467,7 @@ class VisualQARunner:
         *,
         request: VerifyVisualClaimsInput,
         run_dir: str,
-        summary: str,
+        finding: str,
         started_at: float | None = None,
         completed_at: float | None = None,
     ) -> RunResult:
@@ -452,13 +475,10 @@ class VisualQARunner:
             ClaimResult(
                 claim=claim,
                 status="not_testable",
-                summary=summary,
-                final_url=request.url,
-                wrong_page_recovered=False,
-                steps_taken=0,
-                viewport=request.viewport,
-                screenshots=[],
-                action_trace=[],
+                finding=finding,
+                proof=None,
+                page=ClaimPage(url=request.url, viewport=request.viewport),
+                trace=ClaimTrace(),
             )
             for claim in request.claims
         ]
@@ -468,7 +488,7 @@ class VisualQARunner:
             completed_at=completed_at,
             session_key=request.session_key,
             results=results,
-            summary=summary,
+            summary=VisualQARunner._summarize_results(results),
             artifacts_dir=run_dir,
         )
 
@@ -477,21 +497,51 @@ class VisualQARunner:
         *,
         claim: str,
         status: ClaimStatus,
-        summary: str,
+        finding: str,
         final_url: str,
         viewport: ViewportConfig,
     ) -> ClaimResult:
         return ClaimResult(
             claim=claim,
             status=status,
-            summary=summary,
-            final_url=final_url,
-            wrong_page_recovered=False,
-            steps_taken=0,
-            viewport=viewport,
-            screenshots=[],
-            action_trace=[],
+            finding=finding,
+            proof=None,
+            page=ClaimPage(url=final_url, viewport=viewport),
+            trace=ClaimTrace(),
         )
+
+    def _consume_partial_claim_result(self, *, status: ClaimStatus, finding: str) -> ClaimResult | None:
+        consume_partial_result = getattr(self.claim_verifier, "consume_partial_result", None)
+        if not callable(consume_partial_result):
+            return None
+        try:
+            return consume_partial_result(status=status, finding=finding)
+        except Exception:
+            logger.warning("Failed to recover partial claim result after verifier interruption", exc_info=True)
+            return None
+
+    @staticmethod
+    def _format_claim_timeout_finding(timeout_seconds: float | None) -> str:
+        if timeout_seconds is None:
+            return "Claim verification timed out before a verdict was recorded."
+        return (
+            f"Claim verification timed out after {VisualQARunner._format_timeout_seconds(timeout_seconds)} "
+            "before a verdict was recorded."
+        )
+
+    @staticmethod
+    def _format_run_timeout_finding(timeout_seconds: float | None) -> str:
+        if timeout_seconds is None:
+            return "Run timed out before this claim could finish."
+        return f"Run timed out after {VisualQARunner._format_timeout_seconds(timeout_seconds)} before this claim could finish."
+
+    @staticmethod
+    def _format_timeout_seconds(timeout_seconds: float) -> str:
+        if timeout_seconds >= 1 and float(timeout_seconds).is_integer():
+            return f"{int(timeout_seconds)}s"
+        if timeout_seconds >= 1:
+            return f"{timeout_seconds:.1f}s"
+        return f"{timeout_seconds:.2f}s".rstrip("0").rstrip(".") + "s"
 
     def _write_reports(self, run_result: RunResult, run_dir: str) -> None:
         output_dir = Path(run_dir)

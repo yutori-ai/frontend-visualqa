@@ -6,7 +6,44 @@ from typing import Any
 import pytest
 
 from frontend_visualqa import __version__
-from frontend_visualqa.schemas import BrowserConfig, BrowserMode, ViewportConfig
+from frontend_visualqa.schemas import BrowserConfig, BrowserMode, BrowserStatusResult, ClaimResult, RunResult, ScreenshotResult, ViewportConfig
+
+
+def _sample_claim_result(*, url: str, viewport: ViewportConfig) -> ClaimResult:
+    return ClaimResult(
+        claim="The modal title reads Edit Task",
+        status="passed",
+        finding="The modal title reads Edit Task.",
+        proof={
+            "screenshot": "artifacts/run-fake/claim-01/step-00-initial.webp",
+            "step": 0,
+            "after_action": None,
+            "text": None,
+        },
+        page={"url": url, "viewport": viewport},
+        trace={
+            "steps_taken": 0,
+            "wrong_page_recovered": False,
+            "screenshots": ["artifacts/run-fake/claim-01/step-00-initial.webp"],
+            "actions": [],
+            "path": None,
+        },
+    )
+
+
+def _assert_claim_result_payload_shape(result: dict[str, Any]) -> None:
+    assert set(result) == {"claim", "status", "finding", "proof", "page", "trace"}
+
+    proof = result["proof"]
+    assert proof is not None
+    assert set(proof) == {"screenshot", "step", "after_action", "text"}
+
+    page = result["page"]
+    assert set(page) == {"url", "viewport"}
+    assert set(page["viewport"]) == {"width", "height", "device_scale_factor"}
+
+    trace = result["trace"]
+    assert set(trace) == {"steps_taken", "wrong_page_recovered", "screenshots", "actions", "path"}
 
 
 class FakeRunner:
@@ -16,28 +53,29 @@ class FakeRunner:
         self.browser_calls: list[dict[str, Any]] = []
         self.close_calls = 0
 
-    async def run(self, **kwargs: Any) -> dict[str, Any]:
+    async def run(self, **kwargs: Any) -> RunResult:
         self.run_calls.append(kwargs)
-        return {
-            "overall_status": "completed",
-            "session_key": kwargs["session_key"],
-            "results": [],
-            "summary": "ok",
-            "artifacts_dir": "artifacts/run-fake",
-        }
+        viewport = kwargs.get("viewport", ViewportConfig())
+        return RunResult(
+            overall_status="completed",
+            session_key=kwargs["session_key"],
+            results=[_sample_claim_result(url=kwargs["url"], viewport=viewport)],
+            summary="1/1 claims passed.",
+            artifacts_dir="artifacts/run-fake",
+        )
 
-    async def take_screenshot(self, **kwargs: Any) -> dict[str, Any]:
+    async def take_screenshot(self, **kwargs: Any) -> ScreenshotResult:
         self.screenshot_calls.append(kwargs)
-        return {
-            "session_key": kwargs["session_key"],
-            "final_url": kwargs["url"],
-            "viewport": kwargs["viewport"].model_dump(mode="json"),
-            "screenshot_path": "artifacts/run-fake/screenshot.webp",
-        }
+        return ScreenshotResult(
+            session_key=kwargs["session_key"],
+            final_url=kwargs["url"],
+            viewport=kwargs["viewport"],
+            screenshot_path="artifacts/run-fake/screenshot.webp",
+        )
 
-    async def manage_browser(self, **kwargs: Any) -> dict[str, Any]:
+    async def manage_browser(self, **kwargs: Any) -> BrowserStatusResult:
         self.browser_calls.append(kwargs)
-        return {"browser_running": False, "sessions": []}
+        return BrowserStatusResult(browser_running=False, sessions=[])
 
     async def close(self) -> None:
         self.close_calls += 1
@@ -148,6 +186,13 @@ def test_handle_verify_closes_runner_and_forwards_browser_config(monkeypatch: An
         )
     ]
     assert emitted[0]["overall_status"] == "completed"
+    assert emitted[0]["runner_version"] == "0.3.0"
+    claim_result = emitted[0]["results"][0]
+    _assert_claim_result_payload_shape(claim_result)
+    assert claim_result["finding"] == "The modal title reads Edit Task."
+    assert claim_result["proof"]["step"] == 0
+    assert claim_result["page"]["url"] == "http://localhost:3000/tasks/123"
+    assert claim_result["trace"]["screenshots"] == ["artifacts/run-fake/claim-01/step-00-initial.webp"]
 
 
 def test_handle_screenshot_closes_runner_and_forwards_browser_config(monkeypatch: Any) -> None:

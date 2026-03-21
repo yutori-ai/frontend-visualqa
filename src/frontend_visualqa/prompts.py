@@ -25,12 +25,12 @@ RECORD_CLAIM_RESULT_TOOL: dict[str, Any] = {
                         "not_testable: the environment blocked verification."
                     ),
                 },
-                "summary": {
+                "finding": {
                     "type": "string",
-                    "description": "Brief evidence-backed explanation of what you observed.",
+                    "description": "Brief evidence-backed finding of what you observed.",
                 },
             },
-            "required": ["status", "summary"],
+            "required": ["status", "finding"],
         },
     },
 }
@@ -76,7 +76,7 @@ def build_force_stop_prompt(claim: str) -> str:
             "You have reached the maximum number of actions for this claim.",
             f'Claim: "{claim}"',
             "Do not take any more browser actions.",
-            "Call record_claim_result now with your best verdict and a short evidence summary.",
+            "Call record_claim_result now with your best verdict and a short evidence-backed finding.",
             "Use inconclusive if you truly cannot tell, or not_testable if the environment blocked you.",
         ]
     )
