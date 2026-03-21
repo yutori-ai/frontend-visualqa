@@ -10,6 +10,7 @@ import sys
 import threading
 from typing import Any
 
+from frontend_visualqa import __version__
 from frontend_visualqa.browser import BrowserManager
 from frontend_visualqa.mcp_server import close_runners_sync, configure_server, get_mcp_server
 from frontend_visualqa.schemas import BrowserConfig, BrowserMode, ViewportConfig, validate_url
@@ -22,6 +23,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="frontend-visualqa",
         description="Gives coding agents eyes for frontend work — visual QA and verification powered by Yutori n1.",
     )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     serve_parser = subparsers.add_parser("serve", help="Start the FastMCP stdio server.")

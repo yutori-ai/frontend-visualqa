@@ -5,6 +5,7 @@ from typing import Any
 
 import pytest
 
+from frontend_visualqa import __version__
 from frontend_visualqa.schemas import BrowserConfig, BrowserMode, ViewportConfig
 
 
@@ -88,6 +89,16 @@ class ClosingFakeBrowserManager(FakeBrowserManager):
         final_url = await super().goto(session, url)
         session.context.events["close"]()
         return final_url
+
+
+def test_build_parser_supports_version_flag_without_subcommand(capsys: pytest.CaptureFixture[str]) -> None:
+    import frontend_visualqa.cli as cli
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.build_parser().parse_args(["--version"])
+
+    assert exc_info.value.code == 0
+    assert capsys.readouterr().out.strip() == f"frontend-visualqa {__version__}"
 
 
 def test_handle_verify_closes_runner_and_forwards_browser_config(monkeypatch: Any) -> None:
