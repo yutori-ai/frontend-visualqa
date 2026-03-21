@@ -140,21 +140,17 @@ class BrowserManager:
     async def capture_screenshot(self, session: BrowserSession) -> bytes:
         """Capture the current page viewport as WebP bytes."""
 
-        png_bytes = await self._capture_png_bytes(session)
-        image = Image.open(io.BytesIO(png_bytes))
-        image.load()
-        buffer = io.BytesIO()
-        image.save(buffer, format="WEBP", quality=90)
-        return buffer.getvalue()
+        image = await self._capture_screenshot_image(session)
+        return self._image_to_webp_bytes(image)
 
-    async def _capture_png_bytes(self, session: BrowserSession) -> bytes:
+    async def _capture_screenshot_image(self, session: BrowserSession) -> Image.Image:
         if not self.headless:
-            # In headed Chromium, Playwright's page.screenshot() can visibly
-            # shrink the live page during capture. Use the lower-level CDP
-            # capture path first so the visible browser stays stable.
-            cdp_png = await self._capture_png_bytes_via_cdp(session)
-            if cdp_png is not None:
-                return cdp_png
+            # In headed Chromium, the default screenshot surface path can
+            # flash the live page. Prefer a view-backed CDP capture, then
+            # normalize the returned image back to CSS viewport size for n1.
+            cdp_image = await self._capture_screenshot_image_via_cdp(session)
+            if cdp_image is not None:
+                return cdp_image
 
         # If CDP capture is unavailable, fall back to Playwright screenshots.
         # Keep animations disabled only in headless mode for deterministic
@@ -163,14 +159,14 @@ class BrowserManager:
         screenshot_kwargs: dict[str, Any] = {"type": "png"}
         if self.headless:
             screenshot_kwargs["animations"] = "disabled"
-        return await session.page.screenshot(**screenshot_kwargs)
+        return self._image_from_bytes(await session.page.screenshot(**screenshot_kwargs))
 
-    async def _capture_png_bytes_via_cdp(self, session: BrowserSession) -> bytes | None:
+    async def _capture_screenshot_image_via_cdp(self, session: BrowserSession) -> Image.Image | None:
         cdp_session = None
         try:
             cdp_session = await session.context.new_cdp_session(session.page)
             layout_metrics = await cdp_session.send("Page.getLayoutMetrics")
-            capture_params = self._build_cdp_capture_params(layout_metrics)
+            capture_params, target_size = self._build_cdp_capture_request(layout_metrics)
             result = await cdp_session.send(
                 "Page.captureScreenshot",
                 capture_params,
@@ -178,7 +174,7 @@ class BrowserManager:
             data = result.get("data")
             if not data:
                 raise ValueError("Chromium did not return screenshot data")
-            return base64.b64decode(data)
+            return self._normalize_cdp_capture_image(self._image_from_bytes(base64.b64decode(data)), target_size)
         except Exception:
             logger.debug("CDP screenshot capture failed; falling back to Playwright screenshot()", exc_info=True)
             return None
@@ -190,36 +186,58 @@ class BrowserManager:
                     logger.debug("CDP screenshot session detach failed", exc_info=True)
 
     @staticmethod
-    def _build_cdp_capture_params(layout_metrics: dict[str, Any]) -> dict[str, Any]:
+    def _build_cdp_capture_request(layout_metrics: dict[str, Any]) -> tuple[dict[str, Any], tuple[int, int] | None]:
         css_viewport = layout_metrics.get("cssVisualViewport") or {}
-        surface_viewport = layout_metrics.get("visualViewport") or {}
+        css_width = int(round(float(css_viewport.get("clientWidth") or 0)))
+        css_height = int(round(float(css_viewport.get("clientHeight") or 0)))
 
-        css_width = float(css_viewport.get("clientWidth") or 0)
-        css_height = float(css_viewport.get("clientHeight") or 0)
-        surface_width = float(surface_viewport.get("clientWidth") or 0)
-        surface_height = float(surface_viewport.get("clientHeight") or 0)
+        if css_width > 0 and css_height > 0:
+            return (
+                {
+                    "format": "png",
+                    "captureBeyondViewport": False,
+                    "fromSurface": False,
+                    "clip": {
+                        "x": float(css_viewport.get("pageX") or 0),
+                        "y": float(css_viewport.get("pageY") or 0),
+                        "width": float(css_width),
+                        "height": float(css_height),
+                        "scale": 1.0,
+                    },
+                },
+                (css_width, css_height),
+            )
 
-        if css_width > 0 and css_height > 0 and surface_width > 0 and surface_height > 0:
-            surface_scale_x = surface_width / css_width
-            surface_scale_y = surface_height / css_height
-            surface_scale = max(surface_scale_x, surface_scale_y, 1.0)
-            return {
+        logger.debug("CDP layout metrics missing CSS viewport sizes; using default screenshot params")
+        return (
+            {
                 "format": "png",
                 "captureBeyondViewport": False,
-                "clip": {
-                    "x": float(css_viewport.get("pageX") or 0),
-                    "y": float(css_viewport.get("pageY") or 0),
-                    "width": css_width,
-                    "height": css_height,
-                    "scale": 1.0 / surface_scale,
-                },
-            }
+                "fromSurface": False,
+            },
+            None,
+        )
 
-        logger.debug("CDP layout metrics missing CSS/surface viewport sizes; using default screenshot params")
-        return {
-            "format": "png",
-            "captureBeyondViewport": False,
-        }
+    @staticmethod
+    def _normalize_cdp_capture_image(image: Image.Image, target_size: tuple[int, int] | None) -> Image.Image:
+        if target_size is None:
+            return image
+        if image.size == target_size:
+            return image
+
+        return image.resize(target_size, resample=Image.Resampling.LANCZOS)
+
+    @staticmethod
+    def _image_from_bytes(image_bytes: bytes) -> Image.Image:
+        image = Image.open(io.BytesIO(image_bytes))
+        image.load()
+        return image
+
+    @staticmethod
+    def _image_to_webp_bytes(image: Image.Image) -> bytes:
+        buffer = io.BytesIO()
+        image.save(buffer, format="WEBP", quality=90)
+        return buffer.getvalue()
 
     async def set_viewport(self, session_key: str, viewport: ViewportConfig) -> BrowserSession:
         """Resize or recreate the session to match a new viewport."""

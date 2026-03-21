@@ -27,8 +27,15 @@ TYPE_STYLE_ID = "__n1TypeStyle"
 
 _ROOT_STYLE = (
     f"position:fixed;top:0;left:0;right:0;bottom:0;"
-    f"pointer-events:none;z-index:{Z_INDEX};"
+    f"pointer-events:none;z-index:{Z_INDEX};visibility:visible;opacity:1;"
 )
+
+
+def _set_visibility_opacity_js(element_ref: str, *, visibility: str, opacity: str) -> str:
+    return (
+        f"{element_ref}.style.visibility = '{visibility}';"
+        f"{element_ref}.style.opacity = '{opacity}';"
+    )
 
 _PERSISTENT_ROOT_JS = f"""() => {{
     if (document.getElementById('{PERSISTENT_ROOT_ID}')) return;
@@ -77,7 +84,7 @@ _PERSISTENT_ROOT_JS = f"""() => {{
 _TRANSIENT_ROOT_JS = f"""() => {{
     let root = document.getElementById('{TRANSIENT_ROOT_ID}');
     if (root) {{
-        root.style.display = '';
+        {_set_visibility_opacity_js("root", visibility="visible", opacity="1")}
         return;
     }}
 
@@ -102,15 +109,24 @@ _REMOVE_ALL_JS = f"""() => {{
 }}"""
 
 _HIDE_BOTH_JS = f"""() => {{
+    // Keep the full-viewport overlay layers mounted during capture.
+    // In headed Chromium, toggling display on these layers can trigger
+    // a visible compositor snap even though the page viewport is unchanged.
     const persistent = document.getElementById('{PERSISTENT_ROOT_ID}');
-    if (persistent) persistent.style.display = 'none';
+    if (persistent) {{
+        {_set_visibility_opacity_js("persistent", visibility="hidden", opacity="0")}
+    }}
     const transient = document.getElementById('{TRANSIENT_ROOT_ID}');
-    if (transient) transient.style.display = 'none';
+    if (transient) {{
+        {_set_visibility_opacity_js("transient", visibility="hidden", opacity="0")}
+    }}
 }}"""
 
 _RESTORE_PERSISTENT_JS = f"""() => {{
     const persistent = document.getElementById('{PERSISTENT_ROOT_ID}');
-    if (persistent) persistent.style.display = '';
+    if (persistent) {{
+        {_set_visibility_opacity_js("persistent", visibility="visible", opacity="1")}
+    }}
 }}"""
 
 _CHECK_PERSISTENT_JS = f"!!document.getElementById('{PERSISTENT_ROOT_ID}')"

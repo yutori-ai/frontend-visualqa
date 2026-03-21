@@ -103,7 +103,7 @@ class TestOverlayShowAction:
 
         assert controller._current_status == "Clicking"
         scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
-        assert any("__n1TransientRoot" in script and "display = ''" in script for script in scripts)
+        assert any("__n1TransientRoot" in script and "visibility = 'visible'" in script for script in scripts)
         assert any("const numClicks = 2" in script for script in scripts)
         assert any("left:100px" in script and "top:200px" in script for script in scripts)
 
@@ -190,7 +190,8 @@ class TestOverlayScreenshotBoundary:
         script = str(page.evaluate.call_args.args[0])
         assert "__n1PersistentRoot" in script
         assert "__n1TransientRoot" in script
-        assert "none" in script
+        assert "visibility = 'hidden'" in script
+        assert "opacity = '0'" in script
 
     @pytest.mark.asyncio
     async def test_after_screenshot_restores_persistent_root_only(self) -> None:
@@ -226,9 +227,9 @@ class TestOverlayScreenshotBoundary:
 
         scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
         assert any(
-            "__n1TransientRoot" in script and "display = ''" in script
+            "__n1TransientRoot" in script and "visibility = 'visible'" in script
             for script in scripts
-        ), "Transient root display must be restored before injecting new effects"
+        ), "Transient root visibility must be restored before injecting new effects"
 
     @pytest.mark.asyncio
     async def test_after_screenshot_is_noop_when_inactive(self) -> None:

@@ -98,12 +98,14 @@ async def _overlay_dom_state(page: Any) -> dict[str, Any]:
             const read = (id) => {
                 const element = document.getElementById(id);
                 if (!element) {
-                    return { present: false, display: null, text: null };
+                    return { present: false, display: null, visibility: null, opacity: null, text: null };
                 }
                 const style = window.getComputedStyle(element);
                 return {
                     present: true,
                     display: style.display,
+                    visibility: style.visibility,
+                    opacity: style.opacity,
                     text: (element.textContent || "").trim(),
                 };
             };
@@ -393,22 +395,32 @@ async def test_live_runner_headed_overlay_hides_restores_and_cleans_up(
         state = sample["state"]
         assert sample["error"] is None
         assert state["persistent"]["present"] is True
-        assert state["persistent"]["display"] == "none"
+        assert state["persistent"]["display"] != "none"
+        assert state["persistent"]["visibility"] == "hidden"
+        assert state["persistent"]["opacity"] == "0"
         assert state["transient"]["present"] is True
-        assert state["transient"]["display"] == "none"
+        assert state["transient"]["display"] != "none"
+        assert state["transient"]["visibility"] == "hidden"
+        assert state["transient"]["opacity"] == "0"
 
     for sample in after_samples:
         state = sample["state"]
         assert sample["error"] is None
         assert state["persistent"]["present"] is True
         assert state["persistent"]["display"] != "none"
+        assert state["persistent"]["visibility"] == "visible"
+        assert state["persistent"]["opacity"] == "1"
         assert state["transient"]["present"] is True
-        assert state["transient"]["display"] == "none"
+        assert state["transient"]["display"] != "none"
+        assert state["transient"]["visibility"] == "hidden"
+        assert state["transient"]["opacity"] == "0"
 
     started_state = started_samples[0]["state"]
     assert started_samples[0]["error"] is None
     assert started_state["persistent"]["present"] is True
     assert started_state["persistent"]["display"] != "none"
+    assert started_state["persistent"]["visibility"] == "visible"
+    assert started_state["persistent"]["opacity"] == "1"
     assert started_state["chip"]["present"] is True
     assert started_state["chip"]["text"].upper() == "ANALYZING"
 

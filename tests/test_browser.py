@@ -107,8 +107,8 @@ async def test_browser_manager_capture_screenshot_prefers_cdp_in_headed_mode() -
             self.send_calls.append((method, resolved_params))
             if method == "Page.getLayoutMetrics":
                 return {
-                    "visualViewport": {"clientWidth": 2560, "clientHeight": 1600},
-                    "cssVisualViewport": {"pageX": 0, "pageY": 0, "clientWidth": 1280, "clientHeight": 800},
+                    "visualViewport": {"clientWidth": 640, "clientHeight": 400},
+                    "cssVisualViewport": {"pageX": 0, "pageY": 0, "clientWidth": 320, "clientHeight": 200},
                 }
             return {"data": base64.b64encode(self.payload).decode("ascii")}
 
@@ -132,7 +132,7 @@ async def test_browser_manager_capture_screenshot_prefers_cdp_in_headed_mode() -
             self.screenshot_calls.append(kwargs)
             return _png_bytes(color=(255, 0, 0))
 
-    png_payload = _png_bytes()
+    png_payload = _png_bytes(size=(640, 400))
     cdp_session = FakeCDPSession(png_payload)
     context = FakeContext(cdp_session)
     page = FakePage()
@@ -140,14 +140,17 @@ async def test_browser_manager_capture_screenshot_prefers_cdp_in_headed_mode() -
         session_key="default",
         context=context,  # type: ignore[arg-type]
         page=page,  # type: ignore[arg-type]
-        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+        viewport=ViewportConfig(width=320, height=200, device_scale_factor=1),
     )
     manager = BrowserManager(config=BrowserConfig(headless=False))
 
     screenshot = await manager.capture_screenshot(session)
+    image = Image.open(io.BytesIO(screenshot))
+    image.load()
 
     assert screenshot[:4] == b"RIFF"
     assert b"WEBP" in screenshot[:24]
+    assert image.size == (320, 200)
     assert context.new_cdp_session_calls == 1
     assert cdp_session.send_calls == [
         ("Page.getLayoutMetrics", {}),
@@ -156,12 +159,13 @@ async def test_browser_manager_capture_screenshot_prefers_cdp_in_headed_mode() -
             {
                 "format": "png",
                 "captureBeyondViewport": False,
+                "fromSurface": False,
                 "clip": {
                     "x": 0.0,
                     "y": 0.0,
-                    "width": 1280.0,
-                    "height": 800.0,
-                    "scale": 0.5,
+                    "width": 320.0,
+                    "height": 200.0,
+                    "scale": 1.0,
                 },
             },
         ),
@@ -179,8 +183,8 @@ async def test_browser_manager_capture_screenshot_falls_back_to_playwright_in_he
         async def send(self, method: str, params: dict[str, object] | None = None) -> dict[str, str]:
             if method == "Page.getLayoutMetrics":
                 return {
-                    "visualViewport": {"clientWidth": 2560, "clientHeight": 1600},
-                    "cssVisualViewport": {"pageX": 0, "pageY": 0, "clientWidth": 1280, "clientHeight": 800},
+                    "visualViewport": {"clientWidth": 640, "clientHeight": 400},
+                    "cssVisualViewport": {"pageX": 0, "pageY": 0, "clientWidth": 320, "clientHeight": 200},
                 }
             raise RuntimeError("capture failed")
 
@@ -221,31 +225,21 @@ async def test_browser_manager_capture_screenshot_falls_back_to_playwright_in_he
     assert page.screenshot_calls == [{"type": "png"}]
 
 
-def test_browser_manager_build_cdp_capture_params_defaults_when_metrics_are_missing() -> None:
-    params = BrowserManager._build_cdp_capture_params({})
+def test_browser_manager_build_cdp_capture_request_defaults_when_metrics_are_missing() -> None:
+    params, target_size = BrowserManager._build_cdp_capture_request({})
 
     assert params == {
         "format": "png",
         "captureBeyondViewport": False,
+        "fromSurface": False,
     }
+    assert target_size is None
 
 
-@pytest.mark.parametrize(
-    ("surface_width", "surface_height", "expected_scale"),
-    [
-        (1280, 800, 1.0),
-        (1920, 1200, 2 / 3),
-        (2560, 1600, 0.5),
-    ],
-)
-def test_browser_manager_build_cdp_capture_params_derives_scale_from_runtime_metrics(
-    surface_width: int,
-    surface_height: int,
-    expected_scale: float,
-) -> None:
-    params = BrowserManager._build_cdp_capture_params(
+def test_browser_manager_build_cdp_capture_request_uses_css_viewport() -> None:
+    params, target_size = BrowserManager._build_cdp_capture_request(
         {
-            "visualViewport": {"clientWidth": surface_width, "clientHeight": surface_height},
+            "visualViewport": {"clientWidth": 2560, "clientHeight": 1600},
             "cssVisualViewport": {"pageX": 0, "pageY": 0, "clientWidth": 1280, "clientHeight": 800},
         }
     )
@@ -253,14 +247,25 @@ def test_browser_manager_build_cdp_capture_params_derives_scale_from_runtime_met
     assert params == {
         "format": "png",
         "captureBeyondViewport": False,
+        "fromSurface": False,
         "clip": {
             "x": 0.0,
             "y": 0.0,
             "width": 1280.0,
             "height": 800.0,
-            "scale": expected_scale,
+            "scale": 1.0,
         },
     }
+    assert target_size == (1280, 800)
+
+
+def test_browser_manager_normalize_cdp_capture_image_resizes_to_target_size() -> None:
+    normalized = BrowserManager._normalize_cdp_capture_image(
+        BrowserManager._image_from_bytes(_png_bytes(size=(640, 400))),
+        (320, 200),
+    )
+
+    assert normalized.size == (320, 200)
 
 
 @pytest.mark.asyncio
