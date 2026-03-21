@@ -18,7 +18,16 @@ Playwright MCP can click, type, and assert against the DOM — but it cannot *se
 n1 is a pixels-to-actions model trained with RL on live websites. Two capabilities matter here:
 
 - **Self-correcting navigation** — Point the agent at `/tasks` instead of `/tasks/123` and n1 recognizes the wrong page, clicks through to the right one, and reports `wrong_page_recovered: true`. Playwright MCP would run assertions on the wrong page and silently pass — garbage in, garbage out.
-- **Rich visual evaluation** — After clicking "Mark Complete", n1 reported three changes: status badge blue→green, button label→"Completed", toast notification appeared. Playwright MCP would need three hand-written assertions.
+
+  | Started on the wrong page | Navigated to the correct page |
+  |:---:|:---:|
+  | ![Dashboard — wrong page](docs/images/nav-step0-wrong-page.webp) | ![Task #123 — correct page](docs/images/nav-step6-correct-page.webp) |
+
+- **Rich visual evaluation** — On the task detail page for Task #123, after clicking "Mark Complete", n1 reported three changes: status badge "In Progress"→"Done", button label→"Completed", toast notification appeared. Playwright MCP would need three hand-written assertions.
+
+  | Before | After clicking "Mark Complete" |
+  |:---:|:---:|
+  | ![Before — In Progress](docs/images/mark-complete-before.webp) | ![After — Done + toast](docs/images/mark-complete-after.webp) |
 
 ## Install
 
