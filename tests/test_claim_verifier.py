@@ -119,7 +119,7 @@ class FakeArtifactManager:
     def save_proof_text(self, run: RunArtifacts, claim_index: int, label: str, text: str) -> str:
         claim_dir = run.run_dir / f"claim-{claim_index:02d}"
         claim_dir.mkdir(parents=True, exist_ok=True)
-        path = claim_dir / f"{label}-proof.txt"
+        path = claim_dir / f"{label}.txt"
         path.write_text(text, encoding="utf-8")
         return str(path)
 
@@ -892,7 +892,7 @@ async def test_claim_verifier_records_proof_text_for_read_only_final_action(tmp_
     assert _field(result, "proof").step == 1
     assert _field(result, "proof").after_action == "extract_elements({'filter': 'Save'})"
     assert _field(result, "proof").text == "Visible buttons:\n- Save"
-    assert _field(result, "proof").text_path.endswith("step-01-proof.txt")
+    assert _field(result, "proof").text_path.endswith("step-01.txt")
     assert Path(_field(result, "proof").text_path).read_text(encoding="utf-8") == "Visible buttons:\n- Save"
 
 
@@ -947,7 +947,7 @@ async def test_claim_verifier_truncates_inline_proof_text_but_saves_full_artifac
     assert _field(result, "proof").text is not None
     assert _field(result, "proof").text != full_proof_text
     assert _field(result, "proof").text.endswith("...")
-    assert _field(result, "proof").text_path.endswith("step-01-proof.txt")
+    assert _field(result, "proof").text_path.endswith("step-01.txt")
     assert Path(_field(result, "proof").text_path).read_text(encoding="utf-8") == full_proof_text
 
 

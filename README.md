@@ -391,7 +391,7 @@ Each claim result contains:
     "step": 4,
     "after_action": "extract_elements()",
     "text": "Page text:\nProject Progress 65%\n...",
-    "text_path": "artifacts/run-.../claim-02/step-04-proof.txt"
+    "text_path": "artifacts/run-.../claim-02/step-04.txt"
   },
   "page": {
     "url": "http://localhost:8000/comprehensive_test.html",

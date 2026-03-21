@@ -272,7 +272,7 @@ def _result(name: str, status: str, viewport: ViewportConfig) -> ClaimResult:
             "step": 1,
             "after_action": "extract_elements()",
             "text": f"{name}: {status}",
-            "text_path": "artifacts/run-001/claim-01/step-01-proof.txt",
+            "text_path": "artifacts/run-001/claim-01/step-01.txt",
         },
         page={"url": "http://fixture.local/page", "viewport": viewport},
         trace={
@@ -762,7 +762,7 @@ async def test_runner_uses_partial_claim_result_when_verifier_crashes(
             "step": 1,
             "after_action": "extract_elements()",
             "text": "Visible text included 'Dashboard'.",
-            "text_path": "artifacts/run-001/claim-01/step-01-proof.txt",
+            "text_path": "artifacts/run-001/claim-01/step-01.txt",
         },
         page={"url": "http://fixture.local/page", "viewport": viewport},
         trace={
@@ -851,7 +851,7 @@ async def test_runner_preserves_partial_claim_result_when_run_timeout_interrupts
             "step": 1,
             "after_action": "extract_elements()",
             "text": "Visible text included 'Dashboard'.",
-            "text_path": "artifacts/run-001/claim-01/step-01-proof.txt",
+            "text_path": "artifacts/run-001/claim-01/step-01.txt",
         },
         page={"url": "http://fixture.local/page", "viewport": viewport},
         trace={

@@ -33,7 +33,7 @@ def _sample_run_result(artifacts_dir: str) -> RunResult:
                     "step": 0,
                     "after_action": None,
                     "text": "Visible heading matched 'Dashboard'.",
-                    "text_path": "artifacts/run-001/claim-01/step-00-initial-proof.txt",
+                    "text_path": "artifacts/run-001/claim-01/step-00-initial.txt",
                 },
                 page={"url": "http://localhost:3000/dashboard", "viewport": viewport},
                 trace={
@@ -53,7 +53,7 @@ def _sample_run_result(artifacts_dir: str) -> RunResult:
                     "step": 1,
                     "after_action": "extract_elements()",
                     "text": "Visible text included '65%'.",
-                    "text_path": "artifacts/run-001/claim-02/step-01-proof.txt",
+                    "text_path": "artifacts/run-001/claim-02/step-01.txt",
                 },
                 page={"url": "http://localhost:3000/dashboard", "viewport": viewport},
                 trace={
@@ -109,7 +109,7 @@ def test_native_reporter_writes_run_result_json(tmp_path: Path) -> None:
     assert second_result["status"] == "failed"
     assert first_result["finding"] == "Visible heading matched 'Dashboard'."
     assert second_result["proof"]["text"] == "Visible text included '65%'."
-    assert second_result["proof"]["text_path"] == "artifacts/run-001/claim-02/step-01-proof.txt"
+    assert second_result["proof"]["text_path"] == "artifacts/run-001/claim-02/step-01.txt"
     assert first_result["page"]["url"] == "http://localhost:3000/dashboard"
     assert first_result["trace"]["wrong_page_recovered"] is False
     assert second_result["trace"]["actions"] == ["extract_elements()"]
@@ -274,7 +274,7 @@ def test_ctrf_reporter_includes_screenshots_as_attachments(tmp_path: Path) -> No
     assert len(t0["attachments"]) == 2
     assert t0["attachments"][0]["name"] == "step-00-initial.webp"
     assert t0["attachments"][0]["contentType"] == "image/webp"
-    assert t0["attachments"][1]["name"] == "step-00-initial-proof.txt"
+    assert t0["attachments"][1]["name"] == "step-00-initial.txt"
     assert t0["attachments"][1]["contentType"] == "text/plain"
 
 
@@ -287,7 +287,7 @@ def test_ctrf_reporter_includes_trace_path_as_attachment(tmp_path: Path) -> None
     t1 = data["results"]["tests"][1]
     assert len(t1["attachments"]) == 4  # 2 screenshots + 1 proof text + 1 trace
     proof_text_attachment = t1["attachments"][-2]
-    assert proof_text_attachment["name"] == "step-01-proof.txt"
+    assert proof_text_attachment["name"] == "step-01.txt"
     assert proof_text_attachment["contentType"] == "text/plain"
     trace_attachment = t1["attachments"][-1]
     assert trace_attachment["name"] == "action_trace.json"
