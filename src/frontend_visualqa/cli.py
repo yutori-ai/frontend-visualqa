@@ -151,6 +151,12 @@ def _add_browser_args(parser: argparse.ArgumentParser) -> None:
         default=False,
         help="Run the browser visibly instead of headless.",
     )
+    parser.add_argument(
+        "--visualize",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Show in-browser action visualization. Defaults to on when --headed is set.",
+    )
 
 
 def _build_viewport(args: argparse.Namespace) -> ViewportConfig:
@@ -169,10 +175,13 @@ def _build_browser_config(
 ) -> BrowserConfig:
     mode = force_mode or BrowserMode(getattr(args, "browser_mode", BrowserMode.ephemeral.value))
     headed = force_headed if force_headed is not None else getattr(args, "headed", False)
+    explicit_visualize = getattr(args, "visualize", None)
+    visualize = explicit_visualize if explicit_visualize is not None else headed
     return BrowserConfig(
         mode=mode,
         user_data_dir=getattr(args, "user_data_dir", None),
         headless=not headed,
+        visualize=visualize,
     )
 
 

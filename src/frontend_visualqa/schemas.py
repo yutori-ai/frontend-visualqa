@@ -50,6 +50,7 @@ class BrowserConfig(FrontendVisualQABaseModel):
     mode: BrowserMode = BrowserMode.ephemeral
     user_data_dir: str | None = None
     headless: bool = True
+    visualize: bool = False
     navigation_timeout_ms: int = Field(default=20_000, ge=1)
     settle_delay_seconds: float = Field(default=1.0, ge=0, le=60)
 
@@ -82,6 +83,7 @@ class VerifyVisualClaimsInput(FrontendVisualQABaseModel):
     session_key: str = "default"
     reuse_session: bool = True
     reset_between_claims: bool = True
+    visualize: bool | None = None
     max_steps_per_claim: int = Field(default=12, ge=1, le=50)
     claim_timeout_seconds: float | None = Field(default=120.0, gt=0, le=900)
     run_timeout_seconds: float | None = Field(default=300.0, gt=0, le=3_600)

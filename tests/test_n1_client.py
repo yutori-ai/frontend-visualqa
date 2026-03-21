@@ -7,7 +7,11 @@ import httpx
 import pytest
 
 from frontend_visualqa.errors import N1ClientError
-from frontend_visualqa.n1_client import AsyncYutoriClient, N1Client
+
+try:
+    from frontend_visualqa.n1_client import AsyncYutoriClient, N1Client
+except ModuleNotFoundError:
+    pytestmark = pytest.mark.skip(reason="yutori SDK not installed")
 
 
 class FakeCompletions:

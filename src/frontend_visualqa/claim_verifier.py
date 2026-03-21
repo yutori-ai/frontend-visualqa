@@ -6,13 +6,12 @@ import json
 import logging
 import re
 import unicodedata
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from frontend_visualqa.actions import BROWSER_ACTION_TOOLS, ActionExecutor
 from frontend_visualqa.artifacts import ArtifactManager, RunArtifacts
 from frontend_visualqa.browser import BrowserManager, BrowserSession, image_bytes_to_data_url
 from frontend_visualqa.errors import BrowserActionError, N1ClientError
-from frontend_visualqa.n1_client import N1Client
 from frontend_visualqa.prompts import (
     RECORD_CLAIM_RESULT_TOOL,
     build_action_or_verdict_prompt,
@@ -20,6 +19,10 @@ from frontend_visualqa.prompts import (
     build_verification_task,
 )
 from frontend_visualqa.schemas import ClaimResult, ClaimStatus
+
+if TYPE_CHECKING:
+    from frontend_visualqa.n1_client import N1Client
+    from frontend_visualqa.overlay import OverlayController
 
 
 FALLBACK_VERDICT_PATTERN = re.compile(
@@ -43,6 +46,18 @@ logger = logging.getLogger(__name__)
 MAX_NON_ACTION_REPROMPTS = 2
 
 
+def _create_overlay_controller(page: Any) -> Any | None:
+    try:
+        from frontend_visualqa.overlay import OverlayController
+    except Exception:
+        return None
+    try:
+        return OverlayController(page)
+    except Exception:
+        logger.debug("Failed to construct overlay controller", exc_info=True)
+        return None
+
+
 class ClaimVerifier:
     """Run the n1 observe-think-act loop for a single claim."""
 
@@ -53,6 +68,7 @@ class ClaimVerifier:
         artifact_manager: ArtifactManager,
         n1_client: N1Client,
         action_executor: ActionExecutor | None = None,
+        visualize: bool = False,
     ) -> None:
         self.browser_manager = browser_manager
         self.artifact_manager = artifact_manager
@@ -60,6 +76,8 @@ class ClaimVerifier:
         self.action_executor = action_executor or ActionExecutor(
             navigation_timeout_ms=getattr(browser_manager, "navigation_timeout_ms", 20_000)
         )
+        self._visualize = visualize
+        self._overlay: Any | None = None
 
     async def verify(
         self,
@@ -71,6 +89,7 @@ class ClaimVerifier:
         run_artifacts: RunArtifacts,
         max_steps: int,
         navigation_hint: str | None = None,
+        visualize: bool | None = None,
     ) -> ClaimResult:
         """Verify a single claim within an existing browser session."""
 
@@ -80,8 +99,16 @@ class ClaimVerifier:
         messages: list[dict[str, Any]] = []
         step_count = 0
         non_action_reprompts = 0
+        should_visualize = self._visualize if visualize is None else visualize
 
         try:
+            self.action_executor.overlay = None
+            if should_visualize:
+                self._overlay = _create_overlay_controller(session.page)
+                if self._overlay is not None:
+                    self.action_executor.overlay = self._overlay
+                    await self._best_effort_overlay_call("claim_started")
+
             initial_bytes, initial_path = await self._capture_evidence_screenshot(
                 session=session,
                 run_artifacts=run_artifacts,
@@ -106,6 +133,7 @@ class ClaimVerifier:
 
             while step_count < max_steps:
                 messages = self._prepare_messages_for_request(messages)
+                await self._best_effort_overlay_call("set_status", "Analyzing")
                 response = await self.n1_client.create(messages, tools=self._model_tools())
                 assistant_message = self._coerce_assistant_message(response)
                 messages.append(self._message_to_dict(assistant_message))
@@ -219,7 +247,6 @@ class ClaimVerifier:
                 run_artifacts=run_artifacts,
                 claim_index=claim_index,
             )
-
         except (BrowserActionError, N1ClientError) as exc:
             return self._build_result(
                 claim=claim,
@@ -249,6 +276,12 @@ class ClaimVerifier:
                 run_artifacts=run_artifacts,
                 claim_index=claim_index,
             )
+        finally:
+            try:
+                await self._best_effort_overlay_call("claim_ended")
+            finally:
+                self.action_executor.overlay = None
+                self._overlay = None
 
     async def _capture_evidence_screenshot(
         self,
@@ -259,9 +292,12 @@ class ClaimVerifier:
         label: str,
     ) -> tuple[bytes, str]:
         try:
+            await self._best_effort_overlay_call("before_screenshot")
             screenshot_bytes = await self.browser_manager.capture_screenshot(session)
         except Exception as exc:
             raise BrowserActionError(f"Failed to capture screenshot for {label}: {exc}") from exc
+        finally:
+            await self._best_effort_overlay_call("after_screenshot")
 
         try:
             screenshot_path = self.artifact_manager.save_screenshot(run_artifacts, claim_index, label, screenshot_bytes)
@@ -291,6 +327,7 @@ class ClaimVerifier:
             }
         )
         messages = self._prepare_messages_for_request(messages)
+        await self._best_effort_overlay_call("set_status", "Analyzing")
         assistant_message = await self.n1_client.create(messages, tools=self._model_tools())
         messages.append(self._message_to_dict(assistant_message))
 
@@ -314,6 +351,18 @@ class ClaimVerifier:
             run_artifacts=run_artifacts,
             claim_index=claim_index,
         )
+
+    async def _best_effort_overlay_call(self, method_name: str, *args: Any, **kwargs: Any) -> None:
+        overlay = self._overlay
+        if overlay is None:
+            return
+        method = getattr(overlay, method_name, None)
+        if not callable(method):
+            return
+        try:
+            await method(*args, **kwargs)
+        except Exception:
+            logger.debug("Overlay method %s failed", method_name, exc_info=True)
 
     def _build_result(
         self,

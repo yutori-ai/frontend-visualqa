@@ -192,6 +192,7 @@ def _build_runner(
     monkeypatch.setattr(module, "BrowserManager", lambda *args, **kwargs: browser, raising=False)
     monkeypatch.setattr(module, "ClaimVerifier", lambda *args, **kwargs: verifier, raising=False)
     monkeypatch.setattr(module, "ArtifactManager", lambda *args, **kwargs: artifacts, raising=False)
+    monkeypatch.setattr(module, "N1Client", lambda *args, **kwargs: object(), raising=False)
 
     runner = _instantiate_with_supported_kwargs(
         module.VisualQARunner,
@@ -296,6 +297,7 @@ async def test_runner_run_aggregates_claim_results_and_resets_between_claims(
         session_key="qa-session",
         reuse_session=True,
         reset_between_claims=True,
+        visualize=True,
         max_steps_per_claim=5,
         navigation_hint="Open the modal if needed.",
     )
@@ -310,6 +312,7 @@ async def test_runner_run_aggregates_claim_results_and_resets_between_claims(
     assert verifier.calls[0]["claim"] == "Claim one"
     assert verifier.calls[0]["url"] == "http://fixture.local/page"
     assert verifier.calls[0]["navigation_hint"] == "Open the modal if needed."
+    assert verifier.calls[0]["visualize"] is True
 
 
 @pytest.mark.asyncio
@@ -332,6 +335,7 @@ async def test_runner_run_request_reuses_prevalidated_input(
         session_key="qa-session",
         reuse_session=True,
         reset_between_claims=True,
+        visualize=True,
         max_steps_per_claim=5,
         navigation_hint="Open the modal if needed.",
     )
@@ -342,6 +346,7 @@ async def test_runner_run_request_reuses_prevalidated_input(
     assert [item.status for item in result.results] == ["passed"]
     assert browser.goto_calls[0] == ("qa-session", "http://fixture.local/page")
     assert verifier.calls[0]["navigation_hint"] == "Open the modal if needed."
+    assert verifier.calls[0]["visualize"] is True
 
 
 @pytest.mark.asyncio
@@ -630,7 +635,9 @@ def test_runner_passes_browser_config_to_browser_manager(monkeypatch: pytest.Mon
 
     artifacts = FakeArtifactManager(tmp_path)
     monkeypatch.setattr(module, "BrowserManager", CapturingBrowserManager, raising=False)
+    monkeypatch.setattr(module, "ClaimVerifier", lambda *args, **kwargs: object(), raising=False)
     monkeypatch.setattr(module, "ArtifactManager", lambda *args, **kwargs: artifacts, raising=False)
+    monkeypatch.setattr(module, "N1Client", lambda *args, **kwargs: object(), raising=False)
 
     browser_config = BrowserConfig(
         mode=BrowserMode.persistent,
@@ -641,6 +648,156 @@ def test_runner_passes_browser_config_to_browser_manager(monkeypatch: pytest.Mon
 
     assert captured["config"] == browser_config
     assert runner.browser_manager is not None
+
+
+def test_runner_passes_browser_config_visualize_to_default_claim_verifier(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    module = _import_runner_module()
+    captured: dict[str, Any] = {}
+
+    class CapturingBrowserManager(FakeBrowserManager):
+        def __init__(self, *, config: BrowserConfig | None = None, **kwargs: Any) -> None:
+            del kwargs
+            super().__init__(ViewportConfig(width=1280, height=800, device_scale_factor=1))
+            captured["browser_config"] = config
+
+    class CapturingClaimVerifier:
+        def __init__(
+            self,
+            *,
+            browser_manager: Any,
+            artifact_manager: Any,
+            n1_client: Any,
+            visualize: bool = False,
+        ) -> None:
+            del browser_manager, artifact_manager, n1_client
+            captured["visualize"] = visualize
+
+        async def verify(self, *args: Any, **kwargs: Any) -> ClaimResult:
+            del args, kwargs
+            raise AssertionError("not expected to be called")
+
+    artifacts = FakeArtifactManager(tmp_path)
+    monkeypatch.setattr(module, "BrowserManager", CapturingBrowserManager, raising=False)
+    monkeypatch.setattr(module, "ClaimVerifier", CapturingClaimVerifier, raising=False)
+    monkeypatch.setattr(module, "ArtifactManager", lambda *args, **kwargs: artifacts, raising=False)
+    monkeypatch.setattr(module, "N1Client", lambda *args, **kwargs: object(), raising=False)
+
+    browser_config = BrowserConfig(
+        mode=BrowserMode.persistent,
+        user_data_dir=str(tmp_path / "browser-profile"),
+        headless=False,
+        visualize=True,
+    )
+    runner = module.VisualQARunner(browser_config=browser_config)
+
+    assert captured["browser_config"] == browser_config
+    assert captured["visualize"] is True
+
+
+@pytest.mark.asyncio
+async def test_runner_preserves_injected_claim_verifier_visualize_default(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _import_runner_module()
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    browser = FakeBrowserManager(viewport)
+    verifier = FakeClaimVerifier([_result("Claim one", "passed", viewport)])
+    verifier._visualize = True
+    artifacts = FakeArtifactManager(tmp_path)
+
+    runner = _instantiate_with_supported_kwargs(
+        module.VisualQARunner,
+        browser_manager=browser,
+        browser=browser,
+        claim_verifier=verifier,
+        verifier=verifier,
+        artifact_manager=artifacts,
+        artifacts=artifacts,
+        browser_config=BrowserConfig(visualize=False),
+        n1_client=object(),
+    )
+    runner.browser_manager = browser
+    runner.claim_verifier = verifier
+    runner.artifact_manager = artifacts
+
+    async def _skip_preflight(url: str) -> None:
+        del url
+        return None
+
+    runner._preflight_url = _skip_preflight
+
+    result = await runner.run(
+        url="http://fixture.local/page",
+        claims=["Claim one"],
+        viewport=viewport,
+        session_key="qa-session",
+        reuse_session=True,
+        reset_between_claims=True,
+    )
+
+    assert [item.status for item in result.results] == ["passed"]
+    assert verifier.calls[0]["visualize"] is True
+
+
+@pytest.mark.asyncio
+async def test_per_call_visualize_override_does_not_leak_across_requests(
+    tmp_path: Path,
+) -> None:
+    """Two sequential run_request calls with different visualize values must
+    not leak the first call's override into the second call."""
+    module = _import_runner_module()
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    browser = FakeBrowserManager(viewport)
+    verifier = FakeClaimVerifier([
+        _result("Claim one", "passed", viewport),
+        _result("Claim two", "passed", viewport),
+    ])
+    verifier._visualize = False
+    artifacts = FakeArtifactManager(tmp_path)
+
+    runner = _instantiate_with_supported_kwargs(
+        module.VisualQARunner,
+        browser_manager=browser,
+        browser=browser,
+        claim_verifier=verifier,
+        verifier=verifier,
+        artifact_manager=artifacts,
+        artifacts=artifacts,
+        browser_config=BrowserConfig(visualize=False),
+        n1_client=object(),
+    )
+    runner.browser_manager = browser
+    runner.claim_verifier = verifier
+    runner.artifact_manager = artifacts
+
+    async def _skip_preflight(url: str) -> None:
+        del url
+        return None
+
+    runner._preflight_url = _skip_preflight
+
+    # First request: visualize=True
+    await runner.run(
+        url="http://fixture.local/page",
+        claims=["Claim one"],
+        viewport=viewport,
+        visualize=True,
+    )
+    assert verifier.calls[0]["visualize"] is True
+
+    # Second request: visualize=None (should fall back to config default: False)
+    await runner.run(
+        url="http://fixture.local/page",
+        claims=["Claim two"],
+        viewport=viewport,
+    )
+    assert verifier.calls[1]["visualize"] is False, (
+        "Per-call visualize=True from first request must not leak into second request"
+    )
 
 
 class SpyReporter:

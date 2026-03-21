@@ -74,11 +74,13 @@ class FakeBrowserManager:
 class FakeActionExecutor:
     def __init__(self) -> None:
         self.calls: list[tuple[str, dict[str, Any]]] = []
+        self.overlays_seen: list[Any] = []
 
     async def execute_tool_call(self, session: FakeSession, tool_call: Any) -> Any:
         resolved_name = tool_call.function.name
         resolved_args = json.loads(tool_call.function.arguments or "{}")
         self.calls.append((resolved_name, resolved_args))
+        self.overlays_seen.append(getattr(self, "overlay", None))
         if resolved_name == "goto_url":
             session.page.url = resolved_args["url"]
         return SimpleNamespace(
@@ -172,6 +174,7 @@ def _build_claim_verifier(
     browser_manager: Any | None = None,
     action_executor: Any | None = None,
     artifact_manager: Any | None = None,
+    visualize: bool = False,
 ) -> tuple[Any, FakeN1Client, FakeActionExecutor]:
     browser = browser_manager or FakeBrowserManager()
     action_executor = action_executor or FakeActionExecutor()
@@ -187,6 +190,7 @@ def _build_claim_verifier(
         artifacts=artifacts,
         n1_client=n1_client,
         client=n1_client,
+        visualize=visualize,
     )
 
     for attribute_name, value in {
@@ -211,6 +215,7 @@ async def _call_verify(
     claim: str,
     url: str,
     navigation_hint: str | None,
+    visualize: bool | None = None,
 ) -> Any:
     signature = inspect.signature(verifier.verify)
     kwargs: dict[str, Any] = {}
@@ -230,6 +235,8 @@ async def _call_verify(
         kwargs["max_steps"] = 2
     if "navigation_hint" in signature.parameters:
         kwargs["navigation_hint"] = navigation_hint
+    if "visualize" in signature.parameters and visualize is not None:
+        kwargs["visualize"] = visualize
     if "viewport" in signature.parameters:
         kwargs["viewport"] = viewport
     if "claim_index" in signature.parameters:
@@ -338,6 +345,99 @@ async def test_claim_verifier_executes_actions_before_final_verdict(tmp_path: Pa
     assert _field(result, "final_url") == "http://fixture.local/modal"
     assert _field(result, "steps_taken") >= 1
     assert _field(result, "wrong_page_recovered") is True
+
+
+def test_claim_verifier_accepts_visualize_flag(tmp_path: Path) -> None:
+    module = _import_claim_verifier_module()
+    verifier = module.ClaimVerifier(
+        browser_manager=FakeBrowserManager(),
+        artifact_manager=FakeArtifactManager(tmp_path),
+        n1_client=FakeN1Client([]),
+        visualize=True,
+    )
+
+    assert verifier._visualize is True
+
+
+@pytest.mark.asyncio
+async def test_claim_verifier_uses_overlay_lifecycle_when_visualize_enabled(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _import_claim_verifier_module()
+    events: list[Any] = []
+
+    class FakeOverlay:
+        async def claim_started(self) -> None:
+            events.append("claim_started")
+
+        async def set_status(self, label: str) -> None:
+            events.append(("set_status", label))
+
+        async def before_screenshot(self) -> None:
+            events.append("before_screenshot")
+
+        async def after_screenshot(self) -> None:
+            events.append("after_screenshot")
+
+        async def claim_ended(self) -> None:
+            events.append("claim_ended")
+
+    fake_overlay = FakeOverlay()
+    monkeypatch.setattr(module, "_create_overlay_controller", lambda page: fake_overlay)
+
+    verifier, _, action_executor = _build_claim_verifier(
+        module,
+        tmp_path,
+        responses=[
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-1",
+                        function=FakeFunction(
+                            name="goto_url",
+                            arguments=json.dumps({"url": "http://fixture.local/modal"}),
+                        ),
+                    )
+                ]
+            ),
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-2",
+                        function=FakeFunction(
+                            name="record_claim_result",
+                            arguments=json.dumps(
+                                {
+                                    "status": "passed",
+                                    "summary": "The modal is now visible and titled Edit Task.",
+                                }
+                            ),
+                        ),
+                    )
+                ]
+            ),
+        ],
+        visualize=True,
+    )
+
+    result = await _call_verify(
+        verifier,
+        page=FakePage(url="http://fixture.local/start"),
+        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+        claim="The modal opens on click",
+        url="http://fixture.local/modal",
+        navigation_hint="Open the modal before deciding.",
+        visualize=True,
+    )
+
+    assert _field(result, "status") == "passed"
+    assert events[0] == "claim_started"
+    assert events.count("before_screenshot") == 2
+    assert events.count("after_screenshot") == 2
+    assert ("set_status", "Analyzing") in events
+    assert events[-1] == "claim_ended"
+    assert action_executor.overlays_seen[0] is fake_overlay
+    assert action_executor.overlay is None
 
 
 @pytest.mark.asyncio

@@ -167,10 +167,11 @@ cd /path/to/frontend-visualqa
 lsof -ti:8000 | xargs kill 2>/dev/null; python3 -m http.server 8000 -d examples &
 ```
 
-**Self-correcting navigation** — start on the wrong page and watch n1 find its way:
+**Self-correcting navigation** — start on the wrong page and watch n1 find its way. In headed mode, you'll see click ripples, scroll indicators, and a status chip showing what n1 is doing:
 
 ```bash
 # n1 lands on the home page, clicks Tasks, then clicks Task #123
+# Green click ripples and a status HUD show each action as it happens
 frontend-visualqa verify http://localhost:8000/multi_page_app.html \
   --headed \
   --claims "The task detail heading reads 'Task #123: Landing page polish'"
@@ -238,7 +239,8 @@ frontend-visualqa verify <url> --claims "claim1" "claim2" [options]
 | `--navigation-hint` | | Interaction guidance before judging |
 | `--width` / `--height` | 1280 / 800 | Viewport size |
 | `--device-scale-factor` | 1.0 | DPR |
-| `--headed` | off | Show the browser |
+| `--headed` | off | Show the browser (implies `--visualize`) |
+| `--visualize` / `--no-visualize` | on when headed | Show in-browser action overlay (click ripples, scroll indicators, status chip) |
 | `--browser-mode` | ephemeral | `ephemeral` or `persistent` |
 | `--user-data-dir` | | Custom profile directory |
 | `--session-key` | default | Named browser session |
@@ -305,6 +307,20 @@ frontend-visualqa verify http://localhost:3000/dashboard \
 ```
 
 </details>
+
+## Action visualization
+
+When running in headed mode (`--headed`), the browser shows visual effects illustrating what n1 is doing (clicking, scrolling, typing). To disable it, use `--no-visualize`:
+
+```bash
+frontend-visualqa verify http://localhost:3000 \
+  --headed --no-visualize \
+  --claims "The heading reads 'Dashboard'"
+```
+
+The MCP tool `verify_visual_claims` accepts a per-call `visualize` parameter to control this independently of the server's default.
+
+Overlay elements are automatically hidden during screenshot capture so they never appear in evidence sent to n1 or saved artifacts.
 
 ## Writing good claims
 

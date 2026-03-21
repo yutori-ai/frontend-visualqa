@@ -133,6 +133,7 @@ def test_handle_verify_closes_runner_and_forwards_browser_config(monkeypatch: An
             mode=BrowserMode.persistent,
             user_data_dir="/tmp/frontend-visualqa-profile",
             headless=False,
+            visualize=True,
         )
     ]
     assert emitted[0]["overall_status"] == "completed"
@@ -213,6 +214,7 @@ def test_handle_serve_configures_server_and_closes_cached_mcp_runners(monkeypatc
             mode=BrowserMode.persistent,
             user_data_dir="/tmp/frontend-visualqa-profile",
             headless=False,
+            visualize=True,
         )
     ]
     assert fake_server.run_calls == ["stdio"]
@@ -256,6 +258,37 @@ def test_handle_verify_passes_reporters_to_runner(monkeypatch: Any) -> None:
 
     assert exit_code == 0
     assert captured_reporters == [["native", "ctrf"]]
+
+
+def test_verify_parser_supports_visualize_flags_and_headed_default() -> None:
+    from frontend_visualqa.cli import _build_browser_config, build_parser
+
+    parser = build_parser()
+
+    headed_args = parser.parse_args(["verify", "http://localhost:3000", "--claims", "test", "--headed"])
+    assert headed_args.visualize is None
+    assert _build_browser_config(headed_args).visualize is True
+
+    explicit_true_args = parser.parse_args([
+        "verify",
+        "http://localhost:3000",
+        "--claims",
+        "test",
+        "--visualize",
+    ])
+    assert explicit_true_args.visualize is True
+    assert _build_browser_config(explicit_true_args).visualize is True
+
+    explicit_false_args = parser.parse_args([
+        "verify",
+        "http://localhost:3000",
+        "--claims",
+        "test",
+        "--headed",
+        "--no-visualize",
+    ])
+    assert explicit_false_args.visualize is False
+    assert _build_browser_config(explicit_false_args).visualize is False
 
 
 def test_handle_login_requires_tty(monkeypatch: Any, capsys: pytest.CaptureFixture[str]) -> None:
@@ -320,6 +353,7 @@ async def test_run_login_opens_headed_persistent_browser_and_saves_profile(
         mode=BrowserMode.persistent,
         user_data_dir="/tmp/profile",
         headless=False,
+        visualize=True,
     )
     assert manager.get_session_calls == [{"session_key": "default", "reuse_session": False}]
     assert manager.goto_calls[0][1] == "http://localhost:3000/login"
