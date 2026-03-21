@@ -396,28 +396,11 @@ Each claim result contains:
     "url": "http://localhost:8000/comprehensive_test.html",
     "viewport": { "width": 1280, "height": 800, "device_scale_factor": 1.0 }
   },
-  "history": {
-    "steps_taken": 4,
-    "wrong_page_recovered": false,
-    "screenshots": [
-      "artifacts/run-.../claim-02/step-00-initial.webp",
-      "artifacts/run-.../claim-02/step-01.webp",
-      "artifacts/run-.../claim-02/step-02.webp",
-      "artifacts/run-.../claim-02/step-03.webp",
-      "artifacts/run-.../claim-02/step-04.webp"
-    ],
-    "actions": [
-      "scroll([640, 400], direction=down, amount=3)",
-      "scroll([640, 400], direction=down, amount=5)",
-      "scroll([640, 400], direction=down, amount=3)",
-      "extract_elements()"
-    ],
-    "trace_path": "artifacts/run-.../claim-02/action_trace.json"
-  }
+  "history": { "steps_taken": 4, "screenshots": ["..."], "actions": ["..."] }
 }
 ```
 
-`proof.screenshot` points to the screenshot n1 was examining when it rendered the verdict — open this first when investigating a failure. `history` contains the full trail if you need to understand how the runner got there.
+`proof.screenshot` points to the screenshot n1 was examining when it rendered the verdict — open this first when investigating a failure.
 
 </details>
 
