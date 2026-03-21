@@ -169,12 +169,11 @@ class BrowserManager:
         cdp_session = None
         try:
             cdp_session = await session.context.new_cdp_session(session.page)
+            layout_metrics = await cdp_session.send("Page.getLayoutMetrics")
+            capture_params = self._build_cdp_capture_params(layout_metrics)
             result = await cdp_session.send(
                 "Page.captureScreenshot",
-                {
-                    "format": "png",
-                    "captureBeyondViewport": False,
-                },
+                capture_params,
             )
             data = result.get("data")
             if not data:
@@ -189,6 +188,38 @@ class BrowserManager:
                     await cdp_session.detach()
                 except Exception:
                     logger.debug("CDP screenshot session detach failed", exc_info=True)
+
+    @staticmethod
+    def _build_cdp_capture_params(layout_metrics: dict[str, Any]) -> dict[str, Any]:
+        css_viewport = layout_metrics.get("cssVisualViewport") or {}
+        surface_viewport = layout_metrics.get("visualViewport") or {}
+
+        css_width = float(css_viewport.get("clientWidth") or 0)
+        css_height = float(css_viewport.get("clientHeight") or 0)
+        surface_width = float(surface_viewport.get("clientWidth") or 0)
+        surface_height = float(surface_viewport.get("clientHeight") or 0)
+
+        if css_width > 0 and css_height > 0 and surface_width > 0 and surface_height > 0:
+            surface_scale_x = surface_width / css_width
+            surface_scale_y = surface_height / css_height
+            surface_scale = max(surface_scale_x, surface_scale_y, 1.0)
+            return {
+                "format": "png",
+                "captureBeyondViewport": False,
+                "clip": {
+                    "x": float(css_viewport.get("pageX") or 0),
+                    "y": float(css_viewport.get("pageY") or 0),
+                    "width": css_width,
+                    "height": css_height,
+                    "scale": 1.0 / surface_scale,
+                },
+            }
+
+        logger.debug("CDP layout metrics missing CSS/surface viewport sizes; using default screenshot params")
+        return {
+            "format": "png",
+            "captureBeyondViewport": False,
+        }
 
     async def set_viewport(self, session_key: str, viewport: ViewportConfig) -> BrowserSession:
         """Resize or recreate the session to match a new viewport."""
