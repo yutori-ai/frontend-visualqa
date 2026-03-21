@@ -19,18 +19,18 @@ n1 is a pixels-to-actions model trained with RL on live websites. Two capabiliti
 
 - **Self-correcting navigation** — Point the agent at `/tasks` instead of `/tasks/123` and n1 recognizes the wrong page, clicks through to the right one, and reports `wrong_page_recovered: true`. Playwright MCP would run assertions on the wrong page and silently pass — garbage in, garbage out.
 
-  <table><tr>
-    <td align="center" width="47%"><img src="docs/images/nav-step0-wrong-page.png" alt="Dashboard — wrong page, overlay active" width="100%"><br>n1 analyzing the wrong page</td>
+  <table border="0" cellspacing="0" cellpadding="8"><tr>
+    <td align="center" width="47%"><img src="docs/images/nav-step0-wrong-page.png" alt="Dashboard — wrong page, overlay active" width="100%"><br><em>n1 analyzing the wrong page</em></td>
     <td align="center" width="6%"><strong>→</strong></td>
-    <td align="center" width="47%"><img src="docs/images/nav-step6-correct-page.png" alt="Task #123 — correct page" width="100%"><br>Landed on the correct page</td>
+    <td align="center" width="47%"><img src="docs/images/nav-step6-correct-page.png" alt="Task #123 — correct page" width="100%"><br><em>Landed on the correct page</em></td>
   </tr></table>
 
 - **Rich visual evaluation** — On the task detail page for Task #123, after clicking "Mark Complete", n1 reported three changes: status badge "In Progress"→"Done", button label→"Completed", toast notification appeared. Playwright MCP would need three hand-written assertions.
 
-  <table><tr>
-    <td align="center" width="47%"><img src="docs/images/mark-complete-before.png" alt="Before — In Progress, overlay active" width="100%"><br>n1 analyzing before clicking</td>
+  <table border="0" cellspacing="0" cellpadding="8"><tr>
+    <td align="center" width="47%"><img src="docs/images/mark-complete-before.png" alt="Before — In Progress, overlay active" width="100%"><br><em>n1 analyzing before clicking</em></td>
     <td align="center" width="6%"><strong>→</strong></td>
-    <td align="center" width="47%"><img src="docs/images/mark-complete-after.png" alt="After — Done + toast" width="100%"><br>Result after "Mark Complete"</td>
+    <td align="center" width="47%"><img src="docs/images/mark-complete-after.png" alt="After — Done + toast" width="100%"><br><em>Result after "Mark Complete"</em></td>
   </tr></table>
 
 ## Install
