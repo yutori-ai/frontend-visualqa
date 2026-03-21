@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
 import unicodedata
+from dataclasses import dataclass
 from typing import Any, TYPE_CHECKING
 
 from frontend_visualqa.actions import BROWSER_ACTION_TOOLS, ActionExecutor
@@ -18,11 +20,10 @@ from frontend_visualqa.prompts import (
     build_force_stop_prompt,
     build_verification_task,
 )
-from frontend_visualqa.schemas import ClaimResult, ClaimStatus
+from frontend_visualqa.schemas import ClaimHistory, ClaimPage, ClaimProof, ClaimResult, ClaimStatus
 
 if TYPE_CHECKING:
     from frontend_visualqa.n1_client import N1Client
-    from frontend_visualqa.overlay import OverlayController
 
 
 FALLBACK_VERDICT_PATTERN = re.compile(
@@ -44,6 +45,20 @@ MODAL_TITLE_READS_PATTERN = re.compile(r"""^The\s+modal\s+title\s+reads\s+["'](?
 logger = logging.getLogger(__name__)
 
 MAX_NON_ACTION_REPROMPTS = 2
+
+
+@dataclass
+class _VerificationProgress:
+    claim: str
+    session: BrowserSession
+    url: str
+    run_artifacts: RunArtifacts
+    claim_index: int
+    step_count: int
+    screenshot_paths: list[str]
+    action_trace: list[str]
+    url_history: list[str]
+    proof_text: str | None = None
 
 
 def _create_overlay_controller(page: Any) -> Any | None:
@@ -78,6 +93,7 @@ class ClaimVerifier:
         )
         self._visualize = visualize
         self._overlay: Any | None = None
+        self._partial_progress: _VerificationProgress | None = None
 
     async def verify(
         self,
@@ -99,7 +115,21 @@ class ClaimVerifier:
         messages: list[dict[str, Any]] = []
         step_count = 0
         non_action_reprompts = 0
+        last_proof_text: str | None = None
         should_visualize = self._visualize if visualize is None else visualize
+        progress = _VerificationProgress(
+            claim=claim,
+            session=session,
+            url=url,
+            run_artifacts=run_artifacts,
+            claim_index=claim_index,
+            step_count=step_count,
+            screenshot_paths=screenshot_paths,
+            action_trace=action_trace,
+            url_history=url_history,
+        )
+        self._partial_progress = progress
+        preserve_partial_progress = False
 
         try:
             self.action_executor.overlay = None
@@ -149,6 +179,7 @@ class ClaimVerifier:
                             step_count=step_count,
                             screenshot_paths=screenshot_paths,
                             action_trace=action_trace,
+                            proof_text=last_proof_text,
                             url_history=url_history,
                             url=url,
                             run_artifacts=run_artifacts,
@@ -177,6 +208,7 @@ class ClaimVerifier:
                                 step_count=step_count,
                                 screenshot_paths=screenshot_paths,
                                 action_trace=action_trace,
+                                proof_text=last_proof_text,
                                 url_history=url_history,
                                 url=url,
                                 run_artifacts=run_artifacts,
@@ -193,6 +225,7 @@ class ClaimVerifier:
                                 step_count=step_count,
                                 screenshot_paths=screenshot_paths,
                                 action_trace=action_trace,
+                                proof_text=last_proof_text,
                                 url_history=url_history,
                                 url=url,
                                 run_artifacts=run_artifacts,
@@ -204,7 +237,12 @@ class ClaimVerifier:
                     execution = await self._execute_tool_call(session, tool_call)
                     trace = execution["trace"]
                     action_trace.append(trace)
+                    output_text = execution.get("output_text")
+                    pending_proof_text = str(output_text) if output_text else None
+                    current_url = execution.get("current_url", session.page.url) or url
+                    url_history.append(current_url)
                     step_count += 1
+                    progress.step_count = step_count
                     non_action_reprompts = 0
                     screenshot_bytes, screenshot_path = await self._capture_evidence_screenshot(
                         session=session,
@@ -213,7 +251,8 @@ class ClaimVerifier:
                         label=f"step-{step_count:02d}",
                     )
                     screenshot_paths.append(screenshot_path)
-                    url_history.append(session.page.url or url)
+                    last_proof_text = pending_proof_text
+                    progress.proof_text = last_proof_text
                     messages.append(
                         {
                             "role": "tool",
@@ -224,7 +263,7 @@ class ClaimVerifier:
                                     "text": self._build_tool_result_text(
                                         trace=trace,
                                         output_text=execution.get("output_text"),
-                                        current_url=execution.get("current_url", session.page.url),
+                                        current_url=current_url,
                                     ),
                                 },
                                 {
@@ -242,20 +281,25 @@ class ClaimVerifier:
                 step_count=step_count,
                 screenshot_paths=screenshot_paths,
                 action_trace=action_trace,
+                proof_text=last_proof_text,
                 url_history=url_history,
                 url=url,
                 run_artifacts=run_artifacts,
                 claim_index=claim_index,
             )
+        except asyncio.CancelledError:
+            preserve_partial_progress = True
+            raise
         except (BrowserActionError, N1ClientError) as exc:
             return self._build_result(
                 claim=claim,
                 session=session,
                 status="not_testable",
-                summary=str(exc),
+                finding=str(exc),
                 step_count=step_count,
                 screenshot_paths=screenshot_paths,
                 action_trace=action_trace,
+                proof_text=last_proof_text,
                 url_history=url_history,
                 url=url,
                 run_artifacts=run_artifacts,
@@ -267,10 +311,11 @@ class ClaimVerifier:
                 claim=claim,
                 session=session,
                 status="inconclusive",
-                summary=f"Verification failed unexpectedly before a verdict was recorded: {exc}",
+                finding=f"Verification failed unexpectedly before a verdict was recorded: {exc}",
                 step_count=step_count,
                 screenshot_paths=screenshot_paths,
                 action_trace=action_trace,
+                proof_text=last_proof_text,
                 url_history=url_history,
                 url=url,
                 run_artifacts=run_artifacts,
@@ -278,6 +323,8 @@ class ClaimVerifier:
             )
         finally:
             try:
+                if not preserve_partial_progress:
+                    self._partial_progress = None
                 await self._best_effort_overlay_call("claim_ended")
             finally:
                 self.action_executor.overlay = None
@@ -315,6 +362,7 @@ class ClaimVerifier:
         step_count: int,
         screenshot_paths: list[str],
         action_trace: list[str],
+        proof_text: str | None,
         url_history: list[str],
         url: str,
         run_artifacts: RunArtifacts,
@@ -346,6 +394,7 @@ class ClaimVerifier:
             step_count=step_count,
             screenshot_paths=screenshot_paths,
             action_trace=action_trace,
+            proof_text=proof_text,
             url_history=url_history,
             url=url,
             run_artifacts=run_artifacts,
@@ -370,10 +419,11 @@ class ClaimVerifier:
         claim: str,
         session: BrowserSession,
         status: ClaimStatus,
-        summary: str,
+        finding: str,
         step_count: int,
         screenshot_paths: list[str],
         action_trace: list[str],
+        proof_text: str | None,
         url_history: list[str],
         url: str,
         run_artifacts: RunArtifacts,
@@ -383,17 +433,48 @@ class ClaimVerifier:
             trace_path = self.artifact_manager.save_trace(run_artifacts, claim_index, action_trace)
         except Exception:
             trace_path = None
+        proof = None
+        if screenshot_paths:
+            proof_step = max(len(screenshot_paths) - 1, 0)
+            proof = ClaimProof(
+                screenshot=screenshot_paths[-1],
+                step=proof_step,
+                after_action=action_trace[proof_step - 1] if proof_step > 0 and len(action_trace) >= proof_step else None,
+                text=proof_text,
+            )
         return ClaimResult(
             claim=claim,
             status=status,
-            summary=summary,
-            final_url=session.page.url or url,
-            wrong_page_recovered=self._wrong_page_recovered(url_history, url, action_trace),
-            steps_taken=step_count,
-            viewport=session.viewport,
-            screenshots=screenshot_paths,
-            action_trace=action_trace,
-            trace_path=trace_path,
+            finding=finding,
+            proof=proof,
+            page=ClaimPage(url=session.page.url or url, viewport=session.viewport),
+            history=ClaimHistory(
+                steps_taken=step_count,
+                wrong_page_recovered=self._wrong_page_recovered(url_history, url, action_trace),
+                screenshots=screenshot_paths,
+                actions=action_trace,
+                trace_path=trace_path,
+            ),
+        )
+
+    def consume_partial_result(self, *, status: ClaimStatus, finding: str) -> ClaimResult | None:
+        progress = self._partial_progress
+        self._partial_progress = None
+        if progress is None:
+            return None
+        return self._build_result(
+            claim=progress.claim,
+            session=progress.session,
+            status=status,
+            finding=finding,
+            step_count=progress.step_count,
+            screenshot_paths=progress.screenshot_paths,
+            action_trace=progress.action_trace,
+            proof_text=progress.proof_text,
+            url_history=progress.url_history,
+            url=progress.url,
+            run_artifacts=progress.run_artifacts,
+            claim_index=progress.claim_index,
         )
 
     def _prepare_messages_for_request(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -464,9 +545,9 @@ class ClaimVerifier:
             except BrowserActionError as exc:
                 return "inconclusive", str(exc)
             status = str(arguments.get("status", "")).strip()
-            summary = str(arguments.get("summary", "")).strip() or "No summary provided."
+            finding = str(arguments.get("finding") or arguments.get("summary") or "").strip() or "No finding provided."
             if status in {"passed", "failed", "inconclusive", "not_testable"}:
-                return status, summary
+                return status, finding
         return None
 
     @staticmethod
@@ -476,23 +557,27 @@ class ClaimVerifier:
                 continue
 
             status: ClaimStatus = "inconclusive"
-            summary = "The model stopped before recording a structured verdict."
+            finding = "The model stopped before recording a structured verdict."
             try:
                 arguments = ClaimVerifier._parse_tool_arguments(tool_call)
             except BrowserActionError:
-                return status, summary
+                return status, finding
 
             explicit_status = str(arguments.get("status", "")).strip().lower().replace(" ", "_")
             if explicit_status in {"passed", "failed", "inconclusive", "not_testable"}:
                 status = explicit_status
 
-            explicit_summary = str(
-                arguments.get("summary") or arguments.get("reason") or arguments.get("message") or ""
+            explicit_finding = str(
+                arguments.get("finding")
+                or arguments.get("summary")
+                or arguments.get("reason")
+                or arguments.get("message")
+                or ""
             ).strip()
-            if explicit_summary:
-                summary = explicit_summary
+            if explicit_finding:
+                finding = explicit_finding
 
-            return status, summary
+            return status, finding
         return None
 
     @staticmethod
@@ -528,26 +613,28 @@ class ClaimVerifier:
         step_count: int,
         screenshot_paths: list[str],
         action_trace: list[str],
+        proof_text: str | None,
         url_history: list[str],
         url: str,
         run_artifacts: RunArtifacts,
         claim_index: int,
     ) -> ClaimResult:
-        status, summary = verdict
-        grounded_status, grounded_summary = await self._ground_verdict(
+        status, finding = verdict
+        grounded_status, grounded_finding = await self._ground_verdict(
             session=session,
             claim=claim,
             status=status,
-            summary=summary,
+            finding=finding,
         )
         return self._build_result(
             claim=claim,
             session=session,
             status=grounded_status,
-            summary=grounded_summary,
+            finding=grounded_finding,
             step_count=step_count,
             screenshot_paths=screenshot_paths,
             action_trace=action_trace,
+            proof_text=proof_text,
             url_history=url_history,
             url=url,
             run_artifacts=run_artifacts,
@@ -560,16 +647,16 @@ class ClaimVerifier:
         session: BrowserSession,
         claim: str,
         status: ClaimStatus,
-        summary: str,
+        finding: str,
     ) -> tuple[ClaimStatus, str]:
         if status == "not_testable":
-            return status, summary
+            return status, finding
 
         try:
             visual_state = await self._capture_visible_text_state(session)
         except Exception:
             logger.warning("Failed to gather DOM grounding hints for pass verdict", exc_info=True)
-            return status, summary
+            return status, finding
 
         normalized_claim = self._normalize_text(claim)
         for pattern, checker in (
@@ -584,15 +671,15 @@ class ClaimVerifier:
                 continue
             grounded = checker(visual_state, match.groupdict())
             if grounded is None:
-                return status, summary
-            grounded_status, grounded_summary = grounded
+                return status, finding
+            grounded_status, grounded_finding = grounded
             if grounded_status != "passed":
                 logger.info("Downgrading pass verdict for claim %r after grounding check", claim)
-            return grounded_status, grounded_summary
+            return grounded_status, grounded_finding
 
         if any(marker in normalized_claim for marker in {" title reads ", " heading reads ", " button is visible"}):
             logger.info("No grounding rule matched pass verdict for claim %r", claim)
-        return status, summary
+        return status, finding
 
     async def _capture_visible_text_state(self, session: BrowserSession) -> dict[str, list[str]]:
         return await session.page.evaluate(

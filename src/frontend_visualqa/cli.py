@@ -13,6 +13,7 @@ from typing import Any
 from frontend_visualqa import __version__
 from frontend_visualqa.browser import BrowserManager
 from frontend_visualqa.mcp_server import close_runners_sync, configure_server, get_mcp_server
+from frontend_visualqa.serialization import serialize_result
 from frontend_visualqa.schemas import BrowserConfig, BrowserMode, ViewportConfig, validate_url
 
 
@@ -257,7 +258,7 @@ async def _run_verify(args: argparse.Namespace) -> dict[str, Any]:
             run_timeout_seconds=args.run_timeout_seconds,
             navigation_hint=args.navigation_hint,
         )
-        return _serialize_result(result)
+        return serialize_result(result)
     finally:
         await runner.close()
 
@@ -271,7 +272,7 @@ async def _run_screenshot(args: argparse.Namespace) -> dict[str, Any]:
             session_key=args.session_key,
             reuse_session=args.reuse_session,
         )
-        return _serialize_result(result)
+        return serialize_result(result)
     finally:
         await runner.close()
 
@@ -325,17 +326,9 @@ async def _run_status() -> dict[str, Any]:
     runner = _new_runner()
     try:
         result = await runner.manage_browser(action="status")
-        return _serialize_result(result)
+        return serialize_result(result)
     finally:
         await runner.close()
-
-
-def _serialize_result(result: Any) -> dict[str, Any]:
-    if hasattr(result, "model_dump"):
-        return result.model_dump(mode="json")
-    if isinstance(result, dict):
-        return result
-    raise TypeError(f"CLI command returned unsupported type: {type(result)!r}")
 
 
 def _new_runner(*, browser_config: BrowserConfig | None = None, reporters: list[str] | None = None) -> Any:

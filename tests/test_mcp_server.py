@@ -7,7 +7,40 @@ from typing import Any
 
 import pytest
 
-from frontend_visualqa.schemas import BrowserConfig, BrowserMode, BrowserStatusResult, ScreenshotResult, ViewportConfig
+from frontend_visualqa.schemas import (
+    BrowserConfig,
+    BrowserMode,
+    BrowserStatusResult,
+    ClaimResult,
+    RunResult,
+    ScreenshotResult,
+    ViewportConfig,
+)
+
+
+def _sample_claim_result(*, url: str, viewport: ViewportConfig) -> ClaimResult:
+    return ClaimResult(
+        claim="The edit modal opens when clicking the task row",
+        status="passed",
+        finding="The modal is visible.",
+        proof={
+            "screenshot": "artifacts/run-fake/claim-01/step-01.webp",
+            "step": 1,
+            "after_action": "left_click([419, 348])",
+            "text": None,
+        },
+        page={"url": url, "viewport": viewport},
+        history={
+            "steps_taken": 1,
+            "wrong_page_recovered": False,
+            "screenshots": [
+                "artifacts/run-fake/claim-01/step-00-initial.webp",
+                "artifacts/run-fake/claim-01/step-01.webp",
+            ],
+            "actions": ["left_click([419, 348])"],
+            "trace_path": "artifacts/run-fake/claim-01/action_trace.json",
+        },
+    )
 
 
 def _import_mcp_server_module():
@@ -30,25 +63,26 @@ class FakeRunner:
         self.browser_request_calls: list[Any] = []
         self.close_calls = 0
 
-    async def run(self, **kwargs: Any) -> dict[str, Any]:
+    async def run(self, **kwargs: Any) -> RunResult:
         self.run_calls.append(kwargs)
-        return {
-            "overall_status": "completed",
-            "session_key": kwargs.get("session_key", "default"),
-            "results": [],
-            "summary": "0 claims executed in fake runner",
-            "artifacts_dir": "artifacts/run-fake",
-        }
+        viewport = kwargs.get("viewport", ViewportConfig())
+        return RunResult(
+            overall_status="completed",
+            session_key=kwargs.get("session_key", "default"),
+            results=[_sample_claim_result(url=kwargs["url"], viewport=viewport)],
+            summary="1/1 claims passed.",
+            artifacts_dir="artifacts/run-fake",
+        )
 
-    async def run_request(self, request: Any) -> dict[str, Any]:
+    async def run_request(self, request: Any) -> RunResult:
         self.run_request_calls.append(request)
-        return {
-            "overall_status": "completed",
-            "session_key": request.session_key,
-            "results": [],
-            "summary": "0 claims executed in fake runner",
-            "artifacts_dir": "artifacts/run-fake",
-        }
+        return RunResult(
+            overall_status="completed",
+            session_key=request.session_key,
+            results=[_sample_claim_result(url=request.url, viewport=request.viewport)],
+            summary="1/1 claims passed.",
+            artifacts_dir="artifacts/run-fake",
+        )
 
     async def take_screenshot(self, **kwargs: Any) -> ScreenshotResult:
         self.screenshot_calls.append(kwargs)
@@ -72,20 +106,38 @@ class FakeRunner:
 
 
 async def _call_tool(module: Any, tool_name: str, arguments: dict[str, Any]) -> Any:
+    if hasattr(module, "mcp"):
+        response = await module.mcp.call_tool(tool_name, arguments)
+        if isinstance(response, tuple):
+            assert response, "tool returned an empty tuple"
+            response = response[0]
+        if isinstance(response, list):
+            assert response, "tool returned no content"
+            return json.loads(response[0].text)
+        return response
+
     if hasattr(module, tool_name):
         target = getattr(module, tool_name)
         if inspect.iscoroutinefunction(target):
             return await target(**arguments)
         return target(**arguments)
 
-    if hasattr(module, "mcp"):
-        response = await module.mcp.call_tool(tool_name, arguments)
-        if isinstance(response, list):
-            assert response, "tool returned no content"
-            return json.loads(response[0].text)
-        return response
-
     raise AssertionError(f"Unable to call {tool_name}: module does not expose a direct handler or FastMCP instance")
+
+
+def _assert_claim_result_payload_shape(result: dict[str, Any]) -> None:
+    assert set(result) == {"claim", "status", "finding", "proof", "page", "history"}
+
+    proof = result["proof"]
+    assert proof is not None
+    assert set(proof) == {"screenshot", "step", "after_action", "text"}
+
+    page = result["page"]
+    assert set(page) == {"url", "viewport"}
+    assert set(page["viewport"]) == {"width", "height", "device_scale_factor"}
+
+    history = result["history"]
+    assert set(history) == {"steps_taken", "wrong_page_recovered", "screenshots", "actions", "trace_path"}
 
 
 def _install_fake_runner(module: Any, fake_runner: FakeRunner, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -154,6 +206,13 @@ async def test_mcp_server_verify_visual_claims_delegates_to_runner(monkeypatch: 
     assert forwarded.claims == payload["claims"]
     assert forwarded.visualize is True
     assert result["overall_status"] == "completed"
+    assert result["runner_version"] == "0.3.0"
+    claim_result = result["results"][0]
+    _assert_claim_result_payload_shape(claim_result)
+    assert claim_result["finding"] == "The modal is visible."
+    assert claim_result["proof"]["after_action"] == "left_click([419, 348])"
+    assert claim_result["page"]["url"] == payload["url"]
+    assert claim_result["history"]["steps_taken"] == 1
 
 
 @pytest.mark.asyncio

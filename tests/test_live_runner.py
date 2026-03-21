@@ -141,7 +141,7 @@ async def test_live_runner_executes_real_browser_flow_and_passes_modal_claim(
                         id="tool-2",
                         function=FakeFunction(
                             name="record_claim_result",
-                            arguments=json.dumps({"status": "passed", "summary": "The modal title reads Edit Task."}),
+                            arguments=json.dumps({"status": "passed", "finding": "The modal title reads Edit Task."}),
                         ),
                     )
                 ]
@@ -173,8 +173,16 @@ async def test_live_runner_executes_real_browser_flow_and_passes_modal_claim(
 
     assert result.overall_status == "completed"
     assert [item.status for item in result.results] == ["passed"]
-    assert result.results[0].action_trace == ["left_click([419, 348])"]
-    assert all(Path(path).exists() for path in result.results[0].screenshots)
+    assert "Visible dialog title matched" in result.results[0].finding
+    assert result.results[0].history.actions == ["left_click([419, 348])"]
+    assert result.results[0].history.steps_taken == 1
+    assert all(Path(path).exists() for path in result.results[0].history.screenshots)
+    assert result.results[0].proof is not None
+    assert result.results[0].proof.step == 1
+    assert result.results[0].proof.text is None
+    assert Path(result.results[0].proof.screenshot).exists()
+    assert result.results[0].proof.after_action == "left_click([419, 348])"
+    assert result.results[0].page.url == f"{example_server}/test_page.html"
 
 
 @pytest.mark.asyncio
@@ -194,7 +202,7 @@ async def test_live_runner_downgrades_false_positive_button_claim_with_grounding
                             arguments=json.dumps(
                                 {
                                     "status": "passed",
-                                    "summary": "The Show Save Confirmation button is visible without scrolling.",
+                                    "finding": "The Show Save Confirmation button is visible without scrolling.",
                                 }
                             ),
                         ),
@@ -227,7 +235,7 @@ async def test_live_runner_downgrades_false_positive_button_claim_with_grounding
 
     assert result.overall_status == "completed"
     assert [item.status for item in result.results] == ["failed"]
-    assert "No visible button label matched" in result.results[0].summary
+    assert "No visible button label matched" in result.results[0].finding
 
 
 @pytest.mark.asyncio
@@ -261,7 +269,7 @@ async def test_live_runner_headed_overlay_hides_restores_and_cleans_up(
                         function=FakeFunction(
                             name="record_claim_result",
                             arguments=json.dumps(
-                                {"status": "passed", "summary": "The modal title reads Edit Task."}
+                                {"status": "passed", "finding": "The modal title reads Edit Task."}
                             ),
                         ),
                     )
@@ -366,8 +374,10 @@ async def test_live_runner_headed_overlay_hides_restores_and_cleans_up(
 
     assert result.overall_status == "completed"
     assert [item.status for item in result.results] == ["passed"]
-    assert result.results[0].action_trace == ["left_click([419, 348])"]
-    assert all(Path(path).exists() for path in result.results[0].screenshots)
+    assert "Visible dialog title matched" in result.results[0].finding
+    assert result.results[0].history.actions == ["left_click([419, 348])"]
+    assert result.results[0].history.steps_taken == 1
+    assert all(Path(path).exists() for path in result.results[0].history.screenshots)
 
     before_samples = [sample for sample in lifecycle_samples if sample["phase"] == "before_screenshot"]
     after_samples = [sample for sample in lifecycle_samples if sample["phase"] == "after_screenshot"]
