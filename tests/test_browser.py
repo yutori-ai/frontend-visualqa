@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import base64
+import io
 from functools import partial
 from http.server import BaseHTTPRequestHandler, SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from threading import Thread
 
 import pytest
+from PIL import Image
 
-from frontend_visualqa.browser import BrowserManager, PERSISTENT_SESSION_KEY_ERROR, image_bytes_to_data_url
+from frontend_visualqa.browser import BrowserManager, BrowserSession, PERSISTENT_SESSION_KEY_ERROR, image_bytes_to_data_url
 from frontend_visualqa.schemas import BrowserConfig, BrowserMode, DEFAULT_PERSISTENT_USER_DATA_DIR, ViewportConfig
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
@@ -42,6 +45,13 @@ class _CookieHandler(BaseHTTPRequestHandler):
 
     def log_message(self, format: str, *args: object) -> None:  # noqa: A003
         return
+
+
+def _png_bytes(*, size: tuple[int, int] = (8, 6), color: tuple[int, int, int] = (29, 205, 152)) -> bytes:
+    image = Image.new("RGB", size, color=color)
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    return buffer.getvalue()
 
 
 @pytest.fixture()
@@ -82,6 +92,106 @@ def test_browser_config_defaults_persistent_user_data_dir() -> None:
 
     assert config.user_data_dir == str(DEFAULT_PERSISTENT_USER_DATA_DIR)
     assert config.resolved_user_data_dir == str(DEFAULT_PERSISTENT_USER_DATA_DIR)
+
+
+@pytest.mark.asyncio
+async def test_browser_manager_capture_screenshot_prefers_cdp_in_headed_mode() -> None:
+    class FakeCDPSession:
+        def __init__(self, payload: bytes) -> None:
+            self.payload = payload
+            self.send_calls: list[tuple[str, dict[str, object]]] = []
+            self.detach_calls = 0
+
+        async def send(self, method: str, params: dict[str, object]) -> dict[str, str]:
+            self.send_calls.append((method, params))
+            return {"data": base64.b64encode(self.payload).decode("ascii")}
+
+        async def detach(self) -> None:
+            self.detach_calls += 1
+
+    class FakeContext:
+        def __init__(self, cdp_session: FakeCDPSession) -> None:
+            self.cdp_session = cdp_session
+            self.new_cdp_session_calls = 0
+
+        async def new_cdp_session(self, page: object) -> FakeCDPSession:
+            self.new_cdp_session_calls += 1
+            return self.cdp_session
+
+    class FakePage:
+        def __init__(self) -> None:
+            self.screenshot_calls: list[dict[str, object]] = []
+
+        async def screenshot(self, **kwargs: object) -> bytes:
+            self.screenshot_calls.append(kwargs)
+            return _png_bytes(color=(255, 0, 0))
+
+    png_payload = _png_bytes()
+    cdp_session = FakeCDPSession(png_payload)
+    context = FakeContext(cdp_session)
+    page = FakePage()
+    session = BrowserSession(
+        session_key="default",
+        context=context,  # type: ignore[arg-type]
+        page=page,  # type: ignore[arg-type]
+        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+    )
+    manager = BrowserManager(config=BrowserConfig(headless=False))
+
+    screenshot = await manager.capture_screenshot(session)
+
+    assert screenshot[:4] == b"RIFF"
+    assert b"WEBP" in screenshot[:24]
+    assert context.new_cdp_session_calls == 1
+    assert cdp_session.send_calls == [("Page.captureScreenshot", {"format": "png", "captureBeyondViewport": False})]
+    assert cdp_session.detach_calls == 1
+    assert page.screenshot_calls == []
+
+
+@pytest.mark.asyncio
+async def test_browser_manager_capture_screenshot_falls_back_to_playwright_in_headed_mode() -> None:
+    class FakeCDPSession:
+        def __init__(self) -> None:
+            self.detach_calls = 0
+
+        async def send(self, method: str, params: dict[str, object]) -> dict[str, str]:
+            raise RuntimeError("capture failed")
+
+        async def detach(self) -> None:
+            self.detach_calls += 1
+
+    class FakeContext:
+        def __init__(self, cdp_session: FakeCDPSession) -> None:
+            self.cdp_session = cdp_session
+
+        async def new_cdp_session(self, page: object) -> FakeCDPSession:
+            return self.cdp_session
+
+    class FakePage:
+        def __init__(self) -> None:
+            self.screenshot_calls: list[dict[str, object]] = []
+
+        async def screenshot(self, **kwargs: object) -> bytes:
+            self.screenshot_calls.append(kwargs)
+            return _png_bytes(color=(0, 0, 255))
+
+    cdp_session = FakeCDPSession()
+    context = FakeContext(cdp_session)
+    page = FakePage()
+    session = BrowserSession(
+        session_key="default",
+        context=context,  # type: ignore[arg-type]
+        page=page,  # type: ignore[arg-type]
+        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+    )
+    manager = BrowserManager(config=BrowserConfig(headless=False))
+
+    screenshot = await manager.capture_screenshot(session)
+
+    assert screenshot[:4] == b"RIFF"
+    assert b"WEBP" in screenshot[:24]
+    assert cdp_session.detach_calls == 1
+    assert page.screenshot_calls == [{"type": "png"}]
 
 
 @pytest.mark.asyncio

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import io
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -17,6 +18,7 @@ from frontend_visualqa.schemas import BrowserConfig, BrowserMode, BrowserSession
 
 DEFAULT_NAVIGATION_TIMEOUT_MS = 20_000
 DEFAULT_SETTLE_DELAY_SECONDS = 1.0
+logger = logging.getLogger(__name__)
 PERSISTENT_SESSION_KEY_ERROR = (
     "Persistent browser mode supports only the 'default' session. "
     "Use ephemeral mode for multiple sessions, or omit session_key."
@@ -138,17 +140,55 @@ class BrowserManager:
     async def capture_screenshot(self, session: BrowserSession) -> bytes:
         """Capture the current page viewport as WebP bytes."""
 
-        # In headed mode, skip animations="disabled" to avoid visible flickering
-        # caused by Playwright resetting all CSS animations for each screenshot.
-        screenshot_kwargs: dict[str, Any] = {"type": "png"}
-        if self.headless:
-            screenshot_kwargs["animations"] = "disabled"
-        png_bytes = await session.page.screenshot(**screenshot_kwargs)
+        png_bytes = await self._capture_png_bytes(session)
         image = Image.open(io.BytesIO(png_bytes))
         image.load()
         buffer = io.BytesIO()
         image.save(buffer, format="WEBP", quality=90)
         return buffer.getvalue()
+
+    async def _capture_png_bytes(self, session: BrowserSession) -> bytes:
+        if not self.headless:
+            # In headed Chromium, Playwright's page.screenshot() can visibly
+            # shrink the live page during capture. Use the lower-level CDP
+            # capture path first so the visible browser stays stable.
+            cdp_png = await self._capture_png_bytes_via_cdp(session)
+            if cdp_png is not None:
+                return cdp_png
+
+        # If CDP capture is unavailable, fall back to Playwright screenshots.
+        # Keep animations disabled only in headless mode for deterministic
+        # evidence. In headed mode, disabling animations is itself visible and
+        # can create a separate flash on animated pages.
+        screenshot_kwargs: dict[str, Any] = {"type": "png"}
+        if self.headless:
+            screenshot_kwargs["animations"] = "disabled"
+        return await session.page.screenshot(**screenshot_kwargs)
+
+    async def _capture_png_bytes_via_cdp(self, session: BrowserSession) -> bytes | None:
+        cdp_session = None
+        try:
+            cdp_session = await session.context.new_cdp_session(session.page)
+            result = await cdp_session.send(
+                "Page.captureScreenshot",
+                {
+                    "format": "png",
+                    "captureBeyondViewport": False,
+                },
+            )
+            data = result.get("data")
+            if not data:
+                raise ValueError("Chromium did not return screenshot data")
+            return base64.b64decode(data)
+        except Exception:
+            logger.debug("CDP screenshot capture failed; falling back to Playwright screenshot()", exc_info=True)
+            return None
+        finally:
+            if cdp_session is not None:
+                try:
+                    await cdp_session.detach()
+                except Exception:
+                    logger.debug("CDP screenshot session detach failed", exc_info=True)
 
     async def set_viewport(self, session_key: str, viewport: ViewportConfig) -> BrowserSession:
         """Resize or recreate the session to match a new viewport."""
