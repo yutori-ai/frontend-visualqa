@@ -372,7 +372,54 @@ Output format for persisted artifacts. Does not affect CLI stdout or MCP tool re
 | `native` *(default)* | `run_result.json` | Full domain-specific schema with all fields |
 | `ctrf` | `ctrf-report.json` | [CTRF](https://ctrf.io/) standard JSON for CI/CD integration |
 
-Each claim result now separates the concise verdict explanation from the supporting evidence. Use `finding` for the verdict note, `proof` for the decisive screenshot plus any supplemental extracted text, `page` for URL and viewport context, and `history` for the complete screenshot/action trail.
+Each claim result contains:
+- **`finding`** — the verdict explanation (what was observed)
+- **`proof`** — the decisive screenshot, step number, and any extracted text
+- **`page`** — URL and viewport where the claim was evaluated
+- **`history`** — full screenshot and action trail for traceability
+
+<details>
+<summary><strong>Example claim result</strong></summary>
+
+```json
+{
+  "claim": "The progress bar shows 100%",
+  "status": "failed",
+  "finding": "The progress bar shows 65%, not 100%.",
+  "proof": {
+    "screenshot": "artifacts/run-.../claim-02/step-04.webp",
+    "step": 4,
+    "after_action": "extract_elements()",
+    "text": null
+  },
+  "page": {
+    "url": "http://localhost:8000/comprehensive_test.html",
+    "viewport": { "width": 1280, "height": 800, "device_scale_factor": 1.0 }
+  },
+  "history": {
+    "steps_taken": 4,
+    "wrong_page_recovered": false,
+    "screenshots": [
+      "artifacts/run-.../claim-02/step-00-initial.webp",
+      "artifacts/run-.../claim-02/step-01.webp",
+      "artifacts/run-.../claim-02/step-02.webp",
+      "artifacts/run-.../claim-02/step-03.webp",
+      "artifacts/run-.../claim-02/step-04.webp"
+    ],
+    "actions": [
+      "scroll([640, 400], direction=down, amount=3)",
+      "scroll([640, 400], direction=down, amount=5)",
+      "scroll([640, 400], direction=down, amount=3)",
+      "extract_elements()"
+    ],
+    "trace_path": "artifacts/run-.../claim-02/action_trace.json"
+  }
+}
+```
+
+`proof.screenshot` points to the screenshot n1 was examining when it rendered the verdict — open this first when investigating a failure. `history` contains the full trail if you need to understand how the runner got there.
+
+</details>
 
 ```bash
 frontend-visualqa verify http://localhost:3000 \
