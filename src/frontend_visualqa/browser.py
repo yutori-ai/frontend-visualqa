@@ -138,7 +138,12 @@ class BrowserManager:
     async def capture_screenshot(self, session: BrowserSession) -> bytes:
         """Capture the current page viewport as WebP bytes."""
 
-        png_bytes = await session.page.screenshot(type="png", animations="disabled")
+        # In headed mode, skip animations="disabled" to avoid visible flickering
+        # caused by Playwright resetting all CSS animations for each screenshot.
+        screenshot_kwargs: dict[str, Any] = {"type": "png"}
+        if self.headless:
+            screenshot_kwargs["animations"] = "disabled"
+        png_bytes = await session.page.screenshot(**screenshot_kwargs)
         image = Image.open(io.BytesIO(png_bytes))
         image.load()
         buffer = io.BytesIO()
