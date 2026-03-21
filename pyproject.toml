@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "frontend-visualqa"
-version = "0.3.1"
+dynamic = ["version"]
 description = "Gives coding agents eyes for frontend work — visual QA and verification powered by Yutori n1."
 readme = "README.md"
 license = "Apache-2.0"
@@ -48,6 +48,9 @@ frontend-visualqa = "frontend_visualqa.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/frontend_visualqa"]
+
+[tool.hatch.version]
+path = "src/frontend_visualqa/__init__.py"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

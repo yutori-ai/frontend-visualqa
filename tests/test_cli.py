@@ -187,7 +187,7 @@ def test_handle_verify_closes_runner_and_forwards_browser_config(monkeypatch: An
         )
     ]
     assert emitted[0]["overall_status"] == "completed"
-    assert emitted[0]["runner_version"] == "0.3.1"
+    assert emitted[0]["runner_version"] == __version__
     claim_result = emitted[0]["results"][0]
     _assert_claim_result_payload_shape(claim_result)
     assert claim_result["finding"] == "The modal title reads Edit Task."

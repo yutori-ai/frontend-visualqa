@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 
+from frontend_visualqa import __version__
 from frontend_visualqa.schemas import (
     BrowserConfig,
     BrowserMode,
@@ -207,7 +208,7 @@ async def test_mcp_server_verify_visual_claims_delegates_to_runner(monkeypatch: 
     assert forwarded.claims == payload["claims"]
     assert forwarded.visualize is True
     assert result["overall_status"] == "completed"
-    assert result["runner_version"] == "0.3.1"
+    assert result["runner_version"] == __version__
     claim_result = result["results"][0]
     _assert_claim_result_payload_shape(claim_result)
     assert claim_result["finding"] == "The modal is visible."

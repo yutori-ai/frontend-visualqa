@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from frontend_visualqa import __version__
 
 
 ClaimStatus = Literal["passed", "failed", "inconclusive", "not_testable"]
@@ -145,7 +146,7 @@ class RunResult(FrontendVisualQABaseModel):
     """Structured output for a verification run."""
 
     overall_status: OverallStatus
-    runner_version: str = "0.3.1"
+    runner_version: str = __version__
     started_at: float | None = None
     completed_at: float | None = None
     session_key: str
