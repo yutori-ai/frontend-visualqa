@@ -45,7 +45,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 ### Quick install (recommended)
 
-1. Install:
+1. Install CLIs:
 
     ```bash
     uv tool install frontend-visualqa \
@@ -56,7 +56,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
     This installs the `frontend-visualqa`, `yutori`, and `playwright` CLIs and downloads the Chromium browser binary.
 
-2. Authenticate:
+2. Log into Yutori API:
 
     ```bash
     yutori auth login
