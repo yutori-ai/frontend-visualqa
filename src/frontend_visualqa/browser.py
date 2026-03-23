@@ -35,7 +35,7 @@ class BrowserSession:
     viewport: ViewportConfig
 
 
-def image_bytes_to_data_url(image_bytes: bytes, mime_type: str = "image/webp") -> str:
+def image_bytes_to_data_url(image_bytes: bytes, mime_type: str = "image/png") -> str:
     """Encode raw image bytes as a data URL."""
 
     encoded = base64.b64encode(image_bytes).decode("utf-8")
@@ -138,10 +138,10 @@ class BrowserManager:
         return await self.goto(session, url)
 
     async def capture_screenshot(self, session: BrowserSession) -> bytes:
-        """Capture the current page viewport as WebP bytes."""
+        """Capture the current page viewport as PNG bytes."""
 
         image = await self._capture_screenshot_image(session)
-        return self._image_to_webp_bytes(image)
+        return self._image_to_png_bytes(image)
 
     async def _capture_screenshot_image(self, session: BrowserSession) -> Image.Image:
         if not self.headless:
@@ -159,7 +159,16 @@ class BrowserManager:
         screenshot_kwargs: dict[str, Any] = {"type": "png"}
         if self.headless:
             screenshot_kwargs["animations"] = "disabled"
-        return self._image_from_bytes(await session.page.screenshot(**screenshot_kwargs))
+        image = self._image_from_bytes(await session.page.screenshot(**screenshot_kwargs))
+
+        # When device_scale_factor > 1, Playwright returns an image at native
+        # pixel resolution (e.g. 2560x1600 for DSF=2 at 1280x800 viewport).
+        # n1 maps its 1000x1000 coordinate grid to the image dimensions, so we
+        # must resize back to CSS viewport size to keep coordinates aligned.
+        css_size = (session.viewport.width, session.viewport.height)
+        if image.size != css_size:
+            image = image.resize(css_size, resample=Image.Resampling.LANCZOS)
+        return image
 
     async def _capture_screenshot_image_via_cdp(self, session: BrowserSession) -> Image.Image | None:
         cdp_session = None
@@ -232,6 +241,12 @@ class BrowserManager:
         image = Image.open(io.BytesIO(image_bytes))
         image.load()
         return image
+
+    @staticmethod
+    def _image_to_png_bytes(image: Image.Image) -> bytes:
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        return buffer.getvalue()
 
     @staticmethod
     def _image_to_webp_bytes(image: Image.Image) -> bytes:

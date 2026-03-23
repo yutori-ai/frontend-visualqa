@@ -45,9 +45,9 @@ class ArtifactManager:
         label: str,
         image_bytes: bytes,
     ) -> str:
-        """Persist a WebP screenshot and return its path."""
+        """Persist a screenshot and return its path."""
 
-        path = self.claim_dir(run, claim_index) / f"{label}.webp"
+        path = self.claim_dir(run, claim_index) / f"{label}.png"
         path.write_bytes(image_bytes)
         return str(path)
 

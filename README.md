@@ -412,7 +412,7 @@ Each claim result contains:
   "status": "failed",
   "finding": "The quota label reads '100%' and '12,500 / 12,500 requests used', but the progress bar is visually only about 65% filled — the bar and the label disagree.",
   "proof": {
-    "screenshot_path": "artifacts/run-.../claim-02/step-04.webp",
+    "screenshot_path": "artifacts/run-.../claim-02/step-04.png",
     "step": 4,
     "after_action": "extract_elements()",
     "text": "Monthly Quota\n12,500 / 12,500 requests used  100%\n...",

@@ -25,7 +25,7 @@ def _sample_claim_result(*, url: str, viewport: ViewportConfig) -> ClaimResult:
         status="passed",
         finding="The modal is visible.",
         proof={
-            "screenshot_path": "artifacts/run-fake/claim-01/step-01.webp",
+            "screenshot_path": "artifacts/run-fake/claim-01/step-01.png",
             "step": 1,
             "after_action": "left_click([419, 348])",
             "text": None,
@@ -36,8 +36,8 @@ def _sample_claim_result(*, url: str, viewport: ViewportConfig) -> ClaimResult:
             "steps_taken": 1,
             "wrong_page_recovered": False,
             "screenshot_paths": [
-                "artifacts/run-fake/claim-01/step-00-initial.webp",
-                "artifacts/run-fake/claim-01/step-01.webp",
+                "artifacts/run-fake/claim-01/step-00-initial.png",
+                "artifacts/run-fake/claim-01/step-01.png",
             ],
             "actions": ["left_click([419, 348])"],
             "trace_path": "artifacts/run-fake/claim-01/action_trace.json",
@@ -92,7 +92,7 @@ class FakeRunner:
             session_key=kwargs.get("session_key", "default"),
             final_url=kwargs["url"],
             viewport=kwargs.get("viewport", ViewportConfig()),
-            screenshot_path="artifacts/run-fake/screenshot.webp",
+            screenshot_path="artifacts/run-fake/screenshot.png",
         )
 
     async def manage_browser(self, **kwargs: Any) -> BrowserStatusResult:

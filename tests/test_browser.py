@@ -148,8 +148,8 @@ async def test_browser_manager_capture_screenshot_prefers_cdp_in_headed_mode() -
     image = Image.open(io.BytesIO(screenshot))
     image.load()
 
-    assert screenshot[:4] == b"RIFF"
-    assert b"WEBP" in screenshot[:24]
+    assert screenshot[:4] == b"\x89PNG"
+    assert b"PNG" in screenshot[:8]
     assert image.size == (320, 200)
     assert context.new_cdp_session_calls == 1
     assert cdp_session.send_calls == [
@@ -219,8 +219,8 @@ async def test_browser_manager_capture_screenshot_falls_back_to_playwright_in_he
 
     screenshot = await manager.capture_screenshot(session)
 
-    assert screenshot[:4] == b"RIFF"
-    assert b"WEBP" in screenshot[:24]
+    assert screenshot[:4] == b"\x89PNG"
+    assert b"PNG" in screenshot[:8]
     assert cdp_session.detach_calls == 1
     assert page.screenshot_calls == [{"type": "png"}]
 
@@ -281,8 +281,8 @@ async def test_browser_manager_navigates_reuses_session_and_captures_webp(exampl
         assert await session.page.locator("[data-testid='primary-red-button']").is_visible()
 
         screenshot = await manager.capture_screenshot(session)
-        assert screenshot[:4] == b"RIFF"
-        assert b"WEBP" in screenshot[:24]
+        assert screenshot[:4] == b"\x89PNG"
+        assert b"PNG" in screenshot[:8]
 
         same_session = await manager.get_session("qa-fixture", viewport=viewport, reuse_session=True)
         assert same_session.page is session.page
