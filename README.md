@@ -25,11 +25,11 @@ n1 is a pixels-to-actions model trained with RL on live websites. Two capabiliti
     <td align="center" width="47%"><img src="docs/images/nav-step6-correct-page.webp" alt="Product detail — correct page" width="100%"><br><em>Navigated to the correct product page</em></td>
   </tr></table>
 
-- **Rich visual evaluation** — On the cart page, both items show sale prices ($149.99 and $79.99) but n1 caught that the subtotal of $279.98 was computed from the original prices — the discount was never actually applied to the total. On the API dashboard, the quota label reads "100%" but the progress bar is visibly only two-thirds full. Playwright MCP would pass both pages — the DOM text is internally consistent and the progress bar width is just a CSS value.
+- **Rich visual evaluation** — On the cart page, both items show sale prices ($149.99 and $79.99) but n1 caught that the subtotal of $279.98 uses the original prices — the discount was never applied. On the API dashboard, the quota label reads "100%" but the progress bar is visibly only two-thirds full. Playwright MCP would pass both — the DOM text is consistent and the progress bar width is just a CSS value.
 
   <table border="0" cellspacing="0" cellpadding="8"><tr>
     <td align="center" width="50%"><img src="docs/images/cart-pricing-bug.webp" alt="Cart — sale prices shown but subtotal uses original prices" width="100%"><br><em>n1 catches the discount-not-applied bug</em></td>
-    <td align="center" width="50%"><img src="docs/images/dashboard-quota.webp" alt="Dashboard — label says 100% but bar is 65%" width="100%"><br><em>Label says 100% but the bar tells a different story</em></td>
+    <td align="center" width="50%"><img src="docs/images/dashboard-quota.webp" alt="Dashboard — label says 100% but bar is 65%" width="100%"><br><em>Label says 100% but the bar is only at 2/3rds</em></td>
   </tr></table>
 
 ## Install
