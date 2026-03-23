@@ -62,6 +62,8 @@ def build_verification_task(claim: str, url: str, navigation_hint: str | None = 
         "",
         "Available tools include goto_url, left_click, double_click, triple_click, right_click, hover, drag, scroll, type, key_press, wait, refresh, go_back, go_forward, extract_elements, extract_content, and find.",
         "If the page is unreachable, stuck, crashes, or requires credentials you do not have, use not_testable.",
+        "",
+        "If a button or control is unresponsive, disabled, or you find yourself repeating the same action without progress, stop immediately and report what you found. A disabled button, a broken interaction, or an unresponsive control is itself a meaningful finding — report it as failed with a description of what is blocked and why.",
     ]
     if navigation_hint:
         parts.extend(["", f"Navigation hint: {navigation_hint}"])
