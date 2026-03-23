@@ -35,6 +35,14 @@ n1 is a pixels-to-actions model trained with RL on live websites. Two capabiliti
 
 ## Install
 
+### Prerequisites
+
+Install [uv](https://docs.astral.sh/uv/) if you don't already have it:
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
 ### Quick install (recommended)
 
 1. Install:
