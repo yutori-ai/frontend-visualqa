@@ -201,7 +201,7 @@ lsof -ti:8000 | xargs kill 2>/dev/null; python3 -m http.server 8000 -d examples 
 # Green click ripples and a status HUD show each action as it happens
 frontend-visualqa verify http://localhost:8000/ecommerce_store.html \
   --headed \
-  --claims "The product detail page shows 'Wireless Headphones Pro' priced at $149.99"
+  --claims 'The product detail page shows Wireless Headphones Pro priced at $149.99'
 ```
 
 **Catching regressions** — mix passing and failing claims:
