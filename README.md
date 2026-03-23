@@ -220,8 +220,8 @@ frontend-visualqa verify http://localhost:8000/analytics_dashboard.html \
 ```bash
 frontend-visualqa verify 'http://localhost:8000/ecommerce_store.html#/cart' \
   --headed \
-  --claims 'The cart subtotal equals the sum of the sale prices: $149.99 + $79.99 = $229.98'
-# → fails: subtotal shows $279.98 (computed from the original prices)
+  --claims 'The cart subtotal is $229.98'
+# → fails: subtotal shows $279.98 — the discount was never applied
 ```
 
 Use against your own frontend the same way — just swap the URL:
