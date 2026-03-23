@@ -17,20 +17,20 @@ Playwright MCP can click, type, and assert against the DOM — but it cannot *se
 
 n1 is a pixels-to-actions model trained with RL on live websites. Two capabilities matter here:
 
-- **Self-correcting navigation** — Point the agent at `/tasks` instead of `/tasks/123` and n1 recognizes the wrong page, clicks through to the right one, and reports `trace.wrong_page_recovered: true`. Playwright MCP would run assertions on the wrong page and silently pass — garbage in, garbage out.
+- **Self-correcting navigation** — Point the agent at the product catalog instead of a specific product page and n1 recognizes the wrong page, clicks through to the right one, and reports `trace.wrong_page_recovered: true`. Playwright MCP would run assertions on the wrong page and silently pass — garbage in, garbage out.
 
   <table border="0" cellspacing="0" cellpadding="8"><tr>
-    <td align="center" width="47%"><img src="docs/images/nav-step0-wrong-page.png" alt="Dashboard — wrong page, overlay active" width="100%"><br><em>n1 analyzing the wrong page</em></td>
+    <td align="center" width="47%"><img src="docs/images/nav-step0-wrong-page.webp" alt="Product catalog — wrong page" width="100%"><br><em>n1 lands on the product catalog</em></td>
     <td align="center" width="6%"><strong>→</strong></td>
-    <td align="center" width="47%"><img src="docs/images/nav-step6-correct-page.png" alt="Task #123 — correct page" width="100%"><br><em>Landed on the correct page</em></td>
+    <td align="center" width="47%"><img src="docs/images/nav-step6-correct-page.webp" alt="Product detail — correct page" width="100%"><br><em>Navigated to the correct product page</em></td>
   </tr></table>
 
-- **Rich visual evaluation** — On the task detail page for Task #123, after clicking "Mark Complete", n1 reported three changes: status badge "In Progress"→"Done", button label→"Completed", toast notification appeared. Playwright MCP would need three hand-written assertions.
+- **Rich visual evaluation** — On the cart page, n1 read every line item and caught a $3.00 pricing discrepancy: shipping displays $12.99 but the total was calculated with $15.99. Playwright MCP would need hand-written assertions for each line item and a manual sum check.
 
   <table border="0" cellspacing="0" cellpadding="8"><tr>
-    <td align="center" width="47%"><img src="docs/images/mark-complete-before.png" alt="Before — In Progress, overlay active" width="100%"><br><em>n1 analyzing before clicking</em></td>
+    <td align="center" width="47%"><img src="docs/images/cart-pricing-bug.webp" alt="Cart — shipping shows $12.99 but total is wrong" width="100%"><br><em>n1 catches the $3.00 pricing discrepancy</em></td>
     <td align="center" width="6%"><strong>→</strong></td>
-    <td align="center" width="47%"><img src="docs/images/mark-complete-after.png" alt="After — Done + toast" width="100%"><br><em>Result after "Mark Complete"</em></td>
+    <td align="center" width="47%"><img src="docs/images/dashboard-quota.webp" alt="Dashboard — quota shows 65%, not 100%" width="100%"><br><em>Dashboard: quota reads 65%, not the claimed 100%</em></td>
   </tr></table>
 
 ## Install
@@ -179,10 +179,10 @@ Restart Codex after removing.
 
 ## Quick start
 
-The repo includes a test page you can use immediately — no dev server required:
+The repo includes demo pages you can use immediately — no dev server required:
 
 ```bash
-# From the repo root, serve the included test pages
+# From the repo root, serve the included demo pages
 cd /path/to/frontend-visualqa
 lsof -ti:8000 | xargs kill 2>/dev/null; python3 -m http.server 8000 -d examples &
 ```
@@ -190,30 +190,39 @@ lsof -ti:8000 | xargs kill 2>/dev/null; python3 -m http.server 8000 -d examples 
 **Self-correcting navigation** — start on the wrong page and watch n1 find its way. In headed mode, you'll see click ripples, scroll indicators, and a status chip showing what n1 is doing:
 
 ```bash
-# n1 lands on the home page, clicks Tasks, then clicks Task #123
+# n1 lands on the product catalog, clicks through to find the product detail page
 # Green click ripples and a status HUD show each action as it happens
-frontend-visualqa verify http://localhost:8000/multi_page_app.html \
+frontend-visualqa verify http://localhost:8000/ecommerce_store.html \
   --headed \
-  --claims "The task detail heading reads 'Task #123: Landing page polish'"
+  --claims "The product detail page shows 'Wireless Headphones Pro' priced at $149.99"
 ```
 
 **Catching regressions** — mix passing and failing claims:
 
 ```bash
-frontend-visualqa verify http://localhost:8000/comprehensive_test.html \
+frontend-visualqa verify http://localhost:8000/analytics_dashboard.html \
   --headed \
   --claims \
-  "The sidebar contains links labeled Dashboard, Tasks, and Settings" \
-  "The progress bar shows 100%"
+  "The API status indicator shows Active" \
+  "The monthly quota shows 100% used"
 # → first claim passes, second fails (actual value is 65%)
+```
+
+**Catching pricing bugs** — verify cart calculation integrity:
+
+```bash
+frontend-visualqa verify http://localhost:8000/ecommerce_store.html#/cart \
+  --headed \
+  --claims "The cart total matches the sum of subtotal, shipping, and tax"
+# → fails: shipping displays $12.99 but the total uses $15.99 internally
 ```
 
 Use against your own frontend the same way — just swap the URL:
 
 ```bash
 frontend-visualqa screenshot http://localhost:3000
-frontend-visualqa verify http://localhost:3000/tasks/123 \
-  --claims "The Save button is visible without scrolling"
+frontend-visualqa verify http://localhost:3000/dashboard \
+  --claims "The revenue chart is visible without scrolling"
 ```
 
 ## MCP tools
@@ -277,17 +286,18 @@ frontend-visualqa verify <url> --claims "claim1" "claim2" [options]
 Navigation hint for claims that require interaction:
 
 ```bash
-frontend-visualqa verify http://localhost:8000/comprehensive_test.html \
-  --claims "The dropdown label reads 'Priority: High'" \
-  --navigation-hint "Open the Priority Selector dropdown and click High."
+frontend-visualqa verify http://localhost:8000/ecommerce_store.html \
+  --claims "The cart badge shows 3 items" \
+  --navigation-hint "Click 'Add to Cart' on the Mechanical Keyboard K7 product card."
 ```
 
 Mobile viewport:
 
 ```bash
-frontend-visualqa verify http://localhost:8000/comprehensive_test.html \
-  --claims "A hamburger menu button is visible" \
+frontend-visualqa verify http://localhost:8000/ecommerce_store.html \
+  --claims "The product grid displays three columns" \
   --width 375 --height 812
+# → fails: grid collapses to a single column at mobile width
 ```
 
 </details>
@@ -335,7 +345,7 @@ When running in headed mode (`--headed`), the browser shows visual effects illus
 ```bash
 frontend-visualqa verify http://localhost:3000 \
   --headed --no-visualize \
-  --claims "The heading reads 'Dashboard'"
+  --claims "The API status indicator shows Active"
 ```
 
 The MCP tool `verify_visual_claims` accepts a per-call `visualize` parameter to control this independently of the server's default.
@@ -348,9 +358,9 @@ Claims should be observable, scoped, and provable from pixels.
 
 | Good | Weak |
 |------|------|
-| The modal title reads "Edit Task" | The modal works correctly |
-| The Save button is visible without scrolling | The page looks polished |
-| At 375px width, navigation collapses behind a menu button | The UI is intuitive |
+| The cart total is $261.37 | The cart works correctly |
+| The product price shows $149.99 in monospace font | The page looks polished |
+| At 375px width, the stat cards stack in a single column | The dashboard is responsive |
 
 If a claim requires interaction first, use `--navigation-hint` instead of encoding steps in the claim text.
 
@@ -383,18 +393,18 @@ Each claim result contains:
 
 ```json
 {
-  "claim": "The progress bar shows 100%",
+  "claim": "The monthly quota shows 100% used",
   "status": "failed",
-  "finding": "The progress bar shows 65%, not 100%.",
+  "finding": "The monthly quota shows 65% used (8,247 / 12,500 requests), not 100%.",
   "proof": {
     "screenshot_path": "artifacts/run-.../claim-02/step-04.webp",
     "step": 4,
     "after_action": "extract_elements()",
-    "text": "Page text:\nProject Progress 65%\n...",
+    "text": "Monthly Quota\n8,247 / 12,500 requests used  65%\n...",
     "text_path": "artifacts/run-.../claim-02/step-04.txt"
   },
   "page": {
-    "url": "http://localhost:8000/comprehensive_test.html",
+    "url": "http://localhost:8000/analytics_dashboard.html",
     "viewport": { "width": 1280, "height": 800, "device_scale_factor": 1.0 }
   },
   "trace": {
@@ -415,7 +425,7 @@ Each claim result contains:
 
 ```bash
 frontend-visualqa verify http://localhost:3000 \
-  --claims "The heading reads 'Dashboard'" \
+  --claims "The checkout total matches the sum of line items" \
   --reporter native --reporter ctrf
 ```
 
