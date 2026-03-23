@@ -210,8 +210,8 @@ frontend-visualqa verify http://localhost:8000/ecommerce_store.html \
 frontend-visualqa verify http://localhost:8000/analytics_dashboard.html \
   --headed \
   --claims \
-  "The API status indicator shows Active" \
-  "The monthly quota progress bar is completely filled"
+  'The API status indicator shows Active' \
+  'The monthly quota progress bar is completely filled'
 # → first claim passes, second fails (label says 100% but bar is ~65% full)
 ```
 
@@ -220,7 +220,7 @@ frontend-visualqa verify http://localhost:8000/analytics_dashboard.html \
 ```bash
 frontend-visualqa verify 'http://localhost:8000/ecommerce_store.html#/cart' \
   --headed \
-  --claims "The cart subtotal is correct"
+  --claims 'The cart subtotal is correct'
 # → fails: n1 sums the sale prices ($229.98) and catches the $279.98 subtotal
 ```
 
@@ -229,7 +229,7 @@ Use against your own frontend the same way — just swap the URL:
 ```bash
 frontend-visualqa screenshot http://localhost:3000
 frontend-visualqa verify http://localhost:3000/dashboard \
-  --claims "The revenue chart is visible without scrolling"
+  --claims 'The revenue chart is visible without scrolling'
 ```
 
 ## MCP tools
@@ -266,7 +266,7 @@ frontend-visualqa <command> [options]
 <summary><strong>verify options</strong></summary>
 
 ```bash
-frontend-visualqa verify <url> --claims "claim1" "claim2" [options]
+frontend-visualqa verify <url> --claims 'claim1' 'claim2' [options]
 ```
 
 | Flag | Default | Description |
@@ -294,7 +294,7 @@ Navigation hint for claims that require interaction:
 
 ```bash
 frontend-visualqa verify http://localhost:8000/ecommerce_store.html \
-  --claims "The cart badge shows 3 items" \
+  --claims 'The cart badge shows 3 items' \
   --navigation-hint "Click 'Add to Cart' on the Mechanical Keyboard K7 product card."
 ```
 
@@ -302,7 +302,7 @@ Scrolling to find off-screen content:
 
 ```bash
 frontend-visualqa verify http://localhost:8000/analytics_dashboard.html \
-  --claims "The /api/v1/webhooks endpoint returned a 200 OK status"
+  --claims 'The /api/v1/webhooks endpoint returned a 200 OK status'
 # → fails: n1 scrolls to the request table and finds a 500 Error
 ```
 
@@ -327,7 +327,7 @@ frontend-visualqa login http://localhost:3000/login
 # 2. Subsequent runs reuse the saved session
 frontend-visualqa verify http://localhost:3000/dashboard \
   --browser-mode persistent \
-  --claims "The user avatar is visible in the header"
+  --claims 'The user avatar is visible in the header'
 ```
 
 Profile stored at `~/.cache/frontend-visualqa/browser-profile/` by default. Override with `--user-data-dir`:
@@ -339,7 +339,7 @@ frontend-visualqa login http://localhost:3000/login \
 frontend-visualqa verify http://localhost:3000/dashboard \
   --browser-mode persistent \
   --user-data-dir /tmp/my-project-profile \
-  --claims "The dashboard loads without a login redirect"
+  --claims 'The dashboard loads without a login redirect'
 ```
 
 </details>
@@ -351,7 +351,7 @@ When running in headed mode (`--headed`), the browser shows visual effects illus
 ```bash
 frontend-visualqa verify http://localhost:3000 \
   --headed --no-visualize \
-  --claims "The API status indicator shows Active"
+  --claims 'The API status indicator shows Active'
 ```
 
 The MCP tool `verify_visual_claims` accepts a per-call `visualize` parameter to control this independently of the server's default.
@@ -431,7 +431,7 @@ Each claim result contains:
 
 ```bash
 frontend-visualqa verify http://localhost:3000 \
-  --claims "The checkout total matches the sum of line items" \
+  --claims 'The checkout total matches the sum of line items' \
   --reporter native --reporter ctrf
 ```
 
