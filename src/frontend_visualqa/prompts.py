@@ -64,6 +64,8 @@ def build_verification_task(claim: str, url: str, navigation_hint: str | None = 
         "If the page is unreachable, stuck, crashes, or requires credentials you do not have, use not_testable.",
         "",
         "If a button or control is unresponsive, disabled, or you find yourself repeating the same action without progress, stop immediately and report what you found. A disabled button, a broken interaction, or an unresponsive control is itself a meaningful finding — report it as failed with a description of what is blocked and why.",
+        "",
+        "Known limitation: native HTML <select> dropdowns render as OS-level widgets outside the browser viewport. You cannot see or interact with their options. If you encounter a native <select> dropdown, report the claim as inconclusive and note that the page uses a native select element that requires a custom in-browser dropdown component for visual testing.",
     ]
     if navigation_hint:
         parts.extend(["", f"Navigation hint: {navigation_hint}"])

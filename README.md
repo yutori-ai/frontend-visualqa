@@ -379,6 +379,10 @@ Claims should be observable, scoped, and provable from pixels.
 
 If a claim requires interaction first, use `--navigation-hint` instead of encoding steps in the claim text.
 
+## Known limitations
+
+- **Native `<select>` dropdowns** — n1 cannot see or interact with native HTML `<select>` dropdown options because they render as OS-level widgets outside the browser viewport. If your page uses native selects, replace them with custom in-browser dropdown components for visual testing, or pre-fill the selection via URL parameters.
+
 ## Result statuses
 
 | Status | Meaning |
@@ -412,7 +416,7 @@ Each claim result contains:
   "status": "failed",
   "finding": "The quota label reads '100%' and '12,500 / 12,500 requests used', but the progress bar is visually only about 65% filled — the bar and the label disagree.",
   "proof": {
-    "screenshot_path": "artifacts/run-.../claim-02/step-04.png",
+    "screenshot_path": "artifacts/run-.../claim-02/step-04.webp",
     "step": 4,
     "after_action": "extract_elements()",
     "text": "Monthly Quota\n12,500 / 12,500 requests used  100%\n...",

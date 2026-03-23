@@ -18,7 +18,7 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      padding: 32px 16px;
+      padding: 20px 16px;
     }
 
     .brand { font-family: 'Spectral', serif; font-weight: 600; font-size: 28px; color: #0f172a; text-align: center; }
@@ -47,7 +47,7 @@
     /* Card */
     .form-card {
       background: #fff; border: 1px solid #e2e8f0; border-radius: 16px;
-      padding: 36px 32px; width: 100%; max-width: 540px; position: relative;
+      padding: 28px 28px; width: 100%; max-width: 540px; position: relative;
       overflow: hidden;
     }
     .step-title { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
@@ -61,12 +61,42 @@
       padding: 0 14px; font-size: 15px; font-family: 'Inter', sans-serif; color: #0f172a;
       background: #fff; outline: none; transition: border-color 0.2s, box-shadow 0.2s;
     }
-    .field select {
-      cursor: pointer;
-    }
+    .field select { cursor: pointer; }
     .field input:focus, .field select:focus {
       border-color: #10676f; box-shadow: 0 0 0 3px rgba(16, 103, 111, 0.1);
     }
+
+    /* Custom in-browser dropdown (replaces native <select>) */
+    .custom-select { position: relative; }
+    .custom-select-trigger {
+      width: 100%; min-height: 48px; border: 1px solid #e2e8f0; border-radius: 10px;
+      padding: 0 40px 0 14px; font-size: 15px; font-family: 'Inter', sans-serif; color: #0f172a;
+      background: #fff; cursor: pointer; display: flex; align-items: center;
+      transition: border-color 0.2s, box-shadow 0.2s; user-select: none;
+    }
+    .custom-select-trigger.placeholder { color: #94a3b8; }
+    .custom-select-trigger::after {
+      content: ''; position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
+      border-left: 5px solid transparent; border-right: 5px solid transparent;
+      border-top: 6px solid #94a3b8;
+    }
+    .custom-select.open .custom-select-trigger {
+      border-color: #10676f; box-shadow: 0 0 0 3px rgba(16, 103, 111, 0.1);
+    }
+    .custom-select-options {
+      display: none; position: absolute; top: 100%; left: 0; right: 0; z-index: 50;
+      background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; margin-top: 4px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.1); max-height: 250px; overflow-y: auto;
+    }
+    .custom-select.open .custom-select-options { display: block; }
+    .custom-select-option {
+      padding: 12px 14px; font-size: 15px; cursor: pointer; transition: background 0.1s;
+      min-height: 44px; display: flex; align-items: center;
+    }
+    .custom-select-option:hover { background: rgba(16, 103, 111, 0.06); }
+    .custom-select-option.selected { color: #10676f; font-weight: 600; background: rgba(16, 103, 111, 0.06); }
+    .custom-select-option:first-child { border-radius: 10px 10px 0 0; }
+    .custom-select-option:last-child { border-radius: 0 0 10px 10px; }
     .field input::placeholder { color: #94a3b8; }
     .field .error-msg { font-size: 12px; color: #ef4444; margin-top: 4px; display: none; }
     .field.invalid input, .field.invalid select { border-color: #ef4444; }
@@ -127,9 +157,9 @@
     .cal-nav:disabled { opacity: 0.3; cursor: not-allowed; }
     .cal-weekdays { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-bottom: 4px; }
     .cal-weekday { text-align: center; font-size: 12px; font-weight: 600; color: #94a3b8; padding: 4px 0; }
-    .cal-days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+    .cal-days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
     .cal-day {
-      min-height: 48px; min-width: 48px; display: flex; align-items: center; justify-content: center;
+      min-height: 40px; min-width: 40px; display: flex; align-items: center; justify-content: center;
       border-radius: 10px; font-size: 14px; font-weight: 500; cursor: pointer;
       border: 1px solid transparent; transition: all 0.15s; font-family: 'IBM Plex Mono', monospace;
     }
@@ -139,12 +169,13 @@
       color: #fff; border-color: transparent;
     }
     .cal-day.today:not(.selected) { font-weight: 700; }
-    .cal-day.disabled { color: #cbd5e1; cursor: not-allowed; }
+    .cal-day.disabled { color: #cbd5e1; cursor: not-allowed; pointer-events: none; text-decoration: line-through; }
     .cal-day.empty { cursor: default; }
 
     /* Time slots */
     .time-slots-label { font-size: 13px; font-weight: 600; color: #475569; margin-bottom: 8px; }
     .time-slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; margin-bottom: 8px; }
+    .time-slots { margin-bottom: 6px; }
     .time-slot {
       min-height: 48px; display: flex; align-items: center; justify-content: center;
       border: 1px solid #e2e8f0; border-radius: 10px; font-size: 14px; font-weight: 500;
@@ -248,16 +279,19 @@
         <div class="error-msg">Please enter your company name.</div>
       </div>
       <div class="field">
-        <label for="jobTitle">Job Title</label>
-        <select id="jobTitle">
-          <option value="">Select your role...</option>
-          <option value="Engineering Manager">Engineering Manager</option>
-          <option value="VP of Engineering">VP of Engineering</option>
-          <option value="CTO">CTO</option>
-          <option value="Product Manager">Product Manager</option>
-          <option value="Developer">Developer</option>
-          <option value="Other">Other</option>
-        </select>
+        <label>Job Title</label>
+        <input type="hidden" id="jobTitle" value="">
+        <div class="custom-select" id="jobTitleSelect">
+          <div class="custom-select-trigger placeholder" onclick="toggleDropdown('jobTitleSelect')">Select your role...</div>
+          <div class="custom-select-options">
+            <div class="custom-select-option" onclick="selectOption('jobTitleSelect','jobTitle','Engineering Manager')">Engineering Manager</div>
+            <div class="custom-select-option" onclick="selectOption('jobTitleSelect','jobTitle','VP of Engineering')">VP of Engineering</div>
+            <div class="custom-select-option" onclick="selectOption('jobTitleSelect','jobTitle','CTO')">CTO</div>
+            <div class="custom-select-option" onclick="selectOption('jobTitleSelect','jobTitle','Product Manager')">Product Manager</div>
+            <div class="custom-select-option" onclick="selectOption('jobTitleSelect','jobTitle','Developer')">Developer</div>
+            <div class="custom-select-option" onclick="selectOption('jobTitleSelect','jobTitle','Other')">Other</div>
+          </div>
+        </div>
       </div>
 
       <div class="btn-row">
@@ -271,13 +305,16 @@
       <div class="step-desc">Help us tailor the demo to your needs.</div>
 
       <div class="field">
-        <label for="planSelect">What are you interested in?</label>
-        <select id="planSelect">
-          <option value="">Select a plan...</option>
-          <option value="Startup Plan">Startup Plan</option>
-          <option value="Growth Plan">Growth Plan</option>
-          <option value="Enterprise Plan">Enterprise Plan</option>
-        </select>
+        <label>What are you interested in?</label>
+        <input type="hidden" id="planSelect" value="">
+        <div class="custom-select" id="planSelectDropdown">
+          <div class="custom-select-trigger placeholder" onclick="toggleDropdown('planSelectDropdown')">Select a plan...</div>
+          <div class="custom-select-options">
+            <div class="custom-select-option" onclick="selectOption('planSelectDropdown','planSelect','Startup Plan')">Startup Plan</div>
+            <div class="custom-select-option" onclick="selectOption('planSelectDropdown','planSelect','Growth Plan')">Growth Plan</div>
+            <div class="custom-select-option" onclick="selectOption('planSelectDropdown','planSelect','Enterprise Plan')">Enterprise Plan</div>
+          </div>
+        </div>
       </div>
 
       <!-- Conditional: Startup -->
@@ -291,15 +328,18 @@
       <!-- Conditional: Growth -->
       <div id="growthFields" style="display:none;">
         <div class="field">
-          <label for="ciProvider">Current CI/CD provider</label>
-          <select id="ciProvider">
-            <option value="">Select provider...</option>
-            <option value="GitHub Actions">GitHub Actions</option>
-            <option value="GitLab CI">GitLab CI</option>
-            <option value="Jenkins">Jenkins</option>
-            <option value="CircleCI">CircleCI</option>
-            <option value="Other">Other</option>
-          </select>
+          <label>Current CI/CD provider</label>
+          <input type="hidden" id="ciProvider" value="">
+          <div class="custom-select" id="ciProviderSelect">
+            <div class="custom-select-trigger placeholder" onclick="toggleDropdown('ciProviderSelect')">Select provider...</div>
+            <div class="custom-select-options">
+              <div class="custom-select-option" onclick="selectOption('ciProviderSelect','ciProvider','GitHub Actions')">GitHub Actions</div>
+              <div class="custom-select-option" onclick="selectOption('ciProviderSelect','ciProvider','GitLab CI')">GitLab CI</div>
+              <div class="custom-select-option" onclick="selectOption('ciProviderSelect','ciProvider','Jenkins')">Jenkins</div>
+              <div class="custom-select-option" onclick="selectOption('ciProviderSelect','ciProvider','CircleCI')">CircleCI</div>
+              <div class="custom-select-option" onclick="selectOption('ciProviderSelect','ciProvider','Other')">Other</div>
+            </div>
+          </div>
         </div>
         <div class="field">
           <label for="monthlyRuns">Monthly test runs</label>
@@ -409,6 +449,41 @@
 
     let calMonth, calYear;
 
+    // ---- Custom dropdown helpers ----
+    function toggleDropdown(selectId) {
+      var el = document.getElementById(selectId);
+      // Close all other dropdowns first
+      document.querySelectorAll('.custom-select.open').forEach(function(s) {
+        if (s.id !== selectId) s.classList.remove('open');
+      });
+      el.classList.toggle('open');
+    }
+
+    function selectOption(selectId, hiddenId, value) {
+      document.getElementById(hiddenId).value = value;
+      var dropdown = document.getElementById(selectId);
+      dropdown.querySelector('.custom-select-trigger').textContent = value;
+      dropdown.querySelector('.custom-select-trigger').classList.remove('placeholder');
+      // Mark selected option
+      dropdown.querySelectorAll('.custom-select-option').forEach(function(opt) {
+        opt.classList.toggle('selected', opt.textContent === value);
+      });
+      dropdown.classList.remove('open');
+      // Trigger dependent updates
+      if (hiddenId === 'planSelect') updatePlanFields();
+      validateStep1();
+      validateStep2();
+    }
+
+    // Close dropdowns when clicking outside
+    document.addEventListener('click', function(e) {
+      if (!e.target.closest('.custom-select')) {
+        document.querySelectorAll('.custom-select.open').forEach(function(s) {
+          s.classList.remove('open');
+        });
+      }
+    });
+
     // ---- Init ----
     function init() {
       const now = new Date();
@@ -423,10 +498,13 @@
         document.getElementById('fullName').value = 'Sarah Chen';
         document.getElementById('workEmail').value = 'sarah@techcorp.io';
         document.getElementById('companyName').value = 'TechCorp';
-        document.getElementById('jobTitle').value = 'Engineering Manager';
-        document.getElementById('planSelect').value = 'Enterprise Plan';
-        updatePlanFields();
+        selectOption('jobTitleSelect', 'jobTitle', 'Engineering Manager');
+        selectOption('planSelectDropdown', 'planSelect', 'Enterprise Plan');
         document.getElementById('teamSize').value = '50+';
+        // Start on next month so all dates are available (no disabled past dates)
+        calMonth = (now.getMonth() + 1) % 12;
+        if (calMonth === 0) calYear++;
+        renderCalendar();
         document.getElementById('testingBudget').value = '$10,000/month';
         collectState();
         goToStep(3);
@@ -494,6 +572,15 @@
     }
 
     // ---- Calendar ----
+    function selectDay(day) {
+      state.selectedDate = new Date(calYear, calMonth, day);
+      state.selectedTime = '';
+      renderCalendar();
+      renderTimeSlots();
+      document.getElementById('timeSection').classList.add('visible');
+      validateStep3();
+    }
+
     function renderCalendar() {
       const title = document.getElementById('calTitle');
       title.textContent = MONTH_NAMES[calMonth] + ' ' + calYear;
@@ -524,22 +611,19 @@
         if (isToday && !isSelected) cls += ' today';
         if (isSelected) cls += ' selected';
 
-        html += '<div class="' + cls + '" data-day="' + d + '">' + d + '</div>';
+        if (isPast) {
+          html += '<div class="' + cls + '">' + d + '</div>';
+        } else {
+          html += '<div class="' + cls + '" onclick="selectDay(' + d + ')" role="button" tabindex="0">' + d + '</div>';
+        }
       }
       document.getElementById('calDays').innerHTML = html;
+    }
 
-      // Bind day clicks
-      document.querySelectorAll('.cal-day:not(.disabled):not(.empty)').forEach(el => {
-        el.addEventListener('click', function() {
-          const day = parseInt(this.getAttribute('data-day'));
-          state.selectedDate = new Date(calYear, calMonth, day);
-          state.selectedTime = '';
-          renderCalendar();
-          renderTimeSlots();
-          document.getElementById('timeSection').classList.add('visible');
-          validateStep3();
-        });
-      });
+    function selectTime(slot) {
+      state.selectedTime = slot;
+      renderTimeSlots();
+      validateStep3();
     }
 
     function renderTimeSlots() {
@@ -551,17 +635,13 @@
         let cls = 'time-slot';
         if (isUnavail) cls += ' unavailable';
         if (isSelected) cls += ' selected';
-        html += '<div class="' + cls + '" data-time="' + slot + '">' + slot + '</div>';
+        if (isUnavail) {
+          html += '<div class="' + cls + '">' + slot + '</div>';
+        } else {
+          html += '<div class="' + cls + '" onclick="selectTime(\'' + slot + '\')" role="button" tabindex="0">' + slot + '</div>';
+        }
       });
       container.innerHTML = html;
-
-      container.querySelectorAll('.time-slot:not(.unavailable)').forEach(el => {
-        el.addEventListener('click', function() {
-          state.selectedTime = this.getAttribute('data-time');
-          renderTimeSlots();
-          validateStep3();
-        });
-      });
     }
 
     // ---- Plan conditional fields ----
@@ -692,7 +772,7 @@
       });
 
       // Step 2 plan change
-      document.getElementById('planSelect').addEventListener('change', updatePlanFields);
+      // planSelect change is handled by selectOption() in custom dropdown
 
       // Compliance checkboxes
       document.querySelectorAll('#complianceGroup .checkbox-item').forEach(item => {
