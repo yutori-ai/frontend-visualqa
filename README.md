@@ -298,7 +298,7 @@ frontend-visualqa verify http://localhost:8000/ecommerce_store.html \
   --navigation-hint "Click 'Add to Cart' on the Mechanical Keyboard K7 product card."
 ```
 
-Autonomous form filling — n1 picks a date, selects a time slot, and checks the confirmation:
+Autonomous form filling — pre-fill contact info, then n1 picks a date and catches a timezone bug:
 
 ```bash
 frontend-visualqa verify 'http://localhost:8000/booking_form.html#step3' \
