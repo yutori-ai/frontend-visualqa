@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CalendaFlow - Schedule a Demo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600;700&family=Spectral:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: #f8fafc;
+      color: #0f172a;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 32px 16px;
+    }
+
+    .brand { font-family: 'Spectral', serif; font-weight: 600; font-size: 28px; color: #0f172a; text-align: center; }
+    .brand span { color: #10676f; }
+    .brand-sub { font-size: 13px; color: #94a3b8; text-align: center; margin-top: 4px; letter-spacing: 0.5px; }
+
+    /* Step Indicator */
+    .step-indicator { display: flex; align-items: center; justify-content: center; margin: 32px 0 28px; width: 100%; max-width: 540px; }
+    .step-item { display: flex; flex-direction: column; align-items: center; position: relative; z-index: 1; }
+    .step-circle {
+      width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+      font-size: 14px; font-weight: 600; border: 2px solid #e2e8f0; background: #fff; color: #94a3b8;
+      transition: all 0.3s;
+    }
+    .step-circle.active {
+      background: linear-gradient(211deg, #18aa7e 13.61%, #148f6a 43.85%, #148f6a 64.01%, #159871 80.81%);
+      border-color: transparent; color: #fff;
+    }
+    .step-circle.completed { background: #10676f; border-color: transparent; color: #fff; }
+    .step-label { font-size: 12px; color: #94a3b8; margin-top: 6px; font-weight: 500; transition: color 0.3s; white-space: nowrap; }
+    .step-label.active { color: #0f172a; font-weight: 600; }
+    .step-label.completed { color: #10676f; }
+    .step-line { flex: 1; height: 2px; background: #e2e8f0; margin: 0 8px; margin-bottom: 22px; transition: background 0.3s; }
+    .step-line.completed { background: #10676f; }
+
+    /* Card */
+    .form-card {
+      background: #fff; border: 1px solid #e2e8f0; border-radius: 16px;
+      padding: 36px 32px; width: 100%; max-width: 540px; position: relative;
+      overflow: hidden;
+    }
+    .step-title { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+    .step-desc { font-size: 14px; color: #475569; margin-bottom: 24px; }
+
+    /* Form fields */
+    .field { margin-bottom: 18px; }
+    .field label { display: block; font-size: 13px; font-weight: 600; color: #475569; margin-bottom: 6px; }
+    .field input, .field select {
+      width: 100%; min-height: 48px; border: 1px solid #e2e8f0; border-radius: 10px;
+      padding: 0 14px; font-size: 15px; font-family: 'Inter', sans-serif; color: #0f172a;
+      background: #fff; outline: none; transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .field select {
+      cursor: pointer;
+    }
+    .field input:focus, .field select:focus {
+      border-color: #10676f; box-shadow: 0 0 0 3px rgba(16, 103, 111, 0.1);
+    }
+    .field input::placeholder { color: #94a3b8; }
+    .field .error-msg { font-size: 12px; color: #ef4444; margin-top: 4px; display: none; }
+    .field.invalid input, .field.invalid select { border-color: #ef4444; }
+    .field.invalid .error-msg { display: block; }
+
+    /* Checkboxes */
+    .checkbox-group { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 4px; }
+    .checkbox-item {
+      display: flex; align-items: center; gap: 8px; padding: 10px 14px;
+      border: 1px solid #e2e8f0; border-radius: 10px; cursor: pointer;
+      font-size: 14px; min-height: 48px; transition: border-color 0.2s, background 0.2s;
+      user-select: none;
+    }
+    .checkbox-item:hover { border-color: #10676f; }
+    .checkbox-item.checked { border-color: #10676f; background: rgba(16, 103, 111, 0.05); }
+    .checkbox-item input[type="checkbox"] { display: none; }
+    .check-box {
+      width: 20px; height: 20px; border: 2px solid #e2e8f0; border-radius: 4px;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+      transition: all 0.2s; font-size: 12px; color: transparent;
+    }
+    .checkbox-item.checked .check-box { background: #10676f; border-color: #10676f; color: #fff; }
+
+    /* Buttons */
+    .btn-row { display: flex; gap: 12px; margin-top: 28px; }
+    .btn-primary {
+      min-height: 48px; padding: 0 28px; border: none; border-radius: 10px; cursor: pointer;
+      font-family: 'Inter', sans-serif; font-size: 15px; font-weight: 600; color: #fff;
+      background: linear-gradient(211deg, #18aa7e 13.61%, #148f6a 43.85%, #148f6a 64.01%, #159871 80.81%);
+      box-shadow: -1px 3px 4px 0px rgba(255,255,255,0.4) inset, 1px -2px 4px 0px rgba(255,255,255,0.15) inset;
+      transition: opacity 0.2s, transform 0.1s; flex: 1;
+    }
+    .btn-primary:hover { opacity: 0.92; }
+    .btn-primary:active { transform: scale(0.98); }
+    .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+    .btn-secondary {
+      min-height: 48px; padding: 0 28px; border: 1px solid #e2e8f0; border-radius: 10px;
+      cursor: pointer; font-family: 'Inter', sans-serif; font-size: 15px; font-weight: 600;
+      color: #475569; background: transparent; transition: border-color 0.2s, background 0.2s;
+    }
+    .btn-secondary:hover { border-color: #10676f; background: rgba(16, 103, 111, 0.03); }
+
+    /* Step panels */
+    .step-panel { display: none; animation: fadeIn 0.35s ease; }
+    .step-panel.active { display: block; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* Calendar */
+    .calendar { margin-bottom: 18px; }
+    .cal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+    .cal-title { font-size: 16px; font-weight: 600; font-family: 'IBM Plex Mono', monospace; }
+    .cal-nav {
+      width: 40px; height: 40px; border: 1px solid #e2e8f0; border-radius: 10px;
+      background: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center;
+      font-size: 18px; color: #475569; transition: border-color 0.2s;
+    }
+    .cal-nav:hover { border-color: #10676f; }
+    .cal-nav:disabled { opacity: 0.3; cursor: not-allowed; }
+    .cal-weekdays { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-bottom: 4px; }
+    .cal-weekday { text-align: center; font-size: 12px; font-weight: 600; color: #94a3b8; padding: 4px 0; }
+    .cal-days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+    .cal-day {
+      min-height: 48px; min-width: 48px; display: flex; align-items: center; justify-content: center;
+      border-radius: 10px; font-size: 14px; font-weight: 500; cursor: pointer;
+      border: 1px solid transparent; transition: all 0.15s; font-family: 'IBM Plex Mono', monospace;
+    }
+    .cal-day:hover:not(.disabled):not(.empty) { background: rgba(16, 103, 111, 0.06); border-color: #e2e8f0; }
+    .cal-day.selected {
+      background: linear-gradient(211deg, #18aa7e 13.61%, #148f6a 43.85%, #148f6a 64.01%, #159871 80.81%);
+      color: #fff; border-color: transparent;
+    }
+    .cal-day.today:not(.selected) { border-color: #10676f; color: #10676f; font-weight: 700; }
+    .cal-day.disabled { color: #cbd5e1; cursor: not-allowed; }
+    .cal-day.empty { cursor: default; }
+
+    /* Time slots */
+    .time-slots-label { font-size: 13px; font-weight: 600; color: #475569; margin-bottom: 8px; }
+    .time-slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; margin-bottom: 8px; }
+    .time-slot {
+      min-height: 48px; display: flex; align-items: center; justify-content: center;
+      border: 1px solid #e2e8f0; border-radius: 10px; font-size: 14px; font-weight: 500;
+      font-family: 'IBM Plex Mono', monospace; cursor: pointer; transition: all 0.15s; background: #fff;
+    }
+    .time-slot:hover:not(.unavailable) { border-color: #10676f; background: rgba(16, 103, 111, 0.03); }
+    .time-slot.selected { background: #10676f; color: #fff; border-color: #10676f; }
+    .time-slot.unavailable { color: #cbd5e1; background: #f8fafc; cursor: not-allowed; text-decoration: line-through; }
+    .tz-note { font-size: 12px; color: #94a3b8; margin-top: 4px; font-family: 'IBM Plex Mono', monospace; }
+    .time-section { display: none; margin-top: 20px; }
+    .time-section.visible { display: block; }
+
+    /* Summary */
+    .summary-section { margin-bottom: 20px; }
+    .summary-section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8; margin-bottom: 10px; }
+    .summary-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f1f5f9; font-size: 14px; }
+    .summary-row:last-child { border-bottom: none; }
+    .summary-key { color: #475569; }
+    .summary-val { font-weight: 600; color: #0f172a; text-align: right; }
+    .summary-val.mono { font-family: 'IBM Plex Mono', monospace; }
+    .summary-badge {
+      display: inline-block; padding: 3px 10px; border-radius: 6px; font-size: 12px; font-weight: 600;
+      background: rgba(5, 150, 105, 0.1); color: #059669;
+    }
+
+    /* Toast */
+    .toast {
+      position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%) translateY(80px);
+      background: #059669; color: #fff; padding: 14px 28px; border-radius: 12px;
+      font-size: 15px; font-weight: 600; box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+      opacity: 0; transition: all 0.4s ease; z-index: 100; white-space: nowrap;
+    }
+    .toast.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* Mobile */
+    @media (max-width: 768px) {
+      body { padding: 20px 12px; }
+      .form-card { padding: 24px 18px; }
+      .step-indicator { max-width: 100%; }
+      .step-label { font-size: 10px; }
+      .step-line { margin: 0 4px; }
+      .time-slots { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }
+      .btn-row { flex-direction: column-reverse; }
+      .btn-secondary, .btn-primary { width: 100%; }
+      .cal-day { min-height: 44px; min-width: 44px; }
+      .checkbox-group { flex-direction: column; }
+      .summary-row { flex-direction: column; gap: 2px; }
+      .summary-val { text-align: left; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="brand">Calenda<span>Flow</span></div>
+  <div class="brand-sub">Enterprise Demo Scheduling</div>
+
+  <!-- Step Indicator -->
+  <div class="step-indicator" id="stepIndicator">
+    <div class="step-item">
+      <div class="step-circle active" id="circle1">1</div>
+      <div class="step-label active" id="label1">Contact</div>
+    </div>
+    <div class="step-line" id="line1"></div>
+    <div class="step-item">
+      <div class="step-circle" id="circle2">2</div>
+      <div class="step-label" id="label2">Preferences</div>
+    </div>
+    <div class="step-line" id="line2"></div>
+    <div class="step-item">
+      <div class="step-circle" id="circle3">3</div>
+      <div class="step-label" id="label3">Schedule</div>
+    </div>
+    <div class="step-line" id="line3"></div>
+    <div class="step-item">
+      <div class="step-circle" id="circle4">4</div>
+      <div class="step-label" id="label4">Confirm</div>
+    </div>
+  </div>
+
+  <!-- Form Card -->
+  <div class="form-card">
+
+    <!-- Step 1: Contact -->
+    <div class="step-panel active" id="step1">
+      <div class="step-title">Contact Information</div>
+      <div class="step-desc">Tell us a bit about yourself so we can personalize your demo.</div>
+
+      <div class="field">
+        <label for="fullName">Full Name</label>
+        <input type="text" id="fullName" placeholder="Jane Smith">
+        <div class="error-msg">Please enter your full name.</div>
+      </div>
+      <div class="field">
+        <label for="workEmail">Work Email</label>
+        <input type="email" id="workEmail" placeholder="jane@company.com">
+        <div class="error-msg">Please enter a valid work email.</div>
+      </div>
+      <div class="field">
+        <label for="companyName">Company Name</label>
+        <input type="text" id="companyName" placeholder="Acme Corp">
+        <div class="error-msg">Please enter your company name.</div>
+      </div>
+      <div class="field">
+        <label for="jobTitle">Job Title</label>
+        <select id="jobTitle">
+          <option value="">Select your role...</option>
+          <option value="Engineering Manager">Engineering Manager</option>
+          <option value="VP of Engineering">VP of Engineering</option>
+          <option value="CTO">CTO</option>
+          <option value="Product Manager">Product Manager</option>
+          <option value="Developer">Developer</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn-primary" id="btn1Next" disabled>Next</button>
+      </div>
+    </div>
+
+    <!-- Step 2: Preferences -->
+    <div class="step-panel" id="step2">
+      <div class="step-title">Preferences</div>
+      <div class="step-desc">Help us tailor the demo to your needs.</div>
+
+      <div class="field">
+        <label for="planSelect">What are you interested in?</label>
+        <select id="planSelect">
+          <option value="">Select a plan...</option>
+          <option value="Startup Plan">Startup Plan</option>
+          <option value="Growth Plan">Growth Plan</option>
+          <option value="Enterprise Plan">Enterprise Plan</option>
+        </select>
+      </div>
+
+      <!-- Conditional: Startup -->
+      <div id="startupFields" style="display:none;">
+        <div class="field">
+          <label for="devCount">How many developers on your team?</label>
+          <input type="text" id="devCount" placeholder="1-10">
+        </div>
+      </div>
+
+      <!-- Conditional: Growth -->
+      <div id="growthFields" style="display:none;">
+        <div class="field">
+          <label for="ciProvider">Current CI/CD provider</label>
+          <select id="ciProvider">
+            <option value="">Select provider...</option>
+            <option value="GitHub Actions">GitHub Actions</option>
+            <option value="GitLab CI">GitLab CI</option>
+            <option value="Jenkins">Jenkins</option>
+            <option value="CircleCI">CircleCI</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="monthlyRuns">Monthly test runs</label>
+          <input type="text" id="monthlyRuns" placeholder="e.g., 5,000">
+        </div>
+      </div>
+
+      <!-- Conditional: Enterprise -->
+      <div id="enterpriseFields" style="display:none;">
+        <div class="field">
+          <label for="teamSize">Team Size</label>
+          <!-- BUG (intentional): teamSize is NOT cleared when switching away from Enterprise Plan.
+               When Enterprise is re-selected, the old value persists. This simulates a stale-state bug. -->
+          <input type="text" id="teamSize" placeholder="e.g., 50+">
+        </div>
+        <div class="field">
+          <label>Compliance Requirements</label>
+          <div class="checkbox-group" id="complianceGroup">
+            <label class="checkbox-item" data-value="SOC 2">
+              <input type="checkbox"><div class="check-box">&#10003;</div> SOC 2
+            </label>
+            <label class="checkbox-item" data-value="HIPAA">
+              <input type="checkbox"><div class="check-box">&#10003;</div> HIPAA
+            </label>
+            <label class="checkbox-item" data-value="GDPR">
+              <input type="checkbox"><div class="check-box">&#10003;</div> GDPR
+            </label>
+            <label class="checkbox-item" data-value="ISO 27001">
+              <input type="checkbox"><div class="check-box">&#10003;</div> ISO 27001
+            </label>
+          </div>
+        </div>
+        <div class="field">
+          <label for="testingBudget">Current testing budget</label>
+          <input type="text" id="testingBudget" placeholder="e.g., $10,000/month">
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn-secondary" id="btn2Prev">Previous</button>
+        <button class="btn-primary" id="btn2Next" disabled>Next</button>
+      </div>
+    </div>
+
+    <!-- Step 3: Schedule -->
+    <div class="step-panel" id="step3">
+      <div class="step-title">Schedule Your Demo</div>
+      <div class="step-desc">Pick a date and time that works for you.</div>
+
+      <div class="calendar">
+        <div class="cal-header">
+          <button class="cal-nav" id="calPrev">&#8249;</button>
+          <div class="cal-title" id="calTitle"></div>
+          <button class="cal-nav" id="calNext">&#8250;</button>
+        </div>
+        <div class="cal-weekdays">
+          <div class="cal-weekday">Sun</div><div class="cal-weekday">Mon</div><div class="cal-weekday">Tue</div>
+          <div class="cal-weekday">Wed</div><div class="cal-weekday">Thu</div><div class="cal-weekday">Fri</div>
+          <div class="cal-weekday">Sat</div>
+        </div>
+        <div class="cal-days" id="calDays"></div>
+      </div>
+
+      <div class="time-section" id="timeSection">
+        <div class="time-slots-label">Available time slots</div>
+        <div class="time-slots" id="timeSlots"></div>
+        <div class="tz-note">Times shown in: Pacific Time (PT)</div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn-secondary" id="btn3Prev">Previous</button>
+        <button class="btn-primary" id="btn3Next" disabled>Review Booking</button>
+      </div>
+    </div>
+
+    <!-- Step 4: Confirm -->
+    <div class="step-panel" id="step4">
+      <div class="step-title">Review &amp; Confirm</div>
+      <div class="step-desc">Please verify your booking details before confirming.</div>
+
+      <div id="summaryContent"></div>
+
+      <div class="btn-row">
+        <button class="btn-secondary" id="btn4Edit">Edit Booking</button>
+        <button class="btn-primary" id="btn4Confirm">Confirm Booking</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast">&#10003;  Demo scheduled successfully!</div>
+
+  <script>
+    // ---- State ----
+    const state = {
+      step: 1,
+      fullName: '', workEmail: '', companyName: '', jobTitle: '',
+      plan: '', devCount: '', ciProvider: '', monthlyRuns: '',
+      teamSize: '', compliance: [], testingBudget: '',
+      selectedDate: null, // Date object
+      selectedTime: ''
+    };
+
+    const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const TIME_SLOTS = ['9:00 AM','10:00 AM','11:00 AM','1:00 PM','2:00 PM','3:00 PM','4:00 PM'];
+    const UNAVAILABLE = ['11:00 AM','2:00 PM'];
+
+    let calMonth, calYear;
+
+    // ---- Init ----
+    function init() {
+      const now = new Date();
+      calMonth = now.getMonth();
+      calYear = now.getFullYear();
+      renderCalendar();
+      renderTimeSlots();
+      bindEvents();
+
+      // Support deep-linking: #step3 pre-fills contact/preferences and jumps to date picker
+      if (window.location.hash === '#step3') {
+        document.getElementById('fullName').value = 'Sarah Chen';
+        document.getElementById('workEmail').value = 'sarah@techcorp.io';
+        document.getElementById('companyName').value = 'TechCorp';
+        document.getElementById('jobTitle').value = 'Engineering Manager';
+        document.getElementById('planSelect').value = 'Enterprise Plan';
+        updatePlanFields();
+        document.getElementById('teamSize').value = '50+';
+        document.getElementById('testingBudget').value = '$10,000/month';
+        collectState();
+        goToStep(3);
+      }
+
+      updateStepIndicator();
+      validateStep1();
+      validateStep2();
+      validateStep3();
+    }
+
+    // ---- Step navigation ----
+    function goToStep(n) {
+      document.querySelectorAll('.step-panel').forEach(p => p.classList.remove('active'));
+      document.getElementById('step' + n).classList.add('active');
+      state.step = n;
+      updateStepIndicator();
+      if (n === 4) renderSummary();
+    }
+
+    function updateStepIndicator() {
+      for (let i = 1; i <= 4; i++) {
+        const circle = document.getElementById('circle' + i);
+        const label = document.getElementById('label' + i);
+        circle.className = 'step-circle';
+        label.className = 'step-label';
+        if (i < state.step) {
+          circle.classList.add('completed');
+          circle.innerHTML = '&#10003;';
+          label.classList.add('completed');
+        } else if (i === state.step) {
+          circle.classList.add('active');
+          circle.textContent = i;
+          label.classList.add('active');
+        } else {
+          circle.textContent = i;
+        }
+        if (i < 4) {
+          const line = document.getElementById('line' + i);
+          line.className = 'step-line' + (i < state.step ? ' completed' : '');
+        }
+      }
+    }
+
+    // ---- Validation ----
+    function validateStep1() {
+      const name = document.getElementById('fullName').value.trim();
+      const email = document.getElementById('workEmail').value.trim();
+      const company = document.getElementById('companyName').value.trim();
+      const valid = name.length > 0 && email.length > 0 && /\S+@\S+\.\S+/.test(email) && company.length > 0;
+      document.getElementById('btn1Next').disabled = !valid;
+      return valid;
+    }
+
+    function validateStep2() {
+      const plan = document.getElementById('planSelect').value;
+      document.getElementById('btn2Next').disabled = !plan;
+      return !!plan;
+    }
+
+    function validateStep3() {
+      const valid = state.selectedDate !== null && state.selectedTime !== '';
+      document.getElementById('btn3Next').disabled = !valid;
+      return valid;
+    }
+
+    // ---- Calendar ----
+    function renderCalendar() {
+      const title = document.getElementById('calTitle');
+      title.textContent = MONTH_NAMES[calMonth] + ' ' + calYear;
+
+      const now = new Date();
+      const todayStr = now.getFullYear() + '-' + now.getMonth() + '-' + now.getDate();
+
+      const firstDay = new Date(calYear, calMonth, 1).getDay();
+      const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+
+      // Disable prev if viewing current month
+      document.getElementById('calPrev').disabled = (calYear === now.getFullYear() && calMonth === now.getMonth());
+
+      let html = '';
+      // Empty cells
+      for (let i = 0; i < firstDay; i++) html += '<div class="cal-day empty"></div>';
+      // Day cells
+      for (let d = 1; d <= daysInMonth; d++) {
+        const dateObj = new Date(calYear, calMonth, d);
+        const dayStr = calYear + '-' + calMonth + '-' + d;
+        const isToday = dayStr === todayStr;
+        const isPast = dateObj < new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const isSelected = state.selectedDate && state.selectedDate.getFullYear() === calYear
+          && state.selectedDate.getMonth() === calMonth && state.selectedDate.getDate() === d;
+
+        let cls = 'cal-day';
+        if (isPast) cls += ' disabled';
+        if (isToday && !isSelected) cls += ' today';
+        if (isSelected) cls += ' selected';
+
+        html += '<div class="' + cls + '" data-day="' + d + '">' + d + '</div>';
+      }
+      document.getElementById('calDays').innerHTML = html;
+
+      // Bind day clicks
+      document.querySelectorAll('.cal-day:not(.disabled):not(.empty)').forEach(el => {
+        el.addEventListener('click', function() {
+          const day = parseInt(this.getAttribute('data-day'));
+          state.selectedDate = new Date(calYear, calMonth, day);
+          state.selectedTime = '';
+          renderCalendar();
+          renderTimeSlots();
+          document.getElementById('timeSection').classList.add('visible');
+          validateStep3();
+        });
+      });
+    }
+
+    function renderTimeSlots() {
+      const container = document.getElementById('timeSlots');
+      let html = '';
+      TIME_SLOTS.forEach(slot => {
+        const isUnavail = UNAVAILABLE.includes(slot);
+        const isSelected = state.selectedTime === slot;
+        let cls = 'time-slot';
+        if (isUnavail) cls += ' unavailable';
+        if (isSelected) cls += ' selected';
+        html += '<div class="' + cls + '" data-time="' + slot + '">' + slot + '</div>';
+      });
+      container.innerHTML = html;
+
+      container.querySelectorAll('.time-slot:not(.unavailable)').forEach(el => {
+        el.addEventListener('click', function() {
+          state.selectedTime = this.getAttribute('data-time');
+          renderTimeSlots();
+          validateStep3();
+        });
+      });
+    }
+
+    // ---- Plan conditional fields ----
+    function updatePlanFields() {
+      const plan = document.getElementById('planSelect').value;
+      document.getElementById('startupFields').style.display = plan === 'Startup Plan' ? 'block' : 'none';
+      document.getElementById('growthFields').style.display = plan === 'Growth Plan' ? 'block' : 'none';
+      document.getElementById('enterpriseFields').style.display = plan === 'Enterprise Plan' ? 'block' : 'none';
+
+      // BUG (intentional): We clear devCount, ciProvider, monthlyRuns, and testingBudget
+      // when switching plans, but we deliberately do NOT clear teamSize.
+      // This means switching away from Enterprise and back retains the stale teamSize value.
+      if (plan !== 'Startup Plan') {
+        document.getElementById('devCount').value = '';
+      }
+      if (plan !== 'Growth Plan') {
+        document.getElementById('ciProvider').value = '';
+        document.getElementById('monthlyRuns').value = '';
+      }
+      if (plan !== 'Enterprise Plan') {
+        // NOTE: teamSize is intentionally NOT cleared here — this is the stale-value bug.
+        document.getElementById('testingBudget').value = '';
+        // Clear compliance checkboxes
+        document.querySelectorAll('#complianceGroup .checkbox-item').forEach(item => {
+          item.classList.remove('checked');
+          item.querySelector('input').checked = false;
+        });
+        state.compliance = [];
+      }
+
+      validateStep2();
+    }
+
+    // ---- Collect state from DOM ----
+    function collectState() {
+      state.fullName = document.getElementById('fullName').value.trim();
+      state.workEmail = document.getElementById('workEmail').value.trim();
+      state.companyName = document.getElementById('companyName').value.trim();
+      state.jobTitle = document.getElementById('jobTitle').value;
+      state.plan = document.getElementById('planSelect').value;
+      state.devCount = document.getElementById('devCount').value.trim();
+      state.ciProvider = document.getElementById('ciProvider').value;
+      state.monthlyRuns = document.getElementById('monthlyRuns').value.trim();
+      state.teamSize = document.getElementById('teamSize').value.trim();
+      state.testingBudget = document.getElementById('testingBudget').value.trim();
+      state.compliance = [];
+      document.querySelectorAll('#complianceGroup .checkbox-item.checked').forEach(item => {
+        state.compliance.push(item.getAttribute('data-value'));
+      });
+    }
+
+    // ---- Summary ----
+    function renderSummary() {
+      collectState();
+
+      // BUG (intentional): date is off by one day — simulates a timezone-conversion bug.
+      // We subtract one day from the selected date when displaying it in the summary.
+      let displayDate = '';
+      if (state.selectedDate) {
+        const buggyDate = new Date(state.selectedDate);
+        // BUG: Intentional off-by-one date. Subtracting one day to simulate timezone conversion bug.
+        buggyDate.setDate(buggyDate.getDate() - 1);
+        displayDate = MONTH_NAMES[buggyDate.getMonth()] + ' ' + buggyDate.getDate() + ', ' + buggyDate.getFullYear();
+      }
+
+      let html = '';
+
+      // Contact section
+      html += '<div class="summary-section">';
+      html += '<div class="summary-section-title">Contact</div>';
+      html += summaryRow('Name', state.fullName);
+      html += summaryRow('Email', state.workEmail);
+      html += summaryRow('Company', state.companyName);
+      html += summaryRow('Job Title', state.jobTitle || 'Not specified');
+      html += '</div>';
+
+      // Plan section
+      html += '<div class="summary-section">';
+      html += '<div class="summary-section-title">Plan</div>';
+      html += '<div class="summary-row"><span class="summary-key">Selected Plan</span><span class="summary-val"><span class="summary-badge">' + state.plan + '</span></span></div>';
+      if (state.plan === 'Startup Plan' && state.devCount) {
+        html += summaryRow('Team Size', state.devCount + ' developers');
+      }
+      if (state.plan === 'Growth Plan') {
+        if (state.ciProvider) html += summaryRow('CI/CD Provider', state.ciProvider);
+        if (state.monthlyRuns) html += summaryRow('Monthly Runs', state.monthlyRuns);
+      }
+      if (state.plan === 'Enterprise Plan') {
+        if (state.teamSize) html += summaryRow('Team Size', state.teamSize);
+        if (state.compliance.length) html += summaryRow('Compliance', state.compliance.join(', '));
+        if (state.testingBudget) html += summaryRow('Testing Budget', state.testingBudget);
+      }
+      html += '</div>';
+
+      // Schedule section
+      html += '<div class="summary-section">';
+      html += '<div class="summary-section-title">Schedule</div>';
+      html += '<div class="summary-row"><span class="summary-key">Date</span><span class="summary-val mono">' + displayDate + '</span></div>';
+      html += '<div class="summary-row"><span class="summary-key">Time</span><span class="summary-val mono">' + state.selectedTime + '</span></div>';
+      html += summaryRow('Timezone', 'Pacific Time (PT)');
+      html += '</div>';
+
+      document.getElementById('summaryContent').innerHTML = html;
+    }
+
+    function summaryRow(key, val) {
+      return '<div class="summary-row"><span class="summary-key">' + key + '</span><span class="summary-val">' + val + '</span></div>';
+    }
+
+    // ---- Toast ----
+    function showToast() {
+      const toast = document.getElementById('toast');
+      toast.classList.add('visible');
+      setTimeout(() => toast.classList.remove('visible'), 3500);
+    }
+
+    // ---- Bind events ----
+    function bindEvents() {
+      // Step 1 validation on input
+      ['fullName','workEmail','companyName'].forEach(id => {
+        document.getElementById(id).addEventListener('input', validateStep1);
+      });
+
+      // Step 1 Next
+      document.getElementById('btn1Next').addEventListener('click', () => {
+        collectState();
+        goToStep(2);
+      });
+
+      // Step 2 plan change
+      document.getElementById('planSelect').addEventListener('change', updatePlanFields);
+
+      // Compliance checkboxes
+      document.querySelectorAll('#complianceGroup .checkbox-item').forEach(item => {
+        item.addEventListener('click', function(e) {
+          e.preventDefault();
+          const cb = this.querySelector('input');
+          cb.checked = !cb.checked;
+          this.classList.toggle('checked', cb.checked);
+        });
+      });
+
+      // Step 2 buttons
+      document.getElementById('btn2Prev').addEventListener('click', () => goToStep(1));
+      document.getElementById('btn2Next').addEventListener('click', () => {
+        collectState();
+        goToStep(3);
+      });
+
+      // Calendar nav
+      document.getElementById('calPrev').addEventListener('click', () => {
+        calMonth--;
+        if (calMonth < 0) { calMonth = 11; calYear--; }
+        renderCalendar();
+      });
+      document.getElementById('calNext').addEventListener('click', () => {
+        calMonth++;
+        if (calMonth > 11) { calMonth = 0; calYear++; }
+        renderCalendar();
+      });
+
+      // Step 3 buttons
+      document.getElementById('btn3Prev').addEventListener('click', () => goToStep(2));
+      document.getElementById('btn3Next').addEventListener('click', () => {
+        collectState();
+        goToStep(4);
+      });
+
+      // Step 4 buttons
+      document.getElementById('btn4Edit').addEventListener('click', () => goToStep(1));
+      document.getElementById('btn4Confirm').addEventListener('click', showToast);
+    }
+
+    init();
+  </script>
+</body>
+</html>

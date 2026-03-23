@@ -298,6 +298,15 @@ frontend-visualqa verify http://localhost:8000/ecommerce_store.html \
   --navigation-hint "Click 'Add to Cart' on the Mechanical Keyboard K7 product card."
 ```
 
+Autonomous form filling — n1 picks a date, selects a time slot, and checks the confirmation:
+
+```bash
+frontend-visualqa verify 'http://localhost:8000/booking_form.html#step3' \
+  --claims 'The confirmation page shows the correct date that was selected' \
+  --navigation-hint 'Pick any available date and time slot, then click Review Booking.'
+# → fails: n1 selects March 25 but confirmation shows March 24 (off-by-one timezone bug)
+```
+
 Scrolling to find off-screen content:
 
 ```bash
