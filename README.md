@@ -218,10 +218,10 @@ frontend-visualqa verify http://localhost:8000/analytics_dashboard.html \
 **Catching pricing bugs** — verify that discounts are actually applied:
 
 ```bash
-frontend-visualqa verify http://localhost:8000/ecommerce_store.html#/cart \
+frontend-visualqa verify 'http://localhost:8000/ecommerce_store.html#/cart' \
   --headed \
-  --claims "The cart subtotal reflects the discounted prices shown on each item"
-# → fails: items show sale prices but subtotal uses the original prices
+  --claims 'The cart subtotal equals the sum of the sale prices: $149.99 + $79.99 = $229.98'
+# → fails: subtotal shows $279.98 (computed from the original prices)
 ```
 
 Use against your own frontend the same way — just swap the URL:
