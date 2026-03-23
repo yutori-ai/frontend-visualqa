@@ -25,12 +25,12 @@ n1 is a pixels-to-actions model trained with RL on live websites. Two capabiliti
     <td align="center" width="47%"><img src="docs/images/nav-step6-correct-page.webp" alt="Product detail — correct page" width="100%"><br><em>Navigated to the correct product page</em></td>
   </tr></table>
 
-- **Rich visual evaluation** — On the cart page, n1 read every line item and caught a $3.00 pricing discrepancy: shipping displays $12.99 but the total was calculated with $15.99. Playwright MCP would need hand-written assertions for each line item and a manual sum check.
+- **Rich visual evaluation** — On the cart page, both items show sale prices ($149.99 and $79.99) but n1 caught that the subtotal of $279.98 was computed from the original prices — the discount was never actually applied to the total. On the API dashboard, the quota label reads "100%" but the progress bar is visibly only two-thirds full. Playwright MCP would pass both pages — the DOM text is internally consistent and the progress bar width is just a CSS value.
 
   <table border="0" cellspacing="0" cellpadding="8"><tr>
-    <td align="center" width="47%"><img src="docs/images/cart-pricing-bug.webp" alt="Cart — shipping shows $12.99 but total is wrong" width="100%"><br><em>n1 catches the $3.00 pricing discrepancy</em></td>
+    <td align="center" width="47%"><img src="docs/images/cart-pricing-bug.webp" alt="Cart — sale prices shown but subtotal uses original prices" width="100%"><br><em>n1 catches the discount-not-applied bug</em></td>
     <td align="center" width="6%"><strong>→</strong></td>
-    <td align="center" width="47%"><img src="docs/images/dashboard-quota.webp" alt="Dashboard — quota shows 65%, not 100%" width="100%"><br><em>Dashboard: quota reads 65%, not the claimed 100%</em></td>
+    <td align="center" width="47%"><img src="docs/images/dashboard-quota.webp" alt="Dashboard — label says 100% but bar is 65%" width="100%"><br><em>Label says 100% but the bar tells a different story</em></td>
   </tr></table>
 
 ## Install
@@ -212,17 +212,17 @@ frontend-visualqa verify http://localhost:8000/analytics_dashboard.html \
   --headed \
   --claims \
   "The API status indicator shows Active" \
-  "The monthly quota shows 100% used"
-# → first claim passes, second fails (actual value is 65%)
+  "The monthly quota progress bar is completely filled"
+# → first claim passes, second fails (label says 100% but bar is ~65% full)
 ```
 
-**Catching pricing bugs** — verify cart calculation integrity:
+**Catching pricing bugs** — verify that discounts are actually applied:
 
 ```bash
 frontend-visualqa verify http://localhost:8000/ecommerce_store.html#/cart \
   --headed \
-  --claims "The cart total matches the sum of subtotal, shipping, and tax"
-# → fails: shipping displays $12.99 but the total uses $15.99 internally
+  --claims "The cart subtotal reflects the discounted prices shown on each item"
+# → fails: items show sale prices but subtotal uses the original prices
 ```
 
 Use against your own frontend the same way — just swap the URL:
@@ -299,13 +299,12 @@ frontend-visualqa verify http://localhost:8000/ecommerce_store.html \
   --navigation-hint "Click 'Add to Cart' on the Mechanical Keyboard K7 product card."
 ```
 
-Mobile viewport:
+Scrolling to find off-screen content:
 
 ```bash
-frontend-visualqa verify http://localhost:8000/ecommerce_store.html \
-  --claims "The product grid displays three columns" \
-  --width 375 --height 812
-# → fails: grid collapses to a single column at mobile width
+frontend-visualqa verify http://localhost:8000/analytics_dashboard.html \
+  --claims "The /api/v1/webhooks endpoint returned a 200 OK status"
+# → fails: n1 scrolls to the request table and finds a 500 Error
 ```
 
 </details>
@@ -401,14 +400,14 @@ Each claim result contains:
 
 ```json
 {
-  "claim": "The monthly quota shows 100% used",
+  "claim": "The monthly quota progress bar is completely filled",
   "status": "failed",
-  "finding": "The monthly quota shows 65% used (8,247 / 12,500 requests), not 100%.",
+  "finding": "The quota label reads '100%' and '12,500 / 12,500 requests used', but the progress bar is visually only about 65% filled — the bar and the label disagree.",
   "proof": {
     "screenshot_path": "artifacts/run-.../claim-02/step-04.webp",
     "step": 4,
     "after_action": "extract_elements()",
-    "text": "Monthly Quota\n8,247 / 12,500 requests used  65%\n...",
+    "text": "Monthly Quota\n12,500 / 12,500 requests used  100%\n...",
     "text_path": "artifacts/run-.../claim-02/step-04.txt"
   },
   "page": {

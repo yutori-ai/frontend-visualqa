@@ -487,36 +487,37 @@
 
     .quota-text {
       font-family: var(--font-mono);
-      font-size: 14px;
+      font-size: 18px;
       color: var(--text-secondary);
     }
 
     .quota-percent {
       font-family: var(--font-mono);
-      font-size: 14px;
-      font-weight: 500;
+      font-size: 28px;
+      font-weight: 600;
       color: var(--accent);
     }
 
     .progress-track {
       width: 100%;
-      height: 12px;
+      height: 16px;
       background: rgba(0, 0, 0, 0.3);
-      border-radius: 6px;
+      border-radius: 8px;
       overflow: hidden;
       margin-bottom: 12px;
     }
 
     .progress-fill {
       height: 100%;
+      /* BUG: text says 100% but bar is only 65% filled */
       width: 65%;
       background: var(--accent-gradient);
-      border-radius: 6px;
+      border-radius: 8px;
       transition: width 0.6s ease;
     }
 
     .quota-detail {
-      font-size: 13px;
+      font-size: 14px;
       color: var(--text-muted);
     }
 
@@ -875,8 +876,8 @@
     <div class="glass-card">
       <div class="card-title">Monthly Quota</div>
       <div class="quota-header">
-        <span class="quota-text">8,247 / 12,500 requests used</span>
-        <span class="quota-percent">65%</span>
+        <span class="quota-text">12,500 / 12,500 requests used</span>
+        <span class="quota-percent">100%</span>
       </div>
       <div class="progress-track">
         <div class="progress-fill"></div>
