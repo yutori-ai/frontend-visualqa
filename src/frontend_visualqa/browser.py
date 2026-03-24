@@ -13,12 +13,17 @@ from typing import Any
 from PIL import Image
 from playwright.async_api import Browser, BrowserContext, Page, Playwright, async_playwright
 
-from frontend_visualqa.schemas import BrowserConfig, BrowserMode, BrowserSessionStatus, BrowserStatusResult, ViewportConfig
+from frontend_visualqa.schemas import (
+    BrowserConfig,
+    BrowserMode,
+    BrowserSessionStatus,
+    BrowserStatusResult,
+    ViewportConfig,
+)
 
 
 DEFAULT_NAVIGATION_TIMEOUT_MS = 20_000
 DEFAULT_SETTLE_DELAY_SECONDS = 1.0
-DEFAULT_SCREENSHOT_JPEG_QUALITY = 75
 DEFAULT_SCREENSHOT_WEBP_QUALITY = 90
 logger = logging.getLogger(__name__)
 PERSISTENT_SESSION_KEY_ERROR = (
@@ -245,18 +250,9 @@ class BrowserManager:
         return image
 
     @staticmethod
-    def _image_to_jpeg_bytes(image: Image.Image) -> bytes:
-        buffer = io.BytesIO()
-        rgb_image = image.convert("RGB")
-        rgb_image.save(buffer, format="JPEG", quality=DEFAULT_SCREENSHOT_JPEG_QUALITY)
-        return buffer.getvalue()
-
-    @staticmethod
     def _image_to_webp_bytes(image: Image.Image) -> bytes:
-        jpeg_bytes = BrowserManager._image_to_jpeg_bytes(image)
-        jpeg_image = BrowserManager._image_from_bytes(jpeg_bytes)
         buffer = io.BytesIO()
-        jpeg_image.save(buffer, format="WEBP", quality=DEFAULT_SCREENSHOT_WEBP_QUALITY)
+        image.save(buffer, format="WEBP", quality=DEFAULT_SCREENSHOT_WEBP_QUALITY)
         return buffer.getvalue()
 
     async def set_viewport(self, session_key: str, viewport: ViewportConfig) -> BrowserSession:
