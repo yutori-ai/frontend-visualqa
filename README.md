@@ -100,7 +100,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
     `-g` installs at user scope. Omit `-g` for project-local install.
 
-5. Restart the agent client.
+5. Restart your agent (Codex, Claude Code, etc) so the installs are picked up.
 
    <details>
    <summary>To uninstall later:</summary>
