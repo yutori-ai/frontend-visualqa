@@ -231,6 +231,7 @@ class OverlayController:
             return
 
         # Cursor-first choreography: move cursor to target, then trigger effect
+        center: dict[str, int] | None = None
         if action_type == "type":
             center = await self._get_focused_element_center()
             if center:
@@ -249,7 +250,7 @@ class OverlayController:
             await self._show_scroll_effect(x, y, direction)
             await self.set_status("Scrolling")
         elif action_type == "type":
-            await self._show_type_effect()
+            await self._show_type_effect(center)
             await self.set_status("Typing")
         elif action_type == "hover":
             await self.set_status("Hovering")
@@ -351,8 +352,7 @@ class OverlayController:
             }}"""
         )
 
-    async def _show_type_effect(self) -> None:
-        center = await self._get_focused_element_center()
+    async def _show_type_effect(self, center: dict[str, int] | None) -> None:
         if center is None:
             return
 
