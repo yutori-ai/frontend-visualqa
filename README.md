@@ -90,7 +90,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
     Pick the clients you want to configure.
 
-4. Install frontend-visualqa skill using [skills.sh](https://skills.sh):
+4. Install skills using [skills.sh](https://skills.sh):
 
     ```bash
     npx skills add yutori-ai/frontend-visualqa -g
