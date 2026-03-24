@@ -6,6 +6,7 @@ from typing import Any
 import pytest
 
 from frontend_visualqa import __version__
+from frontend_visualqa.errors import ConfigurationError
 from frontend_visualqa.schemas import BrowserConfig, BrowserMode, BrowserStatusResult, ClaimResult, RunResult, ScreenshotResult, ViewportConfig
 
 
@@ -130,6 +131,10 @@ class ClosingFakeBrowserManager(FakeBrowserManager):
         return final_url
 
 
+async def _noop_preflight_verify_auth() -> None:
+    return None
+
+
 def test_build_parser_supports_version_flag_without_subcommand(capsys: pytest.CaptureFixture[str]) -> None:
     import frontend_visualqa.cli as cli
 
@@ -153,6 +158,7 @@ def test_handle_verify_closes_runner_and_forwards_browser_config(monkeypatch: An
 
     monkeypatch.setattr(cli, "_new_runner", _fake_new_runner)
     monkeypatch.setattr(cli, "_emit_json", emitted.append)
+    monkeypatch.setattr(cli, "_preflight_verify_auth", _noop_preflight_verify_auth)
 
     exit_code = cli._handle_verify(
         SimpleNamespace(
@@ -291,6 +297,7 @@ def test_handle_verify_passes_reporters_to_runner(monkeypatch: Any) -> None:
 
     monkeypatch.setattr(cli, "_new_runner", _fake_new_runner)
     monkeypatch.setattr(cli, "_emit_json", emitted.append)
+    monkeypatch.setattr(cli, "_preflight_verify_auth", _noop_preflight_verify_auth)
 
     exit_code = cli._handle_verify(
         SimpleNamespace(
@@ -315,6 +322,111 @@ def test_handle_verify_passes_reporters_to_runner(monkeypatch: Any) -> None:
 
     assert exit_code == 0
     assert captured_reporters == [["native", "ctrf"]]
+
+
+def test_handle_verify_returns_nonzero_when_any_claim_is_not_passed(monkeypatch: Any) -> None:
+    import frontend_visualqa.cli as cli
+
+    fake_runner = FakeRunner()
+    emitted: list[dict[str, Any]] = []
+
+    async def _fake_run(**kwargs: Any) -> RunResult:
+        viewport = kwargs.get("viewport", ViewportConfig())
+        return RunResult(
+            overall_status="completed",
+            session_key=kwargs["session_key"],
+            results=[
+                ClaimResult(
+                    claim="The modal title reads Edit Task",
+                    status="failed",
+                    finding="The modal title reads Create Task.",
+                    proof=None,
+                    page={"url": kwargs["url"], "viewport": viewport},
+                    trace={
+                        "steps_taken": 0,
+                        "wrong_page_recovered": False,
+                        "screenshot_paths": [],
+                        "actions": [],
+                        "trace_path": None,
+                    },
+                )
+            ],
+            summary="0/1 claims passed. 1 failed.",
+            artifacts_dir="artifacts/run-fake",
+        )
+
+    fake_runner.run = _fake_run  # type: ignore[method-assign]
+
+    monkeypatch.setattr(cli, "_new_runner", lambda **_: fake_runner)
+    monkeypatch.setattr(cli, "_emit_json", emitted.append)
+    monkeypatch.setattr(cli, "_preflight_verify_auth", _noop_preflight_verify_auth)
+
+    exit_code = cli._handle_verify(
+        SimpleNamespace(
+            url="http://localhost:3000/tasks/123",
+            claims=["The modal title reads Edit Task"],
+            width=1280,
+            height=800,
+            device_scale_factor=1.0,
+            browser_mode="ephemeral",
+            user_data_dir=None,
+            headed=False,
+            session_key="default",
+            reuse_session=True,
+            reset_between_claims=True,
+            max_steps_per_claim=12,
+            claim_timeout_seconds=120.0,
+            run_timeout_seconds=300.0,
+            navigation_hint=None,
+            reporter=None,
+        )
+    )
+
+    assert exit_code == 1
+    assert emitted[0]["results"][0]["status"] == "failed"
+
+
+def test_handle_verify_returns_nonzero_without_json_when_auth_preflight_fails(
+    monkeypatch: Any,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import frontend_visualqa.cli as cli
+
+    emitted: list[dict[str, Any]] = []
+    new_runner_calls: list[object] = []
+
+    async def _failing_preflight() -> None:
+        raise ConfigurationError("Yutori authentication is required for verify.")
+
+    monkeypatch.setattr(cli, "_preflight_verify_auth", _failing_preflight)
+    monkeypatch.setattr(cli, "_new_runner", lambda **_: new_runner_calls.append(object()))
+    monkeypatch.setattr(cli, "_emit_json", emitted.append)
+
+    exit_code = cli._handle_verify(
+        SimpleNamespace(
+            url="http://localhost:3000/tasks/123",
+            claims=["The modal title reads Edit Task"],
+            width=1280,
+            height=800,
+            device_scale_factor=1.0,
+            browser_mode="ephemeral",
+            user_data_dir=None,
+            headed=False,
+            session_key="default",
+            reuse_session=True,
+            reset_between_claims=True,
+            max_steps_per_claim=12,
+            claim_timeout_seconds=120.0,
+            run_timeout_seconds=300.0,
+            navigation_hint=None,
+            reporter=None,
+        )
+    )
+
+    assert exit_code == 1
+    assert emitted == []
+    assert new_runner_calls == []
+    assert "Yutori authentication is required for verify." in capsys.readouterr().err
 
 
 def test_verify_parser_supports_visualize_flags_and_headed_default() -> None:

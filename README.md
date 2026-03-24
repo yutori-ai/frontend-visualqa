@@ -397,6 +397,8 @@ If a claim requires interaction first, use `--navigation-hint` instead of encodi
 | `inconclusive` | Runner explored but couldn't determine confidently |
 | `not_testable` | Environment blocked verification (server down, auth wall) |
 
+For the CLI, `frontend-visualqa verify` exits `0` only when every claim passes. It exits `1` if any claim is `failed`, `inconclusive`, or `not_testable`. Usage errors still exit with argparse's standard `2`.
+
 ## Reporters
 
 Output format for persisted artifacts. Does not affect CLI stdout or MCP tool responses (always native JSON).
