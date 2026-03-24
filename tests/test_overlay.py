@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -65,6 +65,7 @@ class TestOverlayControllerLifecycle:
         assert any("__n1ClickStyle" in script for script in scripts)
         assert any("__n1ScrollStyle" in script for script in scripts)
         assert any("__n1TypeStyle" in script for script in scripts)
+        assert any("__n1DragStyle" in script for script in scripts)
 
         page.evaluate.reset_mock()
         await controller.claim_ended()
@@ -88,6 +89,35 @@ class TestOverlayControllerLifecycle:
         assert "Navigating" in script
 
 
+class TestOverlayCursor:
+    @pytest.mark.asyncio
+    async def test_persistent_root_creates_cursor_img(self) -> None:
+        from frontend_visualqa.overlay import OverlayController
+
+        page = _make_mock_page()
+        controller = OverlayController(page)
+
+        await controller.claim_started()
+
+        scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
+        assert any("__n1Cursor" in script and "createElement('img')" in script for script in scripts)
+
+    @pytest.mark.asyncio
+    async def test_move_cursor_updates_position(self) -> None:
+        from frontend_visualqa.overlay import OverlayController
+
+        page = _make_mock_page()
+        controller = OverlayController(page)
+        controller._active = True
+
+        await controller._move_cursor(150, 250)
+
+        script = str(page.evaluate.call_args.args[0])
+        assert "__n1Cursor" in script
+        assert "150px" in script
+        assert "250px" in script
+
+
 class TestOverlayShowAction:
     @pytest.mark.asyncio
     async def test_click_effect_uses_coordinates_and_updates_status(self) -> None:
@@ -99,20 +129,31 @@ class TestOverlayShowAction:
         await controller.claim_started()
         page.evaluate.reset_mock()
 
-        await controller.show_action("double_click", x=100, y=200, num_clicks=2)
+        with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
+            await controller.show_action("double_click", x=100, y=200, num_clicks=2)
 
         assert controller._current_status == "Clicking"
         scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
+        # Cursor moved first
+        assert any("__n1Cursor" in script and "100px" in script and "200px" in script for script in scripts)
+        # Transient root made visible
         assert any("__n1TransientRoot" in script and "visibility = 'visible'" in script for script in scripts)
-        assert any("const numClicks = 2" in script for script in scripts)
+        # Click effect with num_clicks
+        assert any("const numClicks = 2" in script or "< 2" in script for script in scripts)
+        # New click keyframe: simple expansion, no ring/dot
+        assert any(
+            "n1click" in script
+            and "width:5px;height:5px;opacity:0.6" in script
+            and "width:30px;height:30px;opacity:0" in script
+            for script in scripts
+        )
+        # Coordinates used in effect
         assert any("left:100px" in script and "top:200px" in script for script in scripts)
+        # Old keyframes should NOT be present
+        assert not any("n1dot" in script for script in scripts)
 
-    @pytest.mark.parametrize(
-        ("direction", "rotation"),
-        [("up", -90), ("down", 90), ("left", 180), ("right", 0)],
-    )
     @pytest.mark.asyncio
-    async def test_scroll_effect_updates_status(self, direction: str, rotation: int) -> None:
+    async def test_scroll_effect_uses_spinning_dots(self) -> None:
         from frontend_visualqa.overlay import OverlayController
 
         page = _make_mock_page()
@@ -121,22 +162,48 @@ class TestOverlayShowAction:
         await controller.claim_started()
         page.evaluate.reset_mock()
 
-        await controller.show_action("scroll", x=640, y=400, direction=direction)
+        with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
+            await controller.show_action("scroll", x=640, y=400, direction="down")
 
         assert controller._current_status == "Scrolling"
         scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
         assert any("__n1ScrollStyle" in script for script in scripts)
+        # New scroll uses n1scroll keyframe with spinning dots
         assert any(
-            "polyline points" in script
-            and "left:640px" in script
-            and "top:400px" in script
-            and f"transform:rotate({rotation}deg)" in script
-            and 'style="animation:n1schev 0.7s ease-in-out infinite"' in script
+            "n1scroll" in script
+            and "rotate(0deg)" in script
+            and "rotate(360deg)" in script
             for script in scripts
         )
+        # Coordinates used
+        assert any("left:640px" in script and "top:400px" in script for script in scripts)
+        # Old chevron/directional rotation should NOT be present
+        assert not any("n1schev" in script for script in scripts)
+        assert not any("polyline points" in script for script in scripts)
 
     @pytest.mark.asyncio
-    async def test_type_effect_uses_focused_element_center_when_available(self) -> None:
+    async def test_scroll_effect_ignores_direction_rotation(self) -> None:
+        """New scroll effect does not use directional rotation -- all directions look the same."""
+        from frontend_visualqa.overlay import OverlayController
+
+        for direction in ("up", "down", "left", "right"):
+            page = _make_mock_page()
+            controller = OverlayController(page)
+
+            await controller.claim_started()
+            page.evaluate.reset_mock()
+
+            with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
+                await controller.show_action("scroll", x=100, y=100, direction=direction)
+
+            scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
+            # No direction-based rotation
+            assert not any("transform:rotate(-90deg)" in script for script in scripts)
+            assert not any("transform:rotate(90deg)" in script for script in scripts)
+            assert not any("transform:rotate(180deg)" in script for script in scripts)
+
+    @pytest.mark.asyncio
+    async def test_type_effect_uses_caret_and_dots(self) -> None:
         from frontend_visualqa.overlay import OverlayController
 
         page = _make_mock_page(focused_center={"x": 200, "y": 150})
@@ -145,13 +212,21 @@ class TestOverlayShowAction:
         await controller.claim_started()
         page.evaluate.reset_mock()
 
-        await controller.show_action("type")
+        with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
+            await controller.show_action("type")
 
         assert controller._current_status == "Typing"
         scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
         assert any("document.activeElement" in script for script in scripts)
         assert any("__n1TypeStyle" in script for script in scripts)
-        assert any("left:200px" in script and "typing" in script for script in scripts)
+        # New type effect uses caret + dots keyframes
+        assert any("n1tcaret" in script and "n1tdot" in script and "n1tfade" in script for script in scripts)
+        # Cursor moved to focused element center
+        assert any("__n1Cursor" in script and "200px" in script and "150px" in script for script in scripts)
+        # Old "typing" pill and keyframes should NOT be present
+        assert not any("n1tbob" in script for script in scripts)
+        assert not any("n1tglow" in script for script in scripts)
+        assert not any("n1tcur" in script for script in scripts)
 
     @pytest.mark.asyncio
     async def test_type_effect_skipped_when_no_focused_element(self) -> None:
@@ -163,11 +238,57 @@ class TestOverlayShowAction:
         await controller.claim_started()
         page.evaluate.reset_mock()
 
-        await controller.show_action("type")
+        with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
+            await controller.show_action("type")
 
         assert controller._current_status == "Typing"
         scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
         assert not any("__n1TypeStyle" in script for script in scripts)
+
+    @pytest.mark.asyncio
+    async def test_hover_action_moves_cursor_and_sets_status(self) -> None:
+        from frontend_visualqa.overlay import OverlayController
+
+        page = _make_mock_page()
+        controller = OverlayController(page)
+
+        await controller.claim_started()
+        page.evaluate.reset_mock()
+
+        with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
+            await controller.show_action("hover", x=300, y=400)
+
+        assert controller._current_status == "Hovering"
+        scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
+        # Cursor moved to hover target
+        assert any("__n1Cursor" in script and "300px" in script and "400px" in script for script in scripts)
+        # Status chip updated
+        assert any("__n1StatusChip" in script and "Hovering" in script for script in scripts)
+
+    @pytest.mark.asyncio
+    async def test_drag_action_shows_trail_and_moves_cursor(self) -> None:
+        from frontend_visualqa.overlay import OverlayController
+
+        page = _make_mock_page()
+        controller = OverlayController(page)
+
+        await controller.claim_started()
+        page.evaluate.reset_mock()
+
+        with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
+            await controller.show_action("drag", x=500, y=600, start_x=100, start_y=200)
+
+        assert controller._current_status == "Dragging"
+        scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
+        # Cursor moved to start point first
+        assert any("__n1Cursor" in script and "100px" in script and "200px" in script for script in scripts)
+        # Drag style injected with trail keyframes
+        assert any("__n1DragStyle" in script for script in scripts)
+        assert any("n1dfade" in script and "n1dtrail" in script for script in scripts)
+        # Start coordinates used for pressed indicator
+        assert any("left:100px" in script and "top:200px" in script for script in scripts)
+        # Cursor moved to end point after drag
+        assert any("__n1Cursor" in script and "500px" in script and "600px" in script for script in scripts)
 
     @pytest.mark.asyncio
     async def test_unknown_action_is_noop(self) -> None:
@@ -179,10 +300,28 @@ class TestOverlayShowAction:
         await controller.claim_started()
         page.evaluate.reset_mock()
 
-        await controller.show_action("hover", x=10, y=20)
+        with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
+            await controller.show_action("unknown_action_xyz", x=10, y=20)
 
-        assert controller._current_status == "Analyzing"
-        page.evaluate.assert_not_called()
+        # Cursor still moves for unknown actions (since x/y are provided)
+        scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
+        cursor_moves = [s for s in scripts if "__n1Cursor" in s]
+        assert len(cursor_moves) >= 1
+
+    @pytest.mark.asyncio
+    async def test_show_action_sleeps_for_cursor_transition(self) -> None:
+        from frontend_visualqa.overlay import CURSOR_TRANSITION_MS, OverlayController
+
+        page = _make_mock_page()
+        controller = OverlayController(page)
+
+        await controller.claim_started()
+        page.evaluate.reset_mock()
+
+        with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            await controller.show_action("left_click", x=50, y=60)
+
+        mock_sleep.assert_awaited_once_with(CURSOR_TRANSITION_MS / 1000)
 
 
 class TestOverlayScreenshotBoundary:
@@ -234,7 +373,8 @@ class TestOverlayScreenshotBoundary:
         await controller.after_screenshot()
         page.evaluate.reset_mock()
 
-        await controller.show_action("left_click", x=100, y=200)
+        with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
+            await controller.show_action("left_click", x=100, y=200)
 
         scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
         assert any(
@@ -305,9 +445,12 @@ class TestOverlayBestEffort:
 
         await controller.claim_started()
         await controller.set_status("Analyzing")
-        await controller.show_action("left_click", x=100, y=100)
-        await controller.show_action("scroll", x=100, y=100, direction="down")
-        await controller.show_action("type")
+        with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
+            await controller.show_action("left_click", x=100, y=100)
+            await controller.show_action("scroll", x=100, y=100, direction="down")
+            await controller.show_action("type")
+            await controller.show_action("hover", x=10, y=20)
+            await controller.show_action("drag", x=200, y=200, start_x=100, start_y=100)
         await controller.before_screenshot()
         await controller.after_screenshot()
         await controller.ensure_persistent_ui()

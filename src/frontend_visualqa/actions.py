@@ -582,6 +582,7 @@ class ActionExecutor:
                 if coords is None:
                     raise BrowserActionError("hover requires coordinates")
                 x, y = scale_coordinates(coords, width, height)
+                await self._best_effort_overlay_show_action(action_type="hover", x=x, y=y)
                 await page.mouse.move(x, y)
 
             elif canonical_name in {
@@ -614,10 +615,18 @@ class ActionExecutor:
                     raise BrowserActionError("drag requires start_coordinates and coordinates")
                 start_x, start_y = scale_coordinates(start, width, height)
                 end_x, end_y = scale_coordinates(end, width, height)
+                # Move cursor to start before drag begins (hover-like)
+                await self._best_effort_overlay_show_action(
+                    action_type="hover", x=start_x, y=start_y,
+                )
                 await page.mouse.move(start_x, start_y)
                 await page.mouse.down()
                 await page.mouse.move(end_x, end_y, steps=10)
                 await page.mouse.up()
+                # Show trail after real drag completes so visual matches reality
+                await self._best_effort_overlay_show_action(
+                    action_type="drag", x=end_x, y=end_y, start_x=start_x, start_y=start_y,
+                )
 
             elif canonical_name == "scroll":
                 coords = raw_arguments.get("coordinates", [500, 500])
@@ -919,6 +928,8 @@ class ActionExecutor:
         action_type: str,
         x: int = 0,
         y: int = 0,
+        start_x: int = 0,
+        start_y: int = 0,
         num_clicks: int = 1,
         direction: str = "down",
     ) -> None:
@@ -929,7 +940,7 @@ class ActionExecutor:
         if not callable(show_action):
             return
         try:
-            await show_action(action_type, x=x, y=y, num_clicks=num_clicks, direction=direction)
+            await show_action(action_type, x=x, y=y, start_x=start_x, start_y=start_y, num_clicks=num_clicks, direction=direction)
             await asyncio.sleep(_overlay_lead_time_seconds())
         except Exception:
             return

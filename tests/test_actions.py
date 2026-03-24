@@ -435,6 +435,124 @@ async def test_execute_action_semantic_key_shortcut_uses_single_overlay_footer(
 
 
 @pytest.mark.asyncio
+async def test_execute_action_hover_triggers_overlay_before_dispatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _import_actions_module()
+    call_order: list[tuple[Any, ...]] = []
+    page = _make_overlay_enabled_page(call_order)
+
+    async def _move(x: int, y: int, *, steps: int | None = None) -> None:
+        call_order.append(("move", x, y))
+
+    page.mouse.move = AsyncMock(side_effect=_move)
+
+    overlay = MagicMock()
+
+    async def _show_action(action_type: str, **kwargs: Any) -> None:
+        call_order.append(("show_action", action_type, kwargs))
+
+    async def _ensure_persistent_ui() -> None:
+        call_order.append(("ensure_persistent_ui",))
+
+    overlay.show_action = AsyncMock(side_effect=_show_action)
+    overlay.ensure_persistent_ui = AsyncMock(side_effect=_ensure_persistent_ui)
+
+    executor = _instantiate_with_supported_kwargs(
+        module.ActionExecutor,
+        navigation_timeout_ms=1_000,
+        settle_delay_seconds=0,
+    )
+    executor.overlay = overlay
+    monkeypatch.setattr(module, "_overlay_lead_time_seconds", lambda: 0.0)
+
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    trace = await _call_execute_action(executor, page, "hover", {"coordinates": [250, 500]}, viewport)
+
+    assert trace == "hover([320, 400])"
+    assert call_order[0][0] == "show_action"
+    assert call_order[0][1] == "hover"
+    assert call_order[0][2]["x"] == 320
+    assert call_order[0][2]["y"] == 400
+    assert call_order[1][0] == "move"
+    assert call_order[-1][0] == "ensure_persistent_ui"
+    overlay.show_action.assert_awaited_once()
+    overlay.ensure_persistent_ui.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_execute_action_drag_triggers_overlay_before_dispatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _import_actions_module()
+    call_order: list[tuple[Any, ...]] = []
+    page = _make_overlay_enabled_page(call_order)
+
+    async def _move(x: int, y: int, *, steps: int | None = None) -> None:
+        call_order.append(("move", x, y))
+
+    async def _down() -> None:
+        call_order.append(("down",))
+
+    async def _up() -> None:
+        call_order.append(("up",))
+
+    page.mouse.move = AsyncMock(side_effect=_move)
+    page.mouse.down = AsyncMock(side_effect=_down)
+    page.mouse.up = AsyncMock(side_effect=_up)
+
+    overlay = MagicMock()
+
+    async def _show_action(action_type: str, **kwargs: Any) -> None:
+        call_order.append(("show_action", action_type, kwargs))
+
+    async def _ensure_persistent_ui() -> None:
+        call_order.append(("ensure_persistent_ui",))
+
+    overlay.show_action = AsyncMock(side_effect=_show_action)
+    overlay.ensure_persistent_ui = AsyncMock(side_effect=_ensure_persistent_ui)
+
+    executor = _instantiate_with_supported_kwargs(
+        module.ActionExecutor,
+        navigation_timeout_ms=1_000,
+        settle_delay_seconds=0,
+    )
+    executor.overlay = overlay
+    monkeypatch.setattr(module, "_overlay_lead_time_seconds", lambda: 0.0)
+
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    trace = await _call_execute_action(
+        executor,
+        page,
+        "drag",
+        {"start_coordinates": [100, 100], "coordinates": [700, 600]},
+        viewport,
+    )
+
+    assert trace == "drag([128, 80], [896, 480])"
+    # First: hover overlay moves cursor to start point
+    assert call_order[0][0] == "show_action"
+    assert call_order[0][1] == "hover"
+    assert call_order[0][2]["x"] == 128
+    assert call_order[0][2]["y"] == 80
+    # Then: real drag happens
+    assert call_order[1][0] == "move"
+    assert call_order[2][0] == "down"
+    assert call_order[3][0] == "move"
+    assert call_order[4][0] == "up"
+    # After: drag trail overlay shows the completed path
+    assert call_order[5][0] == "show_action"
+    assert call_order[5][1] == "drag"
+    assert call_order[5][2]["x"] == 896
+    assert call_order[5][2]["y"] == 480
+    assert call_order[5][2]["start_x"] == 128
+    assert call_order[5][2]["start_y"] == 80
+    assert call_order[-1][0] == "ensure_persistent_ui"
+    assert overlay.show_action.await_count == 2
+    overlay.ensure_persistent_ui.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_execute_action_key_press_supports_shortcuts_and_semantic_navigation() -> None:
     module = _import_actions_module()
     executor = _instantiate_with_supported_kwargs(
