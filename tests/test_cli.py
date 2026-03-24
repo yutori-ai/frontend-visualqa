@@ -15,7 +15,7 @@ def _sample_claim_result(*, url: str, viewport: ViewportConfig) -> ClaimResult:
         status="passed",
         finding="The modal title reads Edit Task.",
         proof={
-            "screenshot_path": "artifacts/run-fake/claim-01/step-00-initial.png",
+            "screenshot_path": "artifacts/run-fake/claim-01/step-00-initial.webp",
             "step": 0,
             "after_action": None,
             "text": None,
@@ -25,7 +25,7 @@ def _sample_claim_result(*, url: str, viewport: ViewportConfig) -> ClaimResult:
         trace={
             "steps_taken": 0,
             "wrong_page_recovered": False,
-            "screenshot_paths": ["artifacts/run-fake/claim-01/step-00-initial.png"],
+            "screenshot_paths": ["artifacts/run-fake/claim-01/step-00-initial.webp"],
             "actions": [],
             "trace_path": None,
         },
@@ -71,7 +71,7 @@ class FakeRunner:
             session_key=kwargs["session_key"],
             final_url=kwargs["url"],
             viewport=kwargs["viewport"],
-            screenshot_path="artifacts/run-fake/screenshot.png",
+            screenshot_path="artifacts/run-fake/screenshot.webp",
         )
 
     async def manage_browser(self, **kwargs: Any) -> BrowserStatusResult:
@@ -193,7 +193,7 @@ def test_handle_verify_closes_runner_and_forwards_browser_config(monkeypatch: An
     assert claim_result["finding"] == "The modal title reads Edit Task."
     assert claim_result["proof"]["step"] == 0
     assert claim_result["page"]["url"] == "http://localhost:3000/tasks/123"
-    assert claim_result["trace"]["screenshot_paths"] == ["artifacts/run-fake/claim-01/step-00-initial.png"]
+    assert claim_result["trace"]["screenshot_paths"] == ["artifacts/run-fake/claim-01/step-00-initial.webp"]
 
 
 def test_handle_screenshot_closes_runner_and_forwards_browser_config(monkeypatch: Any) -> None:

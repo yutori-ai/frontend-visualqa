@@ -54,6 +54,16 @@ def _png_bytes(*, size: tuple[int, int] = (8, 6), color: tuple[int, int, int] = 
     return buffer.getvalue()
 
 
+def _assert_webp_bytes(image_bytes: bytes, *, expected_size: tuple[int, int] | None = None) -> None:
+    assert image_bytes[:4] == b"RIFF"
+    assert b"WEBP" in image_bytes[:16]
+
+    image = Image.open(io.BytesIO(image_bytes))
+    image.load()
+    if expected_size is not None:
+        assert image.size == expected_size
+
+
 @pytest.fixture()
 def example_url() -> str:
     handler = partial(_SilentStaticHandler, directory=str(PACKAGE_ROOT / "examples"))
@@ -145,12 +155,8 @@ async def test_browser_manager_capture_screenshot_prefers_cdp_in_headed_mode() -
     manager = BrowserManager(config=BrowserConfig(headless=False))
 
     screenshot = await manager.capture_screenshot(session)
-    image = Image.open(io.BytesIO(screenshot))
-    image.load()
 
-    assert screenshot[:4] == b"\x89PNG"
-    assert b"PNG" in screenshot[:8]
-    assert image.size == (320, 200)
+    _assert_webp_bytes(screenshot, expected_size=(320, 200))
     assert context.new_cdp_session_calls == 1
     assert cdp_session.send_calls == [
         ("Page.getLayoutMetrics", {}),
@@ -219,10 +225,9 @@ async def test_browser_manager_capture_screenshot_falls_back_to_playwright_in_he
 
     screenshot = await manager.capture_screenshot(session)
 
-    assert screenshot[:4] == b"\x89PNG"
-    assert b"PNG" in screenshot[:8]
+    _assert_webp_bytes(screenshot, expected_size=(1280, 800))
     assert cdp_session.detach_calls == 1
-    assert page.screenshot_calls == [{"type": "png"}]
+    assert page.screenshot_calls == [{"type": "png"}]  # Playwright still captures PNG; conversion to WebP happens after
 
 
 def test_browser_manager_build_cdp_capture_request_defaults_when_metrics_are_missing() -> None:
@@ -281,8 +286,7 @@ async def test_browser_manager_navigates_reuses_session_and_captures_webp(exampl
         assert await session.page.locator("[data-testid='primary-red-button']").is_visible()
 
         screenshot = await manager.capture_screenshot(session)
-        assert screenshot[:4] == b"\x89PNG"
-        assert b"PNG" in screenshot[:8]
+        _assert_webp_bytes(screenshot, expected_size=(1280, 800))
 
         same_session = await manager.get_session("qa-fixture", viewport=viewport, reuse_session=True)
         assert same_session.page is session.page

@@ -47,7 +47,7 @@ class ArtifactManager:
     ) -> str:
         """Persist a screenshot and return its path."""
 
-        path = self.claim_dir(run, claim_index) / f"{label}.png"
+        path = self.claim_dir(run, claim_index) / f"{label}.webp"
         path.write_bytes(image_bytes)
         return str(path)
 
