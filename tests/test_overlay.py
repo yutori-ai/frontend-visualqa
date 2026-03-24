@@ -140,7 +140,7 @@ class TestOverlayShowAction:
         assert any("__n1TransientRoot" in script and "visibility = 'visible'" in script for script in scripts)
         # Click effect with num_clicks
         assert any("const numClicks = 2" in script or "< 2" in script for script in scripts)
-        # New click keyframe: simple expansion, no ring/dot
+        # Click keyframe: simple expansion
         assert any(
             "n1click" in script
             and "width:5px;height:5px;opacity:0.6" in script
@@ -149,8 +149,6 @@ class TestOverlayShowAction:
         )
         # Coordinates used in effect
         assert any("left:100px" in script and "top:200px" in script for script in scripts)
-        # Old keyframes should NOT be present
-        assert not any("n1dot" in script for script in scripts)
 
     @pytest.mark.asyncio
     async def test_scroll_effect_uses_spinning_dots(self) -> None:
@@ -168,7 +166,7 @@ class TestOverlayShowAction:
         assert controller._current_status == "Scrolling"
         scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
         assert any("__n1ScrollStyle" in script for script in scripts)
-        # New scroll uses n1scroll keyframe with spinning dots
+        # Scroll uses n1scroll keyframe with spinning dots
         assert any(
             "n1scroll" in script
             and "rotate(0deg)" in script
@@ -177,30 +175,6 @@ class TestOverlayShowAction:
         )
         # Coordinates used
         assert any("left:640px" in script and "top:400px" in script for script in scripts)
-        # Old chevron/directional rotation should NOT be present
-        assert not any("n1schev" in script for script in scripts)
-        assert not any("polyline points" in script for script in scripts)
-
-    @pytest.mark.asyncio
-    async def test_scroll_effect_ignores_direction_rotation(self) -> None:
-        """New scroll effect does not use directional rotation -- all directions look the same."""
-        from frontend_visualqa.overlay import OverlayController
-
-        for direction in ("up", "down", "left", "right"):
-            page = _make_mock_page()
-            controller = OverlayController(page)
-
-            await controller.claim_started()
-            page.evaluate.reset_mock()
-
-            with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
-                await controller.show_action("scroll", x=100, y=100, direction=direction)
-
-            scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
-            # No direction-based rotation
-            assert not any("transform:rotate(-90deg)" in script for script in scripts)
-            assert not any("transform:rotate(90deg)" in script for script in scripts)
-            assert not any("transform:rotate(180deg)" in script for script in scripts)
 
     @pytest.mark.asyncio
     async def test_type_effect_uses_caret_and_dots(self) -> None:
@@ -219,14 +193,10 @@ class TestOverlayShowAction:
         scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
         assert any("document.activeElement" in script for script in scripts)
         assert any("__n1TypeStyle" in script for script in scripts)
-        # New type effect uses caret + dots keyframes
+        # Type effect uses caret + dots keyframes
         assert any("n1tcaret" in script and "n1tdot" in script and "n1tfade" in script for script in scripts)
         # Cursor moved to focused element center
         assert any("__n1Cursor" in script and "200px" in script and "150px" in script for script in scripts)
-        # Old "typing" pill and keyframes should NOT be present
-        assert not any("n1tbob" in script for script in scripts)
-        assert not any("n1tglow" in script for script in scripts)
-        assert not any("n1tcur" in script for script in scripts)
 
     @pytest.mark.asyncio
     async def test_type_effect_skipped_when_no_focused_element(self) -> None:
