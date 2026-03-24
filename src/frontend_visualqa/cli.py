@@ -12,6 +12,7 @@ from typing import Any
 
 from frontend_visualqa import __version__
 from frontend_visualqa.browser import BrowserManager
+from frontend_visualqa.errors import ConfigurationError
 from frontend_visualqa.mcp_server import close_runners_sync, configure_server, get_mcp_server
 from frontend_visualqa.serialization import serialize_result
 from frontend_visualqa.schemas import BrowserConfig, BrowserMode, ViewportConfig, validate_url
@@ -211,9 +212,13 @@ def _handle_serve(args: argparse.Namespace) -> int:
 
 
 def _handle_verify(args: argparse.Namespace) -> int:
-    result = asyncio.run(_run_verify(args))
+    try:
+        result = asyncio.run(_run_verify(args))
+    except ConfigurationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
     _emit_json(result)
-    return 0
+    return _verify_exit_code(result)
 
 
 def _handle_screenshot(args: argparse.Namespace) -> int:
@@ -241,6 +246,7 @@ def _handle_status(_: argparse.Namespace) -> int:
 
 
 async def _run_verify(args: argparse.Namespace) -> dict[str, Any]:
+    await _preflight_verify_auth()
     runner = _new_runner(
         browser_config=_build_browser_config(args),
         reporters=getattr(args, "reporter", None),
@@ -261,6 +267,38 @@ async def _run_verify(args: argparse.Namespace) -> dict[str, Any]:
         return serialize_result(result)
     finally:
         await runner.close()
+
+
+async def _preflight_verify_auth() -> None:
+    try:
+        from yutori import AsyncYutoriClient, AuthenticationError
+        from yutori.auth.credentials import resolve_api_key
+    except Exception as exc:  # pragma: no cover - dependency should be present in production installs
+        raise ConfigurationError("Yutori SDK is unavailable. Install the frontend-visualqa dependencies and retry.") from exc
+
+    api_key = resolve_api_key()
+    if not api_key:
+        raise ConfigurationError(
+            "Yutori authentication is required for verify. Run 'yutori auth login' or set YUTORI_API_KEY."
+        )
+
+    client = AsyncYutoriClient(api_key=api_key)
+    try:
+        await client.get_usage()
+    except AuthenticationError as exc:
+        raise ConfigurationError(
+            f"Yutori authentication failed: {exc}. Run 'yutori auth login' or set a valid YUTORI_API_KEY."
+        ) from exc
+    except Exception:
+        # Non-auth preflight failures should fall back to the normal verify path.
+        return
+    finally:
+        await client.close()
+
+
+def _verify_exit_code(result: dict[str, Any]) -> int:
+    statuses = [item.get("status") for item in result.get("results", [])]
+    return 0 if statuses and all(status == "passed" for status in statuses) else 1
 
 
 async def _run_screenshot(args: argparse.Namespace) -> dict[str, Any]:
