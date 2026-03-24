@@ -32,6 +32,13 @@ n1 is a pixels-to-actions model trained with RL on live websites. Two capabiliti
     <td align="center" width="50%"><img src="docs/images/dashboard-quota.webp" alt="Dashboard — label says 100% but bar is 65%" width="100%"><br><em>Label says 100% but the bar is only at 2/3rds</em></td>
   </tr></table>
 
+<details>
+<summary><strong>Known limitations</strong></summary>
+
+- **Native `<select>` dropdowns** — n1 cannot see or interact with native HTML `<select>` dropdown options because they render as OS-level widgets outside the browser viewport. If your page uses native selects, replace them with custom in-browser dropdown components for visual testing, or pre-fill the selection via URL parameters.
+
+</details>
+
 ## Install
 
 ### Prerequisites
@@ -184,7 +191,7 @@ Restart Codex after removing.
 
 </details>
 
-## Quick start
+## Examples
 
 The repo includes demo pages you can use immediately — no dev server required:
 
@@ -231,6 +238,35 @@ frontend-visualqa screenshot http://localhost:3000
 frontend-visualqa verify http://localhost:3000/dashboard \
   --claims 'The revenue chart is visible without scrolling'
 ```
+
+<details>
+<summary><strong>More examples</strong></summary>
+
+Navigation hint for claims that require interaction:
+
+```bash
+frontend-visualqa verify http://localhost:8000/ecommerce_store.html \
+  --claims 'The cart badge shows 3 items' \
+  --navigation-hint "Click 'Add to Cart' on the Mechanical Keyboard K7 product card."
+```
+
+Autonomous form filling — n1 picks a date and catches a timezone bug:
+
+```bash
+frontend-visualqa verify 'http://localhost:8000/booking_form.html#step3' \
+  --claims 'The date on the confirmation page matches the date selected on the calendar'
+# → fails: n1 picks a date, books the slot, and catches the off-by-one on the confirmation page
+```
+
+Scrolling to find off-screen content:
+
+```bash
+frontend-visualqa verify http://localhost:8000/analytics_dashboard.html \
+  --claims 'The /api/v1/webhooks endpoint returned a 200 OK status'
+# → fails: n1 scrolls to the request table and finds a 500 Error
+```
+
+</details>
 
 ## MCP tools
 
@@ -287,36 +323,7 @@ frontend-visualqa verify <url> --claims 'claim1' 'claim2' [options]
 
 </details>
 
-<details>
-<summary><strong>More examples</strong></summary>
-
-Navigation hint for claims that require interaction:
-
-```bash
-frontend-visualqa verify http://localhost:8000/ecommerce_store.html \
-  --claims 'The cart badge shows 3 items' \
-  --navigation-hint "Click 'Add to Cart' on the Mechanical Keyboard K7 product card."
-```
-
-Autonomous form filling — pre-fill contact info, then n1 picks a date and catches a timezone bug:
-
-```bash
-frontend-visualqa verify 'http://localhost:8000/booking_form.html#step3' \
-  --claims 'The date on the confirmation page matches the date selected on the calendar'
-# → fails: n1 picks a date, books the slot, and catches the off-by-one on the confirmation page
-```
-
-Scrolling to find off-screen content:
-
-```bash
-frontend-visualqa verify http://localhost:8000/analytics_dashboard.html \
-  --claims 'The /api/v1/webhooks endpoint returned a 200 OK status'
-# → fails: n1 scrolls to the request table and finds a 500 Error
-```
-
-</details>
-
-## Browser modes
+## Browser modes and visualization
 
 | Mode | Flag | Cookies persist? | Use case |
 |------|------|-----------------|----------|
@@ -352,7 +359,8 @@ frontend-visualqa verify http://localhost:3000/dashboard \
 
 </details>
 
-## Action visualization
+<details>
+<summary><strong>Action visualization</strong></summary>
 
 When running in headed mode (`--headed`), the browser shows visual effects illustrating what n1 is doing (clicking, scrolling, typing). To disable it, use `--no-visualize`:
 
@@ -366,6 +374,8 @@ The MCP tool `verify_visual_claims` accepts a per-call `visualize` parameter to 
 
 Overlay elements are automatically hidden during screenshot capture so they never appear in evidence sent to n1 or saved artifacts.
 
+</details>
+
 ## Writing good claims
 
 Claims should be observable, scoped, and provable from pixels.
@@ -377,10 +387,6 @@ Claims should be observable, scoped, and provable from pixels.
 | At 375px width, the stat cards stack in a single column | The dashboard is responsive |
 
 If a claim requires interaction first, use `--navigation-hint` instead of encoding steps in the claim text.
-
-## Known limitations
-
-- **Native `<select>` dropdowns** — n1 cannot see or interact with native HTML `<select>` dropdown options because they render as OS-level widgets outside the browser viewport. If your page uses native selects, replace them with custom in-browser dropdown components for visual testing, or pre-fill the selection via URL parameters.
 
 ## Result statuses
 
@@ -461,11 +467,3 @@ Editable install:
 uv pip install -e .
 ```
 
-## Skill packaging
-
-The canonical skill lives in [skills/frontend-visualqa/SKILL.md](skills/frontend-visualqa/SKILL.md).
-
-- `skills/frontend-visualqa/` is the source of truth.
-- `.agents/skills/frontend-visualqa/` is a compatibility wrapper for Codex and other OpenAI-compatible installers.
-- `.claude-plugin/` and `.cursor-plugin/` contain plugin marketplace manifests.
-- `docs/skill-ecosystem.md` records the packaging rationale.
