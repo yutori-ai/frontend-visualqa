@@ -29,7 +29,7 @@ def _sample_run_result(artifacts_dir: str) -> RunResult:
                 status="passed",
                 finding="Visible heading matched 'Dashboard'.",
                 proof={
-                    "screenshot_path": "artifacts/run-001/claim-01/step-00-initial.png",
+                    "screenshot_path": "artifacts/run-001/claim-01/step-00-initial.webp",
                     "step": 0,
                     "after_action": None,
                     "text": "Visible heading matched 'Dashboard'.",
@@ -39,7 +39,7 @@ def _sample_run_result(artifacts_dir: str) -> RunResult:
                 trace={
                     "steps_taken": 0,
                     "wrong_page_recovered": False,
-                    "screenshot_paths": ["artifacts/run-001/claim-01/step-00-initial.png"],
+                    "screenshot_paths": ["artifacts/run-001/claim-01/step-00-initial.webp"],
                     "actions": [],
                     "trace_path": None,
                 },
@@ -49,7 +49,7 @@ def _sample_run_result(artifacts_dir: str) -> RunResult:
                 status="failed",
                 finding="Progress bar shows 65%, not 100%.",
                 proof={
-                    "screenshot_path": "artifacts/run-001/claim-02/step-01.png",
+                    "screenshot_path": "artifacts/run-001/claim-02/step-01.webp",
                     "step": 1,
                     "after_action": "extract_elements()",
                     "text": "Visible text included '65%'.",
@@ -60,8 +60,8 @@ def _sample_run_result(artifacts_dir: str) -> RunResult:
                     "steps_taken": 1,
                     "wrong_page_recovered": False,
                     "screenshot_paths": [
-                        "artifacts/run-001/claim-02/step-00-initial.png",
-                        "artifacts/run-001/claim-02/step-01.png",
+                        "artifacts/run-001/claim-02/step-00-initial.webp",
+                        "artifacts/run-001/claim-02/step-01.webp",
                     ],
                     "actions": ["extract_elements()"],
                     "trace_path": "artifacts/run-001/claim-02/action_trace.json",
@@ -272,7 +272,7 @@ def test_ctrf_reporter_includes_screenshots_as_attachments(tmp_path: Path) -> No
     t0 = data["results"]["tests"][0]
     assert "attachments" in t0
     assert len(t0["attachments"]) == 2
-    assert t0["attachments"][0]["name"] == "step-00-initial.png"
+    assert t0["attachments"][0]["name"] == "step-00-initial.webp"
     assert t0["attachments"][0]["contentType"] == "image/webp"
     assert t0["attachments"][1]["name"] == "step-00-initial.txt"
     assert t0["attachments"][1]["contentType"] == "text/plain"

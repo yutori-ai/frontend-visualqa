@@ -105,7 +105,7 @@ class FakeArtifactManager:
     def save_screenshot(self, run: RunArtifacts, claim_index: int, label: str, image_bytes: bytes) -> str:
         claim_dir = run.run_dir / f"claim-{claim_index:02d}"
         claim_dir.mkdir(parents=True, exist_ok=True)
-        path = claim_dir / f"{label}.png"
+        path = claim_dir / f"{label}.webp"
         path.write_bytes(image_bytes)
         return str(path)
 
@@ -304,7 +304,7 @@ async def test_claim_verifier_returns_structured_verdict_from_record_claim_resul
     assert "red button" in _field(result, "finding")
     assert _field(result, "page").url == "http://fixture.local/page"
     assert _field(result, "trace").steps_taken == 0
-    assert _field(result, "proof").screenshot_path.endswith("step-00-initial.png")
+    assert _field(result, "proof").screenshot_path.endswith("step-00-initial.webp")
     assert _field(result, "proof").step == 0
     assert _field(result, "proof").text is None
     assert n1_client.calls
@@ -1166,7 +1166,7 @@ async def test_claim_verifier_normalizes_post_action_screenshot_failures_to_not_
     assert action_executor.calls == [("goto_url", {"url": "http://fixture.local/modal"})]
     assert _field(result, "status") == "not_testable"
     assert "Failed to capture screenshot for step-01" in _field(result, "finding")
-    assert _field(_field(result, "proof"), "screenshot_path").endswith("step-00-initial.png")
+    assert _field(_field(result, "proof"), "screenshot_path").endswith("step-00-initial.webp")
     assert _field(_field(result, "proof"), "step") == 0
     assert _field(_field(result, "proof"), "after_action") is None
     assert _field(_field(result, "trace"), "steps_taken") == 1
@@ -1198,10 +1198,10 @@ async def test_claim_verifier_preserves_partial_result_on_cancellation(tmp_path:
 
     assert partial is not None
     assert _field(partial, "status") == "inconclusive"
-    assert _field(_field(partial, "proof"), "screenshot_path").endswith("step-00-initial.png")
+    assert _field(_field(partial, "proof"), "screenshot_path").endswith("step-00-initial.webp")
     assert _field(_field(partial, "proof"), "step") == 0
     assert _field(_field(partial, "trace"), "steps_taken") == 0
-    assert _field(_field(partial, "trace"), "screenshot_paths")[0].endswith("step-00-initial.png")
+    assert _field(_field(partial, "trace"), "screenshot_paths")[0].endswith("step-00-initial.webp")
 
 
 @pytest.mark.asyncio

@@ -18,6 +18,8 @@ from frontend_visualqa.schemas import BrowserConfig, BrowserMode, BrowserSession
 
 DEFAULT_NAVIGATION_TIMEOUT_MS = 20_000
 DEFAULT_SETTLE_DELAY_SECONDS = 1.0
+DEFAULT_SCREENSHOT_JPEG_QUALITY = 75
+DEFAULT_SCREENSHOT_WEBP_QUALITY = 90
 logger = logging.getLogger(__name__)
 PERSISTENT_SESSION_KEY_ERROR = (
     "Persistent browser mode supports only the 'default' session. "
@@ -35,7 +37,7 @@ class BrowserSession:
     viewport: ViewportConfig
 
 
-def image_bytes_to_data_url(image_bytes: bytes, mime_type: str = "image/png") -> str:
+def image_bytes_to_data_url(image_bytes: bytes, mime_type: str = "image/webp") -> str:
     """Encode raw image bytes as a data URL."""
 
     encoded = base64.b64encode(image_bytes).decode("utf-8")
@@ -138,10 +140,10 @@ class BrowserManager:
         return await self.goto(session, url)
 
     async def capture_screenshot(self, session: BrowserSession) -> bytes:
-        """Capture the current page viewport as PNG bytes."""
+        """Capture the current page viewport as WebP bytes."""
 
         image = await self._capture_screenshot_image(session)
-        return self._image_to_png_bytes(image)
+        return self._image_to_webp_bytes(image)
 
     async def _capture_screenshot_image(self, session: BrowserSession) -> Image.Image:
         if not self.headless:
@@ -243,15 +245,18 @@ class BrowserManager:
         return image
 
     @staticmethod
-    def _image_to_png_bytes(image: Image.Image) -> bytes:
+    def _image_to_jpeg_bytes(image: Image.Image) -> bytes:
         buffer = io.BytesIO()
-        image.save(buffer, format="PNG")
+        rgb_image = image.convert("RGB")
+        rgb_image.save(buffer, format="JPEG", quality=DEFAULT_SCREENSHOT_JPEG_QUALITY)
         return buffer.getvalue()
 
     @staticmethod
     def _image_to_webp_bytes(image: Image.Image) -> bytes:
+        jpeg_bytes = BrowserManager._image_to_jpeg_bytes(image)
+        jpeg_image = BrowserManager._image_from_bytes(jpeg_bytes)
         buffer = io.BytesIO()
-        image.save(buffer, format="WEBP", quality=90)
+        jpeg_image.save(buffer, format="WEBP", quality=DEFAULT_SCREENSHOT_WEBP_QUALITY)
         return buffer.getvalue()
 
     async def set_viewport(self, session_key: str, viewport: ViewportConfig) -> BrowserSession:

@@ -157,7 +157,7 @@ class FakeArtifactManager:
     def save_screenshot(self, run: RunArtifacts, claim_index: int, label: str, image_bytes: bytes) -> str:
         claim_dir = run.run_dir / f"claim-{claim_index:02d}"
         claim_dir.mkdir(parents=True, exist_ok=True)
-        path = claim_dir / f"{label}.png"
+        path = claim_dir / f"{label}.webp"
         path.write_bytes(image_bytes)
         return str(path)
 
@@ -268,7 +268,7 @@ def _result(name: str, status: str, viewport: ViewportConfig) -> ClaimResult:
         status=status,
         finding=f"{name}: {status}",
         proof={
-            "screenshot_path": "artifacts/run-001/claim-01/step-01.png",
+            "screenshot_path": "artifacts/run-001/claim-01/step-01.webp",
             "step": 1,
             "after_action": "extract_elements()",
             "text": f"{name}: {status}",
@@ -279,8 +279,8 @@ def _result(name: str, status: str, viewport: ViewportConfig) -> ClaimResult:
             "steps_taken": 1,
             "wrong_page_recovered": False,
             "screenshot_paths": [
-                "artifacts/run-001/claim-01/step-00-initial.png",
-                "artifacts/run-001/claim-01/step-01.png",
+                "artifacts/run-001/claim-01/step-00-initial.webp",
+                "artifacts/run-001/claim-01/step-01.webp",
             ],
             "actions": ["extract_elements()"],
             "trace_path": "artifacts/run-001/claim-01/action_trace.json",
@@ -323,7 +323,7 @@ async def test_runner_run_aggregates_claim_results_and_resets_between_claims(
     assert result.results[0].finding == "Claim one: passed"
     assert result.results[0].page.url == "http://fixture.local/page"
     assert result.results[0].trace.steps_taken == 1
-    assert result.results[0].proof.screenshot_path.endswith("step-01.png")
+    assert result.results[0].proof.screenshot_path.endswith("step-01.webp")
     assert len([call for call in browser.goto_calls if call == ("qa-session", "http://fixture.local/page")]) >= 2
     assert verifier.calls
     assert verifier.calls[0]["claim"] == "Claim one"
@@ -703,7 +703,7 @@ async def test_runner_uses_partial_claim_result_when_timeout_interrupts_verifier
         status="inconclusive",
         finding="Claim verification timed out after 1s before a verdict was recorded.",
         proof={
-            "screenshot_path": "artifacts/run-001/claim-01/step-00-initial.png",
+            "screenshot_path": "artifacts/run-001/claim-01/step-00-initial.webp",
             "step": 0,
             "after_action": None,
             "text": None,
@@ -713,7 +713,7 @@ async def test_runner_uses_partial_claim_result_when_timeout_interrupts_verifier
         trace={
             "steps_taken": 1,
             "wrong_page_recovered": False,
-            "screenshot_paths": ["artifacts/run-001/claim-01/step-00-initial.png"],
+            "screenshot_paths": ["artifacts/run-001/claim-01/step-00-initial.webp"],
             "actions": ["scroll(direction='down', amount=300)"],
             "trace_path": "artifacts/run-001/claim-01/action_trace.json",
         },
@@ -741,7 +741,7 @@ async def test_runner_uses_partial_claim_result_when_timeout_interrupts_verifier
 
     assert [item.status for item in result.results] == ["inconclusive"]
     assert result.results[0].proof is not None
-    assert result.results[0].proof.screenshot_path.endswith("step-00-initial.png")
+    assert result.results[0].proof.screenshot_path.endswith("step-00-initial.webp")
     assert result.results[0].trace.steps_taken == 1
     assert result.results[0].trace.actions == ["scroll(direction='down', amount=300)"]
 
@@ -758,7 +758,7 @@ async def test_runner_uses_partial_claim_result_when_verifier_crashes(
         status="inconclusive",
         finding="Verification crashed unexpectedly before returning a verdict: unexpected verifier crash",
         proof={
-            "screenshot_path": "artifacts/run-001/claim-01/step-01.png",
+            "screenshot_path": "artifacts/run-001/claim-01/step-01.webp",
             "step": 1,
             "after_action": "extract_elements()",
             "text": "Visible text included 'Dashboard'.",
@@ -769,8 +769,8 @@ async def test_runner_uses_partial_claim_result_when_verifier_crashes(
             "steps_taken": 1,
             "wrong_page_recovered": False,
             "screenshot_paths": [
-                "artifacts/run-001/claim-01/step-00-initial.png",
-                "artifacts/run-001/claim-01/step-01.png",
+                "artifacts/run-001/claim-01/step-00-initial.webp",
+                "artifacts/run-001/claim-01/step-01.webp",
             ],
             "actions": ["extract_elements()"],
             "trace_path": "artifacts/run-001/claim-01/action_trace.json",
@@ -847,7 +847,7 @@ async def test_runner_preserves_partial_claim_result_when_run_timeout_interrupts
         status="inconclusive",
         finding="Run timed out after 0.01s before this claim could finish.",
         proof={
-            "screenshot_path": "artifacts/run-001/claim-01/step-01.png",
+            "screenshot_path": "artifacts/run-001/claim-01/step-01.webp",
             "step": 1,
             "after_action": "extract_elements()",
             "text": "Visible text included 'Dashboard'.",
@@ -858,8 +858,8 @@ async def test_runner_preserves_partial_claim_result_when_run_timeout_interrupts
             "steps_taken": 1,
             "wrong_page_recovered": False,
             "screenshot_paths": [
-                "artifacts/run-001/claim-01/step-00-initial.png",
-                "artifacts/run-001/claim-01/step-01.png",
+                "artifacts/run-001/claim-01/step-00-initial.webp",
+                "artifacts/run-001/claim-01/step-01.webp",
             ],
             "actions": ["extract_elements()"],
             "trace_path": "artifacts/run-001/claim-01/action_trace.json",
