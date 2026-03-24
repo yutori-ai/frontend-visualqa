@@ -33,7 +33,7 @@ n1 is a pixels-to-actions model trained with RL on live websites. Two capabiliti
   </tr></table>
 
 <details>
-<summary><strong>Known limitations</strong></summary>
+<summary><strong>Known limitation</strong></summary>
 
 - **Native `<select>` dropdowns** — n1 cannot see or interact with native HTML `<select>` dropdown options because they render as OS-level widgets outside the browser viewport. If your page uses native selects, replace them with custom in-browser dropdown components for visual testing, or pre-fill the selection via URL parameters.
 
