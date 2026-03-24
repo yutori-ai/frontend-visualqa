@@ -35,6 +35,13 @@ jobs:
     environment:
       name: pypi
     steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install twine
+        run: python -m pip install --upgrade twine
+
       - name: Download dist artifacts
         uses: actions/download-artifact@v4
         with:
@@ -42,6 +49,7 @@ jobs:
           path: dist/
 
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e  # release/v1 as of 2026-03-24
-        with:
-          password: ${{ secrets.PYPI_API_TOKEN }}
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: twine upload dist/*
