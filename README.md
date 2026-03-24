@@ -302,9 +302,8 @@ Autonomous form filling — pre-fill contact info, then n1 picks a date and catc
 
 ```bash
 frontend-visualqa verify 'http://localhost:8000/booking_form.html#step3' \
-  --claims 'The date on the confirmation page matches the date I selected on the calendar' \
-  --navigation-hint 'Pick any available date and time slot, then click Review Booking.'
-# → fails: n1 selects March 25 but confirmation shows March 24 (off-by-one timezone bug)
+  --claims 'The date on the confirmation page matches the date selected on the calendar'
+# → fails: n1 picks a date, books the slot, and catches the off-by-one on the confirmation page
 ```
 
 Scrolling to find off-screen content:
