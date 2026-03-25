@@ -247,7 +247,7 @@ class OverlayController:
             await self._show_click_effect(x, y, num_clicks)
             await self.set_status("Clicking")
         elif action_type == "scroll":
-            await self._show_scroll_effect(x, y, direction)
+            await self._show_scroll_effect(x, y)
             await self.set_status("Scrolling")
         elif action_type == "type":
             await self._show_type_effect(center)
@@ -326,7 +326,7 @@ class OverlayController:
             }}"""
         )
 
-    async def _show_scroll_effect(self, x: int, y: int, direction: str) -> None:
+    async def _show_scroll_effect(self, x: int, y: int) -> None:
         await self._ensure_transient_root()
         await self._eval(
             f"""() => {{
