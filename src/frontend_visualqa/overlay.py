@@ -238,7 +238,7 @@ class OverlayController:
                 await self._move_cursor(center["x"], center["y"])
         elif action_type == "drag":
             await self._move_cursor(start_x, start_y)
-        elif action_type not in {"type", "drag"}:
+        else:
             await self._move_cursor(x, y)
 
         await asyncio.sleep(CURSOR_TRANSITION_MS / 1000)
