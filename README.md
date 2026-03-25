@@ -201,11 +201,11 @@ cd /path/to/frontend-visualqa
 lsof -ti:8000 | xargs kill 2>/dev/null; python3 -m http.server 8000 -d examples &
 ```
 
-**Self-correcting navigation** — start on the wrong page and watch n1 find its way. In headed mode, you'll see click ripples, scroll indicators, and a status chip showing what n1 is doing:
+**Self-correcting navigation** — start on the wrong page and watch n1 find its way. In headed mode, a branded cursor follows every action with click pulses, scroll dots, and a status chip:
 
 ```bash
 # n1 lands on the product catalog, clicks through to find the product detail page
-# Green click ripples and a status HUD show each action as it happens
+# The Yutori cursor leads each action with visual feedback
 frontend-visualqa verify http://localhost:8000/ecommerce_store.html \
   --headed \
   --claims 'The product detail page shows Wireless Headphones Pro priced at $149.99'
@@ -312,7 +312,7 @@ frontend-visualqa verify <url> --claims 'claim1' 'claim2' [options]
 | `--width` / `--height` | 1280 / 800 | Viewport size |
 | `--device-scale-factor` | 1.0 | DPR |
 | `--headed` | off | Show the browser (implies `--visualize`) |
-| `--visualize` / `--no-visualize` | on when headed | Show in-browser action overlay (click ripples, scroll indicators, status chip) |
+| `--visualize` / `--no-visualize` | on when headed | Show in-browser action overlay (cursor, click pulses, scroll dots, status chip) |
 | `--browser-mode` | ephemeral | `ephemeral` or `persistent` |
 | `--user-data-dir` | | Custom profile directory |
 | `--session-key` | default | Named browser session |
