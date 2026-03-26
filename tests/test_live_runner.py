@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import json
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -65,6 +66,54 @@ async def _overlay_dom_state(page: Any) -> dict[str, Any]:
             };
         }"""
     )
+
+
+@contextlib.asynccontextmanager
+async def instrumented_overlay_lifecycle(runner, OverlayController, run_kwargs):
+    """Instrument OverlayController and run the runner, yielding (result, lifecycle_samples)."""
+    lifecycle_samples: list[dict[str, Any]] = []
+    originals = {
+        "claim_started": OverlayController.claim_started,
+        "claim_ended": OverlayController.claim_ended,
+        "before_screenshot": OverlayController.before_screenshot,
+        "after_screenshot": OverlayController.after_screenshot,
+    }
+
+    async def _record_state(controller):
+        page = getattr(controller, "_page", None) or getattr(controller, "page", None)
+        assert page is not None, "OverlayController must expose a page reference"
+        return await _overlay_dom_state(page)
+
+    def _make_instrumented(phase_name, original):
+        async def instrumented(self):
+            error = None
+            try:
+                await original(self)
+            except Exception as exc:  # pragma: no cover
+                error = exc
+            finally:
+                lifecycle_samples.append(
+                    {"phase": phase_name, "state": await _record_state(self), "error": error}
+                )
+        return instrumented
+
+    OverlayController.claim_started = _make_instrumented("after_claim_started", originals["claim_started"])
+    OverlayController.claim_ended = _make_instrumented("after_claim_ended", originals["claim_ended"])
+    OverlayController.before_screenshot = _make_instrumented("before_screenshot", originals["before_screenshot"])
+    OverlayController.after_screenshot = _make_instrumented("after_screenshot", originals["after_screenshot"])
+
+    try:
+        result = await runner.run(**run_kwargs)
+        yield result, lifecycle_samples
+    except Exception as exc:
+        message = str(exc).lower()
+        if "browser" in message and ("launch" in message or "display" in message or "headed" in message):
+            pytest.skip(f"headed browser unavailable in this environment: {exc}")
+        raise
+    finally:
+        for name, original in originals.items():
+            setattr(OverlayController, name, original)
+        await runner.close()
 
 
 @pytest.mark.asyncio
@@ -241,145 +290,72 @@ async def test_live_runner_headed_overlay_hides_restores_and_cleans_up(
         claim_verifier=claim_verifier,
     )
 
-    lifecycle_samples: list[dict[str, Any]] = []
-    original_claim_started = OverlayController.claim_started
-    original_claim_ended = OverlayController.claim_ended
-    original_before_screenshot = OverlayController.before_screenshot
-    original_after_screenshot = OverlayController.after_screenshot
+    run_kwargs = dict(
+        url=f"{example_server}/test_page.html",
+        claims=["The modal title reads 'Edit Task'"],
+        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+        navigation_hint="Click the first task row to open the task modal before judging the claim.",
+        visualize=True,
+    )
 
-    async def _record_state(controller: Any) -> dict[str, Any]:
-        page = getattr(controller, "_page", None)
-        if page is None:
-            page = getattr(controller, "page", None)
-        assert page is not None, "OverlayController must expose a page reference"
-        return await _overlay_dom_state(page)
+    async with instrumented_overlay_lifecycle(runner, OverlayController, run_kwargs) as (result, lifecycle_samples):
+        assert result.overall_status == "completed"
+        assert [item.status for item in result.results] == ["passed"]
+        assert "Visible dialog title matched" in result.results[0].finding
+        assert result.results[0].trace.actions == ["left_click([419, 348])"]
+        assert result.results[0].trace.steps_taken == 1
+        assert all(Path(path).exists() for path in result.results[0].trace.screenshot_paths)
 
-    async def instrumented_claim_started(self: Any) -> None:
-        error: Exception | None = None
-        try:
-            await original_claim_started(self)
-        except Exception as exc:  # pragma: no cover - surfaced through assertions below
-            error = exc
-        finally:
-            lifecycle_samples.append(
-                {"phase": "after_claim_started", "state": await _record_state(self), "error": error}
-            )
+        before_samples = [sample for sample in lifecycle_samples if sample["phase"] == "before_screenshot"]
+        after_samples = [sample for sample in lifecycle_samples if sample["phase"] == "after_screenshot"]
+        started_samples = [sample for sample in lifecycle_samples if sample["phase"] == "after_claim_started"]
+        ended_samples = [sample for sample in lifecycle_samples if sample["phase"] == "after_claim_ended"]
 
-    async def instrumented_claim_ended(self: Any) -> None:
-        error: Exception | None = None
-        try:
-            await original_claim_ended(self)
-        except Exception as exc:  # pragma: no cover - surfaced through assertions below
-            error = exc
-        finally:
-            lifecycle_samples.append(
-                {"phase": "after_claim_ended", "state": await _record_state(self), "error": error}
-            )
+        assert started_samples, "overlay claim_started should inject persistent and transient roots"
+        assert ended_samples, "overlay claim_ended should clean up overlay roots"
+        # Initial screenshot is taken before overlay injection (no flash),
+        # so this one-action flow should produce exactly one post-action pair.
+        assert len(before_samples) == 1, "expected exactly one screenshot hide step after the action"
+        assert len(after_samples) == 1, "expected exactly one restore step after the action"
 
-    async def instrumented_before_screenshot(self: Any) -> None:
-        error: Exception | None = None
-        try:
-            await original_before_screenshot(self)
-        except Exception as exc:  # pragma: no cover - surfaced through assertions below
-            error = exc
-        finally:
-            lifecycle_samples.append(
-                {"phase": "before_screenshot", "state": await _record_state(self), "error": error}
-            )
+        for sample in before_samples:
+            state = sample["state"]
+            assert sample["error"] is None
+            assert state["persistent"]["present"] is True
+            assert state["persistent"]["display"] != "none"
+            assert state["persistent"]["visibility"] == "hidden"
+            assert state["persistent"]["opacity"] == "0"
+            assert state["transient"]["present"] is True
+            assert state["transient"]["display"] != "none"
+            assert state["transient"]["visibility"] == "hidden"
+            assert state["transient"]["opacity"] == "0"
 
-    async def instrumented_after_screenshot(self: Any) -> None:
-        error: Exception | None = None
-        try:
-            await original_after_screenshot(self)
-        except Exception as exc:  # pragma: no cover - surfaced through assertions below
-            error = exc
-        finally:
-            lifecycle_samples.append(
-                {"phase": "after_screenshot", "state": await _record_state(self), "error": error}
-            )
+        for sample in after_samples:
+            state = sample["state"]
+            assert sample["error"] is None
+            assert state["persistent"]["present"] is True
+            assert state["persistent"]["display"] != "none"
+            assert state["persistent"]["visibility"] == "visible"
+            assert state["persistent"]["opacity"] == "1"
+            assert state["transient"]["present"] is True
+            assert state["transient"]["display"] != "none"
+            assert state["transient"]["visibility"] == "visible"
+            assert state["transient"]["opacity"] == "1"
 
-    OverlayController.claim_started = instrumented_claim_started
-    OverlayController.claim_ended = instrumented_claim_ended
-    OverlayController.before_screenshot = instrumented_before_screenshot
-    OverlayController.after_screenshot = instrumented_after_screenshot
+        started_state = started_samples[0]["state"]
+        assert started_samples[0]["error"] is None
+        assert started_state["persistent"]["present"] is True
+        assert started_state["persistent"]["display"] != "none"
+        assert started_state["persistent"]["visibility"] == "visible"
+        assert started_state["persistent"]["opacity"] == "1"
+        assert started_state["chip"]["present"] is True
+        assert started_state["chip"]["text"].upper() == "ANALYZING"
 
-    try:
-        result = await runner.run(
-            url=f"{example_server}/test_page.html",
-            claims=["The modal title reads 'Edit Task'"],
-            viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
-            navigation_hint="Click the first task row to open the task modal before judging the claim.",
-            visualize=True,
-        )
-    except Exception as exc:
-        message = str(exc).lower()
-        if "browser" in message and ("launch" in message or "display" in message or "headed" in message):
-            pytest.skip(f"headed browser unavailable in this environment: {exc}")
-        raise
-    finally:
-        OverlayController.claim_started = original_claim_started
-        OverlayController.claim_ended = original_claim_ended
-        OverlayController.before_screenshot = original_before_screenshot
-        OverlayController.after_screenshot = original_after_screenshot
-        await runner.close()
-
-    assert result.overall_status == "completed"
-    assert [item.status for item in result.results] == ["passed"]
-    assert "Visible dialog title matched" in result.results[0].finding
-    assert result.results[0].trace.actions == ["left_click([419, 348])"]
-    assert result.results[0].trace.steps_taken == 1
-    assert all(Path(path).exists() for path in result.results[0].trace.screenshot_paths)
-
-    before_samples = [sample for sample in lifecycle_samples if sample["phase"] == "before_screenshot"]
-    after_samples = [sample for sample in lifecycle_samples if sample["phase"] == "after_screenshot"]
-    started_samples = [sample for sample in lifecycle_samples if sample["phase"] == "after_claim_started"]
-    ended_samples = [sample for sample in lifecycle_samples if sample["phase"] == "after_claim_ended"]
-
-    assert started_samples, "overlay claim_started should inject persistent and transient roots"
-    assert ended_samples, "overlay claim_ended should clean up overlay roots"
-    # Initial screenshot is taken before overlay injection (no flash),
-    # so this one-action flow should produce exactly one post-action pair.
-    assert len(before_samples) == 1, "expected exactly one screenshot hide step after the action"
-    assert len(after_samples) == 1, "expected exactly one restore step after the action"
-
-    for sample in before_samples:
-        state = sample["state"]
-        assert sample["error"] is None
-        assert state["persistent"]["present"] is True
-        assert state["persistent"]["display"] != "none"
-        assert state["persistent"]["visibility"] == "hidden"
-        assert state["persistent"]["opacity"] == "0"
-        assert state["transient"]["present"] is True
-        assert state["transient"]["display"] != "none"
-        assert state["transient"]["visibility"] == "hidden"
-        assert state["transient"]["opacity"] == "0"
-
-    for sample in after_samples:
-        state = sample["state"]
-        assert sample["error"] is None
-        assert state["persistent"]["present"] is True
-        assert state["persistent"]["display"] != "none"
-        assert state["persistent"]["visibility"] == "visible"
-        assert state["persistent"]["opacity"] == "1"
-        assert state["transient"]["present"] is True
-        assert state["transient"]["display"] != "none"
-        assert state["transient"]["visibility"] == "visible"
-        assert state["transient"]["opacity"] == "1"
-
-    started_state = started_samples[0]["state"]
-    assert started_samples[0]["error"] is None
-    assert started_state["persistent"]["present"] is True
-    assert started_state["persistent"]["display"] != "none"
-    assert started_state["persistent"]["visibility"] == "visible"
-    assert started_state["persistent"]["opacity"] == "1"
-    assert started_state["chip"]["present"] is True
-    assert started_state["chip"]["text"].upper() == "ANALYZING"
-
-    ended_state = ended_samples[0]["state"]
-    assert ended_samples[0]["error"] is None
-    assert ended_state["persistent"]["present"] is False
-    assert ended_state["transient"]["present"] is False
-    assert ended_state["chip"]["present"] is False
+        ended_state = ended_samples[0]["state"]
+        assert ended_samples[0]["error"] is None
+        assert ended_state["persistent"]["present"] is False
+        assert ended_state["transient"]["present"] is False
+        assert ended_state["chip"]["present"] is False
 
 
 @pytest.mark.asyncio
@@ -426,116 +402,43 @@ async def test_live_runner_headed_overlay_zero_action_path_skips_hide_restore(
         claim_verifier=claim_verifier,
     )
 
-    lifecycle_samples: list[dict[str, Any]] = []
-    original_claim_started = OverlayController.claim_started
-    original_claim_ended = OverlayController.claim_ended
-    original_before_screenshot = OverlayController.before_screenshot
-    original_after_screenshot = OverlayController.after_screenshot
+    run_kwargs = dict(
+        url=f"{example_server}/test_page.html",
+        claims=["The page title reads 'Frontend Visual QA Playground'"],
+        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+        visualize=True,
+    )
 
-    async def _record_state(controller: Any) -> dict[str, Any]:
-        page = getattr(controller, "_page", None)
-        if page is None:
-            page = getattr(controller, "page", None)
-        assert page is not None, "OverlayController must expose a page reference"
-        return await _overlay_dom_state(page)
+    async with instrumented_overlay_lifecycle(runner, OverlayController, run_kwargs) as (result, lifecycle_samples):
+        assert result.overall_status == "completed"
+        assert [item.status for item in result.results] == ["passed"]
+        assert result.results[0].trace.actions == []
+        assert result.results[0].trace.steps_taken == 0
+        assert len(result.results[0].trace.screenshot_paths) == 1
+        assert result.results[0].proof is not None
+        assert result.results[0].proof.step == 0
+        assert result.results[0].proof.after_action is None
 
-    async def instrumented_claim_started(self: Any) -> None:
-        error: Exception | None = None
-        try:
-            await original_claim_started(self)
-        except Exception as exc:  # pragma: no cover - surfaced through assertions below
-            error = exc
-        finally:
-            lifecycle_samples.append(
-                {"phase": "after_claim_started", "state": await _record_state(self), "error": error}
-            )
+        before_samples = [sample for sample in lifecycle_samples if sample["phase"] == "before_screenshot"]
+        after_samples = [sample for sample in lifecycle_samples if sample["phase"] == "after_screenshot"]
+        started_samples = [sample for sample in lifecycle_samples if sample["phase"] == "after_claim_started"]
+        ended_samples = [sample for sample in lifecycle_samples if sample["phase"] == "after_claim_ended"]
 
-    async def instrumented_claim_ended(self: Any) -> None:
-        error: Exception | None = None
-        try:
-            await original_claim_ended(self)
-        except Exception as exc:  # pragma: no cover - surfaced through assertions below
-            error = exc
-        finally:
-            lifecycle_samples.append(
-                {"phase": "after_claim_ended", "state": await _record_state(self), "error": error}
-            )
+        assert started_samples, "overlay claim_started should inject persistent and transient roots"
+        assert ended_samples, "overlay claim_ended should clean up overlay roots"
+        assert before_samples == []
+        assert after_samples == []
 
-    async def instrumented_before_screenshot(self: Any) -> None:
-        error: Exception | None = None
-        try:
-            await original_before_screenshot(self)
-        except Exception as exc:  # pragma: no cover - surfaced through assertions below
-            error = exc
-        finally:
-            lifecycle_samples.append(
-                {"phase": "before_screenshot", "state": await _record_state(self), "error": error}
-            )
+        started_state = started_samples[0]["state"]
+        assert started_samples[0]["error"] is None
+        assert started_state["persistent"]["present"] is True
+        assert started_state["persistent"]["visibility"] == "visible"
+        assert started_state["persistent"]["opacity"] == "1"
+        assert started_state["chip"]["present"] is True
+        assert started_state["chip"]["text"].upper() == "ANALYZING"
 
-    async def instrumented_after_screenshot(self: Any) -> None:
-        error: Exception | None = None
-        try:
-            await original_after_screenshot(self)
-        except Exception as exc:  # pragma: no cover - surfaced through assertions below
-            error = exc
-        finally:
-            lifecycle_samples.append(
-                {"phase": "after_screenshot", "state": await _record_state(self), "error": error}
-            )
-
-    OverlayController.claim_started = instrumented_claim_started
-    OverlayController.claim_ended = instrumented_claim_ended
-    OverlayController.before_screenshot = instrumented_before_screenshot
-    OverlayController.after_screenshot = instrumented_after_screenshot
-
-    try:
-        result = await runner.run(
-            url=f"{example_server}/test_page.html",
-            claims=["The page title reads 'Frontend Visual QA Playground'"],
-            viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
-            visualize=True,
-        )
-    except Exception as exc:
-        message = str(exc).lower()
-        if "browser" in message and ("launch" in message or "display" in message or "headed" in message):
-            pytest.skip(f"headed browser unavailable in this environment: {exc}")
-        raise
-    finally:
-        OverlayController.claim_started = original_claim_started
-        OverlayController.claim_ended = original_claim_ended
-        OverlayController.before_screenshot = original_before_screenshot
-        OverlayController.after_screenshot = original_after_screenshot
-        await runner.close()
-
-    assert result.overall_status == "completed"
-    assert [item.status for item in result.results] == ["passed"]
-    assert result.results[0].trace.actions == []
-    assert result.results[0].trace.steps_taken == 0
-    assert len(result.results[0].trace.screenshot_paths) == 1
-    assert result.results[0].proof is not None
-    assert result.results[0].proof.step == 0
-    assert result.results[0].proof.after_action is None
-
-    before_samples = [sample for sample in lifecycle_samples if sample["phase"] == "before_screenshot"]
-    after_samples = [sample for sample in lifecycle_samples if sample["phase"] == "after_screenshot"]
-    started_samples = [sample for sample in lifecycle_samples if sample["phase"] == "after_claim_started"]
-    ended_samples = [sample for sample in lifecycle_samples if sample["phase"] == "after_claim_ended"]
-
-    assert started_samples, "overlay claim_started should inject persistent and transient roots"
-    assert ended_samples, "overlay claim_ended should clean up overlay roots"
-    assert before_samples == []
-    assert after_samples == []
-
-    started_state = started_samples[0]["state"]
-    assert started_samples[0]["error"] is None
-    assert started_state["persistent"]["present"] is True
-    assert started_state["persistent"]["visibility"] == "visible"
-    assert started_state["persistent"]["opacity"] == "1"
-    assert started_state["chip"]["present"] is True
-    assert started_state["chip"]["text"].upper() == "ANALYZING"
-
-    ended_state = ended_samples[0]["state"]
-    assert ended_samples[0]["error"] is None
-    assert ended_state["persistent"]["present"] is False
-    assert ended_state["transient"]["present"] is False
-    assert ended_state["chip"]["present"] is False
+        ended_state = ended_samples[0]["state"]
+        assert ended_samples[0]["error"] is None
+        assert ended_state["persistent"]["present"] is False
+        assert ended_state["transient"]["present"] is False
+        assert ended_state["chip"]["present"] is False

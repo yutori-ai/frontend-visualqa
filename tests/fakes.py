@@ -2,13 +2,28 @@
 
 from __future__ import annotations
 
+import inspect
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from frontend_visualqa.artifacts import RunArtifacts
+
 
 def is_bootstrap_step_artifact(path: str | None) -> bool:
     return bool(path) and Path(path).name.startswith("step-00")
+
+
+def instantiate_with_supported_kwargs(factory: Any, **candidates: Any) -> Any:
+    signature = inspect.signature(factory)
+    kwargs = {
+        name: value
+        for name, value in candidates.items()
+        if name in signature.parameters
+        and signature.parameters[name].kind in {inspect.Parameter.KEYWORD_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD}
+    }
+    return factory(**kwargs)
 
 
 @dataclass
@@ -62,3 +77,41 @@ class FakeN1Client:
 
     async def close(self) -> None:
         return None
+
+
+class FakeArtifactManager:
+    def __init__(self, base_dir: Path, run_id: str = "run-test") -> None:
+        self.base_dir = base_dir
+        self.run = RunArtifacts(run_id=run_id, run_dir=base_dir / run_id)
+        self.run.run_dir.mkdir(parents=True, exist_ok=True)
+
+    def create_run(self, prefix: str = "run", run_id: str | None = None) -> RunArtifacts:
+        del prefix, run_id
+        return self.run
+
+    def save_screenshot(self, run: RunArtifacts, claim_index: int, label: str, image_bytes: bytes) -> str:
+        claim_dir = run.run_dir / f"claim-{claim_index:02d}"
+        claim_dir.mkdir(parents=True, exist_ok=True)
+        path = claim_dir / f"{label}.webp"
+        path.write_bytes(image_bytes)
+        return str(path)
+
+    def save_rich_trace(self, run: RunArtifacts, claim_index: int, events: list[dict[str, Any]]) -> str:
+        claim_dir = run.run_dir / f"claim-{claim_index:02d}"
+        claim_dir.mkdir(parents=True, exist_ok=True)
+        path = claim_dir / "trace.json"
+        path.write_text(json.dumps(events))
+        return str(path)
+
+    def save_proof_text(self, run: RunArtifacts, claim_index: int, label: str, text: str) -> str:
+        claim_dir = run.run_dir / f"claim-{claim_index:02d}"
+        claim_dir.mkdir(parents=True, exist_ok=True)
+        path = claim_dir / f"{label}.txt"
+        path.write_text(text, encoding="utf-8")
+        return str(path)
+
+    def save_json(self, run: RunArtifacts, relative_path: str, payload: dict[str, Any]) -> str:
+        path = self.run.run_dir / relative_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(payload))
+        return str(path)

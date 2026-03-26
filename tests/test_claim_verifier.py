@@ -13,7 +13,7 @@ import pytest
 from frontend_visualqa.artifacts import RunArtifacts
 from frontend_visualqa.schemas import ViewportConfig
 
-from fakes import FakeFunction, FakeMessage, FakeN1Client, FakeToolCall, is_bootstrap_step_artifact
+from fakes import FakeArtifactManager, FakeFunction, FakeMessage, FakeN1Client, FakeToolCall, instantiate_with_supported_kwargs, is_bootstrap_step_artifact
 
 
 def _import_claim_verifier_module():
@@ -25,17 +25,6 @@ def _import_claim_verifier_module():
         if exc.name and exc.name.startswith("frontend_visualqa"):
             pytest.skip("frontend_visualqa.claim_verifier is not implemented in this worktree yet")
         raise
-
-
-def _instantiate_with_supported_kwargs(factory: Any, **candidates: Any) -> Any:
-    signature = inspect.signature(factory)
-    kwargs = {
-        name: value
-        for name, value in candidates.items()
-        if name in signature.parameters
-        and signature.parameters[name].kind in {inspect.Parameter.KEYWORD_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD}
-    }
-    return factory(**kwargs)
 
 
 def _field(result: Any, name: str) -> Any:
@@ -101,36 +90,12 @@ class FakeActionExecutor:
         )
 
 
-class FakeArtifactManager:
-    def __init__(self, base_dir: Path) -> None:
-        self.base_dir = base_dir
-        self.run = RunArtifacts(run_id="run-test", run_dir=base_dir / "run-test")
-        self.run.run_dir.mkdir(parents=True, exist_ok=True)
-
-    def create_run(self, prefix: str = "run", run_id: str | None = None) -> RunArtifacts:
-        del prefix, run_id
-        return self.run
-
-    def save_screenshot(self, run: RunArtifacts, claim_index: int, label: str, image_bytes: bytes) -> str:
-        claim_dir = run.run_dir / f"claim-{claim_index:02d}"
-        claim_dir.mkdir(parents=True, exist_ok=True)
-        path = claim_dir / f"{label}.webp"
-        path.write_bytes(image_bytes)
-        return str(path)
-
-    def save_rich_trace(self, run: RunArtifacts, claim_index: int, events: list[dict[str, Any]]) -> str:
-        claim_dir = run.run_dir / f"claim-{claim_index:02d}"
-        claim_dir.mkdir(parents=True, exist_ok=True)
-        path = claim_dir / "trace.json"
-        path.write_text(json.dumps(events))
-        return str(path)
-
-    def save_proof_text(self, run: RunArtifacts, claim_index: int, label: str, text: str) -> str:
-        claim_dir = run.run_dir / f"claim-{claim_index:02d}"
-        claim_dir.mkdir(parents=True, exist_ok=True)
-        path = claim_dir / f"{label}.txt"
-        path.write_text(text, encoding="utf-8")
-        return str(path)
+class ReadOnlyActionExecutor(FakeActionExecutor):
+    async def execute_tool_call(self, session: FakeSession, tool_call: Any) -> Any:
+        result = await super().execute_tool_call(session, tool_call)
+        if tool_call.function.name == "extract_elements":
+            result.output_text = "Visible buttons:\n- Save"
+        return result
 
 
 class BlockingN1Client(FakeN1Client):
@@ -155,7 +120,7 @@ def _build_claim_verifier(
     artifacts = artifact_manager or FakeArtifactManager(tmp_path)
     n1_client = FakeN1Client(responses)
 
-    verifier = _instantiate_with_supported_kwargs(
+    verifier = instantiate_with_supported_kwargs(
         module.ClaimVerifier,
         browser_manager=browser,
         browser=browser,
@@ -515,13 +480,6 @@ async def test_claim_verifier_records_reasoning_events_and_shows_thought_for_too
 
         async def claim_ended(self) -> None:
             overlay_events.append("claim_ended")
-
-    class ReadOnlyActionExecutor(FakeActionExecutor):
-        async def execute_tool_call(self, session: FakeSession, tool_call: Any) -> Any:
-            result = await super().execute_tool_call(session, tool_call)
-            if tool_call.function.name == "extract_elements":
-                result.output_text = "Visible buttons:\n- Save"
-            return result
 
     monkeypatch.setattr(module, "_create_overlay_controller", lambda page: FakeOverlay())
     reasoning = "Inspect the Save button before deciding."
@@ -1220,13 +1178,6 @@ async def test_claim_verifier_treats_stop_tool_call_as_a_final_inconclusive_verd
 async def test_claim_verifier_records_proof_text_for_read_only_final_action(tmp_path: Path) -> None:
     module = _import_claim_verifier_module()
 
-    class ReadOnlyActionExecutor(FakeActionExecutor):
-        async def execute_tool_call(self, session: FakeSession, tool_call: Any) -> Any:
-            result = await super().execute_tool_call(session, tool_call)
-            if tool_call.function.name == "extract_elements":
-                result.output_text = "Visible buttons:\n- Save"
-            return result
-
     verifier, _, action_executor = _build_claim_verifier(
         module,
         tmp_path,
@@ -1277,13 +1228,6 @@ async def test_claim_verifier_records_proof_text_for_read_only_final_action(tmp_
 @pytest.mark.asyncio
 async def test_claim_verifier_writes_trace_json_with_action_and_verdict_events(tmp_path: Path) -> None:
     module = _import_claim_verifier_module()
-
-    class ReadOnlyActionExecutor(FakeActionExecutor):
-        async def execute_tool_call(self, session: FakeSession, tool_call: Any) -> Any:
-            result = await super().execute_tool_call(session, tool_call)
-            if tool_call.function.name == "extract_elements":
-                result.output_text = "Visible buttons:\n- Save"
-            return result
 
     verifier, _, _ = _build_claim_verifier(
         module,
