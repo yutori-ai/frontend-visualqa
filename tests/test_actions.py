@@ -727,4 +727,4 @@ async def test_execute_tool_call_read_only_sleeps_post_action_without_overlay() 
         result = await _call_execute_tool_call(executor, page, "extract_content", {}, viewport)
 
     assert result.trace == "extract_content()"
-    mock_sleep.assert_awaited_once_with(module.READ_ONLY_POST_ACTION_DELAY_SECONDS)
+    mock_sleep.assert_not_awaited()

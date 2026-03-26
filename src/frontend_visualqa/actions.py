@@ -559,9 +559,10 @@ class ActionExecutor:
         canonical_name = ACTION_NAME_ALIASES.get(action_name, action_name)
         if canonical_name in READ_ONLY_ACTIONS:
             result = await self._execute_read_only_tool(session, canonical_name, arguments)
-            if self._overlay_supports_read_effect():
-                await self._best_effort_overlay_ensure_persistent_ui()
-            await asyncio.sleep(self._post_action_delay(canonical_name))
+            if self._overlay is not None:
+                if self._overlay_supports_read_effect():
+                    await self._best_effort_overlay_ensure_persistent_ui()
+                await asyncio.sleep(self._post_action_delay(canonical_name))
             return result
         return await self.execute_action(session=session, action_name=action_name, arguments=arguments)
 
