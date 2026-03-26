@@ -283,7 +283,6 @@ def _result(name: str, status: str, viewport: ViewportConfig) -> ClaimResult:
                 "artifacts/run-001/claim-01/step-01.webp",
             ],
             "actions": ["extract_elements()"],
-            "events": [],
             "trace_path": "artifacts/run-001/claim-01/trace.json",
         },
     )
@@ -716,7 +715,6 @@ async def test_runner_uses_partial_claim_result_when_timeout_interrupts_verifier
             "wrong_page_recovered": False,
             "screenshot_paths": ["artifacts/run-001/claim-01/step-00-initial.webp"],
             "actions": ["scroll(direction='down', amount=300)"],
-            "events": [],
             "trace_path": "artifacts/run-001/claim-01/trace.json",
         },
     )
@@ -775,7 +773,6 @@ async def test_runner_uses_partial_claim_result_when_verifier_crashes(
                 "artifacts/run-001/claim-01/step-01.webp",
             ],
             "actions": ["extract_elements()"],
-            "events": [],
             "trace_path": "artifacts/run-001/claim-01/trace.json",
         },
     )
@@ -865,7 +862,6 @@ async def test_runner_preserves_partial_claim_result_when_run_timeout_interrupts
                 "artifacts/run-001/claim-01/step-01.webp",
             ],
             "actions": ["extract_elements()"],
-            "events": [],
             "trace_path": "artifacts/run-001/claim-01/trace.json",
         },
     )
@@ -1177,7 +1173,7 @@ async def test_runner_writes_both_native_and_ctrf_reports(
     assert set(first_result) == {"claim", "status", "finding", "proof", "page", "trace"}
     assert set(first_result["proof"]) == {"screenshot_path", "step", "after_action", "text", "text_path"}
     assert set(first_result["page"]) == {"url", "viewport"}
-    assert set(first_result["trace"]) == {"steps_taken", "wrong_page_recovered", "screenshot_paths", "actions", "events", "trace_path"}
+    assert set(first_result["trace"]) == {"steps_taken", "wrong_page_recovered", "screenshot_paths", "actions", "trace_path"}
     assert first_result["finding"] == "Claim one: passed"
     assert first_result["trace"]["wrong_page_recovered"] is False
     # CTRF report

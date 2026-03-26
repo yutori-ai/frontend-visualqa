@@ -86,7 +86,7 @@ class ClaimTrace(FrontendVisualQABaseModel):
     wrong_page_recovered: bool = False
     screenshot_paths: list[str] = Field(default_factory=list)
     actions: list[str] = Field(default_factory=list)
-    events: list[TraceEvent] = Field(default_factory=list)
+    events: list[TraceEvent] = Field(default_factory=list, exclude=True)
     trace_path: str | None = None
 
 

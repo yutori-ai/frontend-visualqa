@@ -41,7 +41,6 @@ def _sample_run_result(artifacts_dir: str) -> RunResult:
                     "wrong_page_recovered": False,
                     "screenshot_paths": ["artifacts/run-001/claim-01/step-00-initial.webp"],
                     "actions": [],
-                    "events": [],
                     "trace_path": None,
                 },
             ),
@@ -65,7 +64,6 @@ def _sample_run_result(artifacts_dir: str) -> RunResult:
                         "artifacts/run-001/claim-02/step-01.webp",
                     ],
                     "actions": ["extract_elements()"],
-                    "events": [],
                     "trace_path": "artifacts/run-001/claim-02/trace.json",
                 },
             ),
@@ -91,7 +89,7 @@ def _assert_claim_result_payload_shape(result: dict[str, object]) -> None:
 
     trace = result["trace"]
     assert isinstance(trace, dict)
-    assert set(trace) == {"steps_taken", "wrong_page_recovered", "screenshot_paths", "actions", "events", "trace_path"}
+    assert set(trace) == {"steps_taken", "wrong_page_recovered", "screenshot_paths", "actions", "trace_path"}
 
 
 def test_native_reporter_writes_run_result_json(tmp_path: Path) -> None:
@@ -220,7 +218,6 @@ def test_ctrf_reporter_maps_inconclusive_and_not_testable(tmp_path: Path) -> Non
                     "wrong_page_recovered": False,
                     "screenshot_paths": [],
                     "actions": [],
-                    "events": [],
                     "trace_path": None,
                 },
             ),
@@ -235,7 +232,6 @@ def test_ctrf_reporter_maps_inconclusive_and_not_testable(tmp_path: Path) -> Non
                     "wrong_page_recovered": False,
                     "screenshot_paths": [],
                     "actions": [],
-                    "events": [],
                     "trace_path": None,
                 },
             ),
