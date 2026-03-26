@@ -23,7 +23,7 @@ def _sample_run_result(artifacts_dir: str) -> RunResult:
     return RunResult(
         overall_status="completed",
         session_key="default",
-        run_label="dashboard-ci",
+        run_name="dashboard-ci",
         results=[
             ClaimResult(
                 claim="The heading reads 'Dashboard'",
@@ -102,7 +102,7 @@ def test_native_reporter_writes_run_result_json(tmp_path: Path) -> None:
     assert output_path.exists()
     data = json.loads(output_path.read_text())
     assert data["overall_status"] == "completed"
-    assert data["run_label"] == "dashboard-ci"
+    assert data["run_name"] == "dashboard-ci"
     first_result = data["results"][0]
     second_result = data["results"][1]
     _assert_claim_result_payload_shape(first_result)
@@ -167,7 +167,7 @@ def test_ctrf_reporter_writes_valid_ctrf_json(tmp_path: Path) -> None:
     # Top-level structure
     results = data["results"]
     assert results["tool"]["name"] == "frontend-visualqa"
-    assert results["extra"]["runLabel"] == "dashboard-ci"
+    assert results["extra"]["runName"] == "dashboard-ci"
     # Summary
     summary = results["summary"]
     assert summary["tests"] == 2
@@ -209,7 +209,7 @@ def test_ctrf_reporter_maps_inconclusive_and_not_testable(tmp_path: Path) -> Non
     run_result = RunResult(
         overall_status="completed",
         session_key="default",
-        run_label=None,
+        run_name=None,
         results=[
             ClaimResult(
                 claim="Inconclusive claim",

@@ -42,7 +42,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_viewport_args(verify_parser)
     _add_browser_args(verify_parser)
-    _add_session_args(verify_parser, run_label_help="Optional label included in JSON output and reports.")
+    _add_session_args(verify_parser, run_name_help="Optional label included in JSON output and reports.")
     verify_parser.add_argument(
         "--reset-between-claims",
         action=argparse.BooleanOptionalAction,
@@ -84,7 +84,7 @@ def build_parser() -> argparse.ArgumentParser:
     screenshot_parser.add_argument("url", help="Target page URL, usually a localhost route.")
     _add_viewport_args(screenshot_parser)
     _add_browser_args(screenshot_parser)
-    _add_session_args(screenshot_parser, run_label_help="Optional label included in JSON output.")
+    _add_session_args(screenshot_parser, run_name_help="Optional label included in JSON output.")
     screenshot_parser.set_defaults(handler=_handle_screenshot)
 
     login_parser = subparsers.add_parser(
@@ -115,13 +115,13 @@ def main(argv: list[str] | None = None) -> int:
         return 130
 
 
-def _add_session_args(parser: argparse.ArgumentParser, *, run_label_help: str) -> None:
+def _add_session_args(parser: argparse.ArgumentParser, *, run_name_help: str) -> None:
     parser.add_argument(
         "--session-key",
         default="default",
         help="Shared browser session key. Persistent mode supports one named session at a time.",
     )
-    parser.add_argument("--run-label", help=run_label_help)
+    parser.add_argument("--run-name", help=run_name_help)
     parser.add_argument(
         "--reuse-session",
         action=argparse.BooleanOptionalAction,
@@ -260,7 +260,7 @@ async def _run_verify(args: argparse.Namespace) -> dict[str, Any]:
             claims=args.claims,
             viewport=_build_viewport(args),
             session_key=args.session_key,
-            run_label=args.run_label,
+            run_name=args.run_name,
             reuse_session=args.reuse_session,
             reset_between_claims=args.reset_between_claims,
             max_steps_per_claim=args.max_steps_per_claim,
@@ -312,7 +312,7 @@ async def _run_screenshot(args: argparse.Namespace) -> dict[str, Any]:
             url=args.url,
             viewport=_build_viewport(args),
             session_key=args.session_key,
-            run_label=args.run_label,
+            run_name=args.run_name,
             reuse_session=args.reuse_session,
         )
         return serialize_result(result)

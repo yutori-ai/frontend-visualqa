@@ -71,7 +71,7 @@ class FakeRunner:
         return RunResult(
             overall_status="completed",
             session_key=kwargs.get("session_key", "default"),
-            run_label=kwargs.get("run_label"),
+            run_name=kwargs.get("run_name"),
             results=[_sample_claim_result(url=kwargs["url"], viewport=viewport)],
             summary="1/1 claims passed.",
             artifacts_dir="artifacts/run-fake",
@@ -82,7 +82,7 @@ class FakeRunner:
         return RunResult(
             overall_status="completed",
             session_key=request.session_key,
-            run_label=request.run_label,
+            run_name=request.run_name,
             results=[_sample_claim_result(url=request.url, viewport=request.viewport)],
             summary="1/1 claims passed.",
             artifacts_dir="artifacts/run-fake",
@@ -92,7 +92,7 @@ class FakeRunner:
         self.screenshot_calls.append(kwargs)
         return ScreenshotResult(
             session_key=kwargs.get("session_key", "default"),
-            run_label=kwargs.get("run_label"),
+            run_name=kwargs.get("run_name"),
             final_url=kwargs["url"],
             viewport=kwargs.get("viewport", ViewportConfig()),
             screenshot_path="artifacts/run-fake/screenshot.webp",
@@ -197,7 +197,7 @@ async def test_mcp_server_verify_visual_claims_delegates_to_runner(monkeypatch: 
         "claims": ["The edit modal opens when clicking the task row"],
         "viewport": {"width": 1280, "height": 800, "device_scale_factor": 1},
         "session_key": "frontend-visualqa",
-        "run_label": "auth-ci",
+        "run_name": "auth-ci",
         "reuse_session": True,
         "reset_between_claims": True,
         "visualize": True,
@@ -210,11 +210,11 @@ async def test_mcp_server_verify_visual_claims_delegates_to_runner(monkeypatch: 
     forwarded = fake_runner.run_request_calls[0]
     assert forwarded.url == payload["url"]
     assert forwarded.claims == payload["claims"]
-    assert forwarded.run_label == "auth-ci"
+    assert forwarded.run_name == "auth-ci"
     assert forwarded.visualize is True
     assert result["overall_status"] == "completed"
     assert result["runner_version"] == __version__
-    assert result["run_label"] == "auth-ci"
+    assert result["run_name"] == "auth-ci"
     claim_result = result["results"][0]
     _assert_claim_result_payload_shape(claim_result)
     assert claim_result["finding"] == "The modal is visible."
@@ -236,7 +236,7 @@ async def test_mcp_server_helpers_delegate_to_runner(monkeypatch: pytest.MonkeyP
             "url": "http://localhost:3000/tasks/123",
             "viewport": {"width": 390, "height": 844, "device_scale_factor": 1},
             "session_key": "mobile",
-            "run_label": "mobile-home",
+            "run_name": "mobile-home",
         },
     )
     browser_result = await _call_tool(
@@ -251,7 +251,7 @@ async def test_mcp_server_helpers_delegate_to_runner(monkeypatch: pytest.MonkeyP
     assert fake_runner.screenshot_calls
     assert fake_runner.browser_request_calls
     assert screenshot_result["final_url"] == "http://localhost:3000/tasks/123"
-    assert screenshot_result["run_label"] == "mobile-home"
+    assert screenshot_result["run_name"] == "mobile-home"
     assert browser_result["browser_running"] is True
 
 

@@ -52,11 +52,11 @@ Subsequent runs can use persistent mode:
 ```bash
 frontend-visualqa verify http://localhost:3000/dashboard \
   --browser-mode persistent \
-  --run-label dashboard-auth \
+  --run-name dashboard-auth \
   --claims "The user avatar is visible in the header"
 ```
 
-Persistent mode reuses a single profile-backed browser context, so it supports one named session at a time. Use `--run-label` if you only want to tag output, and use ephemeral mode if you need multiple simultaneous named sessions.
+Persistent mode reuses a single profile-backed browser context, so it supports one named session at a time. Use `--run-name` if you only want to tag output, and use ephemeral mode if you need multiple simultaneous named sessions.
 
 ## If Tools Are Missing
 

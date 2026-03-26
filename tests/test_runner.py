@@ -308,7 +308,7 @@ async def test_runner_run_aggregates_claim_results_and_resets_between_claims(
         claims=["Claim one", "Claim two"],
         viewport=viewport,
         session_key="qa-session",
-        run_label="auth-ci",
+        run_name="auth-ci",
         reuse_session=True,
         reset_between_claims=True,
         visualize=True,
@@ -318,7 +318,7 @@ async def test_runner_run_aggregates_claim_results_and_resets_between_claims(
 
     assert result.overall_status == "completed"
     assert result.session_key == "qa-session"
-    assert result.run_label == "auth-ci"
+    assert result.run_name == "auth-ci"
     assert [item.status for item in result.results] == ["passed", "failed"]
     assert result.artifacts_dir
     assert result.summary
@@ -352,7 +352,7 @@ async def test_runner_run_request_reuses_prevalidated_input(
         claims=["Claim one"],
         viewport=viewport,
         session_key="qa-session",
-        run_label="modal-check",
+        run_name="modal-check",
         reuse_session=True,
         reset_between_claims=True,
         visualize=True,
@@ -363,7 +363,7 @@ async def test_runner_run_request_reuses_prevalidated_input(
     result = await runner.run_request(request)
 
     assert result.overall_status == "completed"
-    assert result.run_label == "modal-check"
+    assert result.run_name == "modal-check"
     assert [item.status for item in result.results] == ["passed"]
     assert browser.goto_calls[0] == ("qa-session", "http://fixture.local/page")
     assert verifier.calls[0]["navigation_hint"] == "Open the modal if needed."
@@ -389,11 +389,11 @@ async def test_runner_take_screenshot_saves_artifact(
         url="http://fixture.local/page",
         viewport=viewport,
         session_key="shot-session",
-        run_label="mobile-home",
+        run_name="mobile-home",
     )
 
     assert result.final_url == "http://fixture.local/page"
-    assert result.run_label == "mobile-home"
+    assert result.run_name == "mobile-home"
     assert result.viewport == viewport
     assert Path(result.screenshot_path).exists()
 
@@ -908,7 +908,7 @@ def test_build_not_testable_run_uses_aggregate_summary() -> None:
         claims=["Claim one", "Claim two"],
         viewport=viewport,
         session_key="qa-session",
-        run_label="preflight",
+        run_name="preflight",
     )
 
     result = module.VisualQARunner._build_not_testable_run(
@@ -920,7 +920,7 @@ def test_build_not_testable_run_uses_aggregate_summary() -> None:
     )
 
     assert result.overall_status == "not_testable"
-    assert result.run_label == "preflight"
+    assert result.run_name == "preflight"
     assert result.summary == "0/2 claims passed. 2 not testable."
     assert all(item.finding == "Could not reach the page before opening the browser." for item in result.results)
 

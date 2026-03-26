@@ -316,7 +316,7 @@ frontend-visualqa verify <url> --claims 'claim1' 'claim2' [options]
 | `--browser-mode` | ephemeral | `ephemeral` or `persistent` |
 | `--user-data-dir` | | Custom profile directory |
 | `--session-key` | default | Named browser session. Persistent mode supports one named session at a time. |
-| `--run-label` | | Optional label included in JSON output and reports |
+| `--run-name` | | Optional label included in JSON output and reports |
 | `--max-steps-per-claim` | 12 | Max actions per claim |
 | `--claim-timeout-seconds` | 120 | Per-claim timeout |
 | `--run-timeout-seconds` | 300 | Whole-run timeout |
@@ -331,7 +331,7 @@ frontend-visualqa verify <url> --claims 'claim1' 'claim2' [options]
 | Ephemeral *(default)* | — | No | Public pages, CI |
 | Persistent | `--browser-mode persistent` | Yes | Auth-gated local dev |
 
-Persistent mode uses one shared Playwright profile-backed context and supports one named session at a time. Use `--run-label` if you only want to tag CI output, and use ephemeral mode if you need multiple simultaneous named sessions.
+Persistent mode uses one shared Playwright profile-backed context and supports one named session at a time. Use `--run-name` if you only want to tag CI output, and use ephemeral mode if you need multiple simultaneous named sessions.
 
 <details>
 <summary><strong>Persistent profile setup</strong></summary>
@@ -345,7 +345,7 @@ frontend-visualqa login http://localhost:3000/login
 # 2. Subsequent runs reuse the saved session
 frontend-visualqa verify http://localhost:3000/dashboard \
   --browser-mode persistent \
-  --run-label dashboard-auth \
+  --run-name dashboard-auth \
   --claims 'The user avatar is visible in the header'
 ```
 
