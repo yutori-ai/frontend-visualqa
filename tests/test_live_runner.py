@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -15,6 +14,8 @@ from frontend_visualqa.browser import BrowserManager
 from frontend_visualqa.claim_verifier import ClaimVerifier
 from frontend_visualqa.runner import VisualQARunner
 from frontend_visualqa.schemas import ViewportConfig
+
+from fakes import FakeFunction, FakeMessage, FakeN1Client, FakeToolCall
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
@@ -38,58 +39,6 @@ def example_server() -> str:
         thread.join(timeout=5)
         server.server_close()
 
-
-@dataclass
-class FakeFunction:
-    name: str
-    arguments: str
-
-
-@dataclass
-class FakeToolCall:
-    id: str
-    function: FakeFunction
-
-
-@dataclass
-class FakeMessage:
-    role: str = "assistant"
-    tool_calls: list[FakeToolCall] | None = None
-    content: str | None = None
-
-    def model_dump(self, exclude_none: bool = True) -> dict[str, Any]:
-        payload: dict[str, Any] = {"role": self.role, "content": self.content}
-        if self.tool_calls is not None:
-            payload["tool_calls"] = [
-                {
-                    "id": tool_call.id,
-                    "type": "function",
-                    "function": {
-                        "name": tool_call.function.name,
-                        "arguments": tool_call.function.arguments,
-                    },
-                }
-                for tool_call in self.tool_calls
-            ]
-        if exclude_none:
-            return {key: value for key, value in payload.items() if value is not None}
-        return payload
-
-
-class FakeN1Client:
-    def __init__(self, responses: list[FakeMessage]) -> None:
-        self.responses = list(responses)
-        self.calls: list[dict[str, Any]] = []
-
-    async def create(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None = None) -> FakeMessage:
-        self.calls.append({"messages": messages, "tools": tools or []})
-        return self.responses.pop(0)
-
-    def trim_messages(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        return messages
-
-    async def close(self) -> None:
-        return None
 
 
 async def _overlay_dom_state(page: Any) -> dict[str, Any]:
@@ -388,8 +337,10 @@ async def test_live_runner_headed_overlay_hides_restores_and_cleans_up(
 
     assert started_samples, "overlay claim_started should inject persistent and transient roots"
     assert ended_samples, "overlay claim_ended should clean up overlay roots"
-    assert len(before_samples) >= 2, "expected a screenshot before the first response and after the action"
-    assert len(after_samples) >= 2, "expected a restore step after each screenshot"
+    # Initial screenshot is taken before overlay injection (no flash),
+    # so this one-action flow should produce exactly one post-action pair.
+    assert len(before_samples) == 1, "expected exactly one screenshot hide step after the action"
+    assert len(after_samples) == 1, "expected exactly one restore step after the action"
 
     for sample in before_samples:
         state = sample["state"]
@@ -419,6 +370,165 @@ async def test_live_runner_headed_overlay_hides_restores_and_cleans_up(
     assert started_samples[0]["error"] is None
     assert started_state["persistent"]["present"] is True
     assert started_state["persistent"]["display"] != "none"
+    assert started_state["persistent"]["visibility"] == "visible"
+    assert started_state["persistent"]["opacity"] == "1"
+    assert started_state["chip"]["present"] is True
+    assert started_state["chip"]["text"].upper() == "ANALYZING"
+
+    ended_state = ended_samples[0]["state"]
+    assert ended_samples[0]["error"] is None
+    assert ended_state["persistent"]["present"] is False
+    assert ended_state["transient"]["present"] is False
+    assert ended_state["chip"]["present"] is False
+
+
+@pytest.mark.asyncio
+async def test_live_runner_headed_overlay_zero_action_path_skips_hide_restore(
+    example_server: str,
+    tmp_path: Path,
+) -> None:
+    overlay_path = PACKAGE_ROOT / "src/frontend_visualqa/overlay.py"
+    if not overlay_path.exists():
+        pytest.skip("headed overlay implementation is not present in this partial worktree")
+    from frontend_visualqa.overlay import OverlayController
+
+    browser_manager = BrowserManager(headless=False, settle_delay_seconds=0)
+    n1_client = FakeN1Client(
+        responses=[
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-1",
+                        function=FakeFunction(
+                            name="record_claim_result",
+                            arguments=json.dumps(
+                                {
+                                    "status": "passed",
+                                    "finding": "The page title reads Frontend Visual QA Playground.",
+                                }
+                            ),
+                        ),
+                    )
+                ]
+            )
+        ]
+    )
+    artifact_manager = ArtifactManager(tmp_path / "artifacts")
+    claim_verifier = ClaimVerifier(
+        browser_manager=browser_manager,
+        artifact_manager=artifact_manager,
+        n1_client=n1_client,
+    )
+    runner = VisualQARunner(
+        browser_manager=browser_manager,
+        artifact_manager=artifact_manager,
+        n1_client=n1_client,
+        claim_verifier=claim_verifier,
+    )
+
+    lifecycle_samples: list[dict[str, Any]] = []
+    original_claim_started = OverlayController.claim_started
+    original_claim_ended = OverlayController.claim_ended
+    original_before_screenshot = OverlayController.before_screenshot
+    original_after_screenshot = OverlayController.after_screenshot
+
+    async def _record_state(controller: Any) -> dict[str, Any]:
+        page = getattr(controller, "_page", None)
+        if page is None:
+            page = getattr(controller, "page", None)
+        assert page is not None, "OverlayController must expose a page reference"
+        return await _overlay_dom_state(page)
+
+    async def instrumented_claim_started(self: Any) -> None:
+        error: Exception | None = None
+        try:
+            await original_claim_started(self)
+        except Exception as exc:  # pragma: no cover - surfaced through assertions below
+            error = exc
+        finally:
+            lifecycle_samples.append(
+                {"phase": "after_claim_started", "state": await _record_state(self), "error": error}
+            )
+
+    async def instrumented_claim_ended(self: Any) -> None:
+        error: Exception | None = None
+        try:
+            await original_claim_ended(self)
+        except Exception as exc:  # pragma: no cover - surfaced through assertions below
+            error = exc
+        finally:
+            lifecycle_samples.append(
+                {"phase": "after_claim_ended", "state": await _record_state(self), "error": error}
+            )
+
+    async def instrumented_before_screenshot(self: Any) -> None:
+        error: Exception | None = None
+        try:
+            await original_before_screenshot(self)
+        except Exception as exc:  # pragma: no cover - surfaced through assertions below
+            error = exc
+        finally:
+            lifecycle_samples.append(
+                {"phase": "before_screenshot", "state": await _record_state(self), "error": error}
+            )
+
+    async def instrumented_after_screenshot(self: Any) -> None:
+        error: Exception | None = None
+        try:
+            await original_after_screenshot(self)
+        except Exception as exc:  # pragma: no cover - surfaced through assertions below
+            error = exc
+        finally:
+            lifecycle_samples.append(
+                {"phase": "after_screenshot", "state": await _record_state(self), "error": error}
+            )
+
+    OverlayController.claim_started = instrumented_claim_started
+    OverlayController.claim_ended = instrumented_claim_ended
+    OverlayController.before_screenshot = instrumented_before_screenshot
+    OverlayController.after_screenshot = instrumented_after_screenshot
+
+    try:
+        result = await runner.run(
+            url=f"{example_server}/test_page.html",
+            claims=["The page title reads 'Frontend Visual QA Playground'"],
+            viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+            visualize=True,
+        )
+    except Exception as exc:
+        message = str(exc).lower()
+        if "browser" in message and ("launch" in message or "display" in message or "headed" in message):
+            pytest.skip(f"headed browser unavailable in this environment: {exc}")
+        raise
+    finally:
+        OverlayController.claim_started = original_claim_started
+        OverlayController.claim_ended = original_claim_ended
+        OverlayController.before_screenshot = original_before_screenshot
+        OverlayController.after_screenshot = original_after_screenshot
+        await runner.close()
+
+    assert result.overall_status == "completed"
+    assert [item.status for item in result.results] == ["passed"]
+    assert result.results[0].trace.actions == []
+    assert result.results[0].trace.steps_taken == 0
+    assert len(result.results[0].trace.screenshot_paths) == 1
+    assert result.results[0].proof is not None
+    assert result.results[0].proof.step == 0
+    assert result.results[0].proof.after_action is None
+
+    before_samples = [sample for sample in lifecycle_samples if sample["phase"] == "before_screenshot"]
+    after_samples = [sample for sample in lifecycle_samples if sample["phase"] == "after_screenshot"]
+    started_samples = [sample for sample in lifecycle_samples if sample["phase"] == "after_claim_started"]
+    ended_samples = [sample for sample in lifecycle_samples if sample["phase"] == "after_claim_ended"]
+
+    assert started_samples, "overlay claim_started should inject persistent and transient roots"
+    assert ended_samples, "overlay claim_ended should clean up overlay roots"
+    assert before_samples == []
+    assert after_samples == []
+
+    started_state = started_samples[0]["state"]
+    assert started_samples[0]["error"] is None
+    assert started_state["persistent"]["present"] is True
     assert started_state["persistent"]["visibility"] == "visible"
     assert started_state["persistent"]["opacity"] == "1"
     assert started_state["chip"]["present"] is True

@@ -9,6 +9,8 @@ from typing import Any
 import pytest
 
 from frontend_visualqa.artifacts import RunArtifacts
+from fakes import is_bootstrap_step_artifact
+
 from frontend_visualqa.schemas import (
     BrowserConfig,
     BrowserMode,
@@ -279,7 +281,7 @@ def _result(name: str, status: str, viewport: ViewportConfig) -> ClaimResult:
             "steps_taken": 1,
             "wrong_page_recovered": False,
             "screenshot_paths": [
-                "artifacts/run-001/claim-01/step-00-initial.webp",
+                "artifacts/run-001/claim-01/step-00.webp",
                 "artifacts/run-001/claim-01/step-01.webp",
             ],
             "actions": ["extract_elements()"],
@@ -709,7 +711,7 @@ async def test_runner_uses_partial_claim_result_when_timeout_interrupts_verifier
         status="inconclusive",
         finding="Claim verification timed out after 1s before a verdict was recorded.",
         proof={
-            "screenshot_path": "artifacts/run-001/claim-01/step-00-initial.webp",
+            "screenshot_path": "artifacts/run-001/claim-01/step-00.webp",
             "step": 0,
             "after_action": None,
             "text": None,
@@ -719,7 +721,7 @@ async def test_runner_uses_partial_claim_result_when_timeout_interrupts_verifier
         trace={
             "steps_taken": 1,
             "wrong_page_recovered": False,
-            "screenshot_paths": ["artifacts/run-001/claim-01/step-00-initial.webp"],
+            "screenshot_paths": ["artifacts/run-001/claim-01/step-00.webp"],
             "actions": ["scroll(direction='down', amount=300)"],
             "trace_path": "artifacts/run-001/claim-01/trace.json",
         },
@@ -747,7 +749,7 @@ async def test_runner_uses_partial_claim_result_when_timeout_interrupts_verifier
 
     assert [item.status for item in result.results] == ["inconclusive"]
     assert result.results[0].proof is not None
-    assert result.results[0].proof.screenshot_path.endswith("step-00-initial.webp")
+    assert is_bootstrap_step_artifact(result.results[0].proof.screenshot_path)
     assert result.results[0].trace.steps_taken == 1
     assert result.results[0].trace.actions == ["scroll(direction='down', amount=300)"]
 
@@ -775,7 +777,7 @@ async def test_runner_uses_partial_claim_result_when_verifier_crashes(
             "steps_taken": 1,
             "wrong_page_recovered": False,
             "screenshot_paths": [
-                "artifacts/run-001/claim-01/step-00-initial.webp",
+                "artifacts/run-001/claim-01/step-00.webp",
                 "artifacts/run-001/claim-01/step-01.webp",
             ],
             "actions": ["extract_elements()"],
@@ -864,7 +866,7 @@ async def test_runner_preserves_partial_claim_result_when_run_timeout_interrupts
             "steps_taken": 1,
             "wrong_page_recovered": False,
             "screenshot_paths": [
-                "artifacts/run-001/claim-01/step-00-initial.webp",
+                "artifacts/run-001/claim-01/step-00.webp",
                 "artifacts/run-001/claim-01/step-01.webp",
             ],
             "actions": ["extract_elements()"],

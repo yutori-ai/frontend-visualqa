@@ -30,17 +30,17 @@ def _sample_run_result(artifacts_dir: str) -> RunResult:
                 status="passed",
                 finding="Visible heading matched 'Dashboard'.",
                 proof={
-                    "screenshot_path": "artifacts/run-001/claim-01/step-00-initial.webp",
+                    "screenshot_path": "artifacts/run-001/claim-01/step-00.webp",
                     "step": 0,
                     "after_action": None,
-                    "text": "Visible heading matched 'Dashboard'.",
-                    "text_path": "artifacts/run-001/claim-01/step-00-initial.txt",
+                    "text": None,
+                    "text_path": None,
                 },
                 page={"url": "http://localhost:3000/dashboard", "viewport": viewport},
                 trace={
                     "steps_taken": 0,
                     "wrong_page_recovered": False,
-                    "screenshot_paths": ["artifacts/run-001/claim-01/step-00-initial.webp"],
+                    "screenshot_paths": ["artifacts/run-001/claim-01/step-00.webp"],
                     "actions": [],
                     "trace_path": None,
                 },
@@ -61,7 +61,7 @@ def _sample_run_result(artifacts_dir: str) -> RunResult:
                     "steps_taken": 1,
                     "wrong_page_recovered": False,
                     "screenshot_paths": [
-                        "artifacts/run-001/claim-02/step-00-initial.webp",
+                        "artifacts/run-001/claim-02/step-00.webp",
                         "artifacts/run-001/claim-02/step-01.webp",
                     ],
                     "actions": ["extract_elements()"],
@@ -276,11 +276,9 @@ def test_ctrf_reporter_includes_screenshots_as_attachments(tmp_path: Path) -> No
     data = json.loads((tmp_path / "ctrf-report.json").read_text())
     t0 = data["results"]["tests"][0]
     assert "attachments" in t0
-    assert len(t0["attachments"]) == 2
-    assert t0["attachments"][0]["name"] == "step-00-initial.webp"
+    assert len(t0["attachments"]) == 1
+    assert t0["attachments"][0]["name"] == "step-00.webp"
     assert t0["attachments"][0]["contentType"] == "image/webp"
-    assert t0["attachments"][1]["name"] == "step-00-initial.txt"
-    assert t0["attachments"][1]["contentType"] == "text/plain"
 
 
 def test_ctrf_reporter_includes_trace_path_as_attachment(tmp_path: Path) -> None:
