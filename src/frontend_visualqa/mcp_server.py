@@ -155,6 +155,7 @@ async def verify_visual_claims(
     claims: list[str],
     viewport: ViewportConfig | None = None,
     session_key: str = "default",
+    run_name: str | None = None,
     reuse_session: bool = True,
     reset_between_claims: bool = True,
     visualize: bool | None = None,
@@ -171,6 +172,7 @@ async def verify_visual_claims(
         claims=claims,
         viewport=_coerce_viewport(viewport),
         session_key=session_key,
+        run_name=run_name,
         reuse_session=reuse_session,
         reset_between_claims=reset_between_claims,
         visualize=visualize,
@@ -190,6 +192,7 @@ async def take_screenshot(
     url: str,
     viewport: ViewportConfig | None = None,
     session_key: str = "default",
+    run_name: str | None = None,
     reuse_session: bool = True,
 ) -> dict[str, Any]:
     """Capture a screenshot through the shared runner without running full claim verification."""
@@ -199,6 +202,7 @@ async def take_screenshot(
         url=validate_url(url),
         viewport=_coerce_viewport(viewport),
         session_key=session_key,
+        run_name=run_name,
         reuse_session=reuse_session,
     )
     return serialize_result(result)

@@ -395,8 +395,30 @@ async def test_browser_manager_persistent_mode_preserves_cookies_across_relaunch
 
 
 @pytest.mark.asyncio
+async def test_browser_manager_persistent_mode_accepts_initial_named_session_key(tmp_path: Path) -> None:
+    manager = BrowserManager(
+        config=BrowserConfig(
+            mode=BrowserMode.persistent,
+            user_data_dir=str(tmp_path / "browser-profile"),
+            headless=True,
+            settle_delay_seconds=0,
+        )
+    )
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+
+    try:
+        session = await manager.get_session("authenticated", viewport=viewport)
+        status = manager.status()
+
+        assert session.session_key == "authenticated"
+        assert [item.session_key for item in status.sessions] == ["authenticated"]
+    finally:
+        await manager.close()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("operation", ["get_session", "close_session", "restart_session", "set_viewport"])
-async def test_browser_manager_persistent_mode_rejects_non_default_session_keys(
+async def test_browser_manager_persistent_mode_rejects_switching_active_session_key(
     operation: str,
     tmp_path: Path,
 ) -> None:
@@ -410,6 +432,8 @@ async def test_browser_manager_persistent_mode_rejects_non_default_session_keys(
     )
 
     try:
+        await manager.get_session("authenticated", viewport=ViewportConfig())
+
         with pytest.raises(ValueError, match=PERSISTENT_SESSION_KEY_ERROR):
             if operation == "get_session":
                 await manager.get_session("secondary", viewport=ViewportConfig())
@@ -419,6 +443,87 @@ async def test_browser_manager_persistent_mode_rejects_non_default_session_keys(
                 await manager.restart_session("secondary", viewport=ViewportConfig())
             else:
                 await manager.set_viewport("secondary", ViewportConfig())
+    finally:
+        await manager.close()
+
+
+@pytest.mark.asyncio
+async def test_browser_manager_persistent_mode_allows_new_named_session_after_close(tmp_path: Path) -> None:
+    manager = BrowserManager(
+        config=BrowserConfig(
+            mode=BrowserMode.persistent,
+            user_data_dir=str(tmp_path / "browser-profile"),
+            headless=True,
+            settle_delay_seconds=0,
+        )
+    )
+
+    try:
+        await manager.get_session("authenticated", viewport=ViewportConfig())
+        await manager.close_session("authenticated")
+        session = await manager.get_session("reviewer", viewport=ViewportConfig())
+
+        assert session.session_key == "reviewer"
+        assert [item.session_key for item in manager.status().sessions] == ["reviewer"]
+    finally:
+        await manager.close()
+
+
+@pytest.mark.asyncio
+async def test_browser_manager_persistent_mode_dead_session_releases_lock_for_new_name(tmp_path: Path) -> None:
+    manager = BrowserManager(
+        config=BrowserConfig(
+            mode=BrowserMode.persistent,
+            user_data_dir=str(tmp_path / "browser-profile"),
+            headless=True,
+            settle_delay_seconds=0,
+        )
+    )
+
+    try:
+        session = await manager.get_session("authenticated", viewport=ViewportConfig())
+        # Simulate a crashed page (e.g., user closed the tab in headed mode).
+        await session.page.close()
+
+        # A different key should succeed because the dead session is evicted
+        # before validation.
+        new_session = await manager.get_session("reviewer", viewport=ViewportConfig())
+        assert new_session.session_key == "reviewer"
+    finally:
+        await manager.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operation", ["set_viewport", "restart_session", "close_session"])
+async def test_browser_manager_persistent_mode_dead_session_releases_lock_for_lifecycle_methods(
+    operation: str,
+    tmp_path: Path,
+) -> None:
+    manager = BrowserManager(
+        config=BrowserConfig(
+            mode=BrowserMode.persistent,
+            user_data_dir=str(tmp_path / "browser-profile"),
+            headless=True,
+            settle_delay_seconds=0,
+        )
+    )
+
+    try:
+        session = await manager.get_session("authenticated", viewport=ViewportConfig())
+        await session.page.close()
+
+        if operation == "set_viewport":
+            resized = await manager.set_viewport("reviewer", ViewportConfig(width=390, height=844, device_scale_factor=1))
+            assert resized.session_key == "reviewer"
+            assert resized.viewport.width == 390
+        elif operation == "restart_session":
+            restarted = await manager.restart_session("reviewer", viewport=ViewportConfig())
+            assert restarted.session_key == "reviewer"
+        else:
+            await manager.close_session("reviewer")
+            status = manager.status()
+            assert status.browser_running is False
+            assert status.sessions == []
     finally:
         await manager.close()
 
