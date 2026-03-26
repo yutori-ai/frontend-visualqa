@@ -347,6 +347,7 @@ def test_handle_verify_returns_nonzero_when_any_claim_is_not_passed(monkeypatch:
                         "wrong_page_recovered": False,
                         "screenshot_paths": [],
                         "actions": [],
+                        "events": [],
                         "trace_path": None,
                     },
                 )

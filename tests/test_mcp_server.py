@@ -40,7 +40,7 @@ def _sample_claim_result(*, url: str, viewport: ViewportConfig) -> ClaimResult:
                 "artifacts/run-fake/claim-01/step-01.webp",
             ],
             "actions": ["left_click([419, 348])"],
-            "trace_path": "artifacts/run-fake/claim-01/action_trace.json",
+            "trace_path": "artifacts/run-fake/claim-01/trace.json",
         },
     )
 

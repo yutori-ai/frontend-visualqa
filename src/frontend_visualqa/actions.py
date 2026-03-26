@@ -10,6 +10,7 @@ from typing import Any, TYPE_CHECKING
 
 from frontend_visualqa.browser import BrowserSession, DEFAULT_NAVIGATION_TIMEOUT_MS as BROWSER_NAVIGATION_TIMEOUT_MS
 from frontend_visualqa.errors import BrowserActionError
+from frontend_visualqa.tool_arguments import parse_tool_arguments
 
 if TYPE_CHECKING:
     from frontend_visualqa.overlay import OverlayController
@@ -38,6 +39,9 @@ ACTION_DELAY_SECONDS: dict[str, float] = {
     "screenshot": 0.0,
     "wait": 0.0,
 }
+
+READ_ONLY_ACTIONS = {"extract_elements", "extract_content", "find"}
+READ_ONLY_POST_ACTION_DELAY_SECONDS = 0.3
 
 _OVERLAY_LEAD_TIME_FALLBACK_SECONDS = 0.45
 
@@ -550,11 +554,16 @@ class ActionExecutor:
     async def execute_tool_call(self, session: BrowserSession, tool_call: Any) -> ActionExecutionResult | str:
         """Execute a tool call object with ``function.name`` and JSON arguments."""
 
-        arguments = self._parse_tool_arguments(tool_call)
+        arguments = parse_tool_arguments(tool_call)
         action_name = getattr(getattr(tool_call, "function", tool_call), "name", "")
         canonical_name = ACTION_NAME_ALIASES.get(action_name, action_name)
-        if canonical_name in {"extract_elements", "extract_content", "find"}:
-            return await self._execute_read_only_tool(session, canonical_name, arguments)
+        if canonical_name in READ_ONLY_ACTIONS:
+            result = await self._execute_read_only_tool(session, canonical_name, arguments)
+            if self._overlay is not None:
+                if self._overlay_supports_read_effect():
+                    await self._best_effort_overlay_ensure_persistent_ui()
+                await asyncio.sleep(self._post_action_delay(canonical_name))
+            return result
         return await self.execute_action(session=session, action_name=action_name, arguments=arguments)
 
     async def execute_action(
@@ -733,25 +742,13 @@ class ActionExecutor:
         await self._best_effort_overlay_ensure_persistent_ui()
         return trace
 
-    @staticmethod
-    def _parse_tool_arguments(tool_call: Any) -> dict[str, Any]:
-        arguments = getattr(getattr(tool_call, "function", tool_call), "arguments", "{}") or "{}"
-        if isinstance(arguments, dict):
-            return arguments
-        try:
-            parsed = json.loads(arguments)
-        except json.JSONDecodeError as exc:
-            raise BrowserActionError(f"tool arguments were not valid JSON: {arguments}") from exc
-        if not isinstance(parsed, dict):
-            raise BrowserActionError(f"tool arguments must decode to an object: {arguments}")
-        return parsed
-
     async def _execute_read_only_tool(
         self,
         session: BrowserSession,
         action_name: str,
         arguments: dict[str, Any],
     ) -> ActionExecutionResult:
+        await self._best_effort_overlay_show_read()
         trace = render_action_trace(
             action_name,
             arguments,
@@ -945,6 +942,25 @@ class ActionExecutor:
         except Exception:
             return
 
+    async def _best_effort_overlay_show_read(self) -> None:
+        overlay = self._overlay
+        if overlay is None:
+            return
+        show_read = getattr(overlay, "show_read_effect", None)
+        if not callable(show_read):
+            return
+        try:
+            await show_read()
+            await asyncio.sleep(_overlay_lead_time_seconds())
+        except Exception:
+            return
+
+    def _overlay_supports_read_effect(self) -> bool:
+        overlay = self._overlay
+        if overlay is None:
+            return False
+        return callable(getattr(overlay, "show_read_effect", None))
+
     async def _best_effort_overlay_set_status(self, label: str) -> None:
         overlay = self._overlay
         if overlay is None:
@@ -972,5 +988,9 @@ class ActionExecutor:
 
     def _post_action_delay(self, action_name: str) -> float:
         if self.settle_delay_seconds is not None:
+            if action_name in READ_ONLY_ACTIONS:
+                return max(self.settle_delay_seconds, READ_ONLY_POST_ACTION_DELAY_SECONDS)
             return self.settle_delay_seconds
+        if action_name in READ_ONLY_ACTIONS:
+            return READ_ONLY_POST_ACTION_DELAY_SECONDS
         return ACTION_DELAY_SECONDS.get(action_name, 0.3)

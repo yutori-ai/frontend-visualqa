@@ -4,7 +4,7 @@ import inspect
 import json
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -665,13 +665,20 @@ async def test_execute_tool_call_extract_elements_returns_output_text() -> None:
         }
     )
     viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    overlay = SimpleNamespace(show_read_effect=AsyncMock(), ensure_persistent_ui=AsyncMock())
+    executor.overlay = overlay
 
-    result = await _call_execute_tool_call(executor, page, "extract_elements", {"filter": "ATMOS"}, viewport)
+    with patch("frontend_visualqa.actions.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+        result = await _call_execute_tool_call(executor, page, "extract_elements", {"filter": "ATMOS"}, viewport)
 
     assert result.trace == "extract_elements(filter='ATMOS')"
     assert "Visible headings" in result.output_text
     assert "ATMOS" in result.output_text
     assert result.current_url == page.url
+    overlay.show_read_effect.assert_awaited_once()
+    overlay.ensure_persistent_ui.assert_awaited_once()
+    assert mock_sleep.await_args_list[0].args == (module._overlay_lead_time_seconds(),)
+    assert mock_sleep.await_args_list[1].args == (module.READ_ONLY_POST_ACTION_DELAY_SECONDS,)
 
 
 @pytest.mark.asyncio
@@ -690,11 +697,34 @@ async def test_execute_tool_call_extract_content_and_find_return_read_only_text(
         ]
     )
     viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    overlay = SimpleNamespace(show_read_effect=AsyncMock(), ensure_persistent_ui=AsyncMock())
+    executor.overlay = overlay
 
-    content_result = await _call_execute_tool_call(executor, page, "extract_content", {}, viewport)
-    find_result = await _call_execute_tool_call(executor, page, "find", {"text": "ATMOS"}, viewport)
+    with patch("frontend_visualqa.actions.asyncio.sleep", new_callable=AsyncMock):
+        content_result = await _call_execute_tool_call(executor, page, "extract_content", {}, viewport)
+        find_result = await _call_execute_tool_call(executor, page, "find", {"text": "ATMOS"}, viewport)
 
     assert content_result.trace == "extract_content()"
     assert "Page text:" in content_result.output_text
     assert find_result.trace == "find(text='ATMOS')"
     assert "Found 1 visible text match" in find_result.output_text
+    assert overlay.show_read_effect.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_call_read_only_sleeps_post_action_without_overlay() -> None:
+    module = _import_actions_module()
+    executor = _instantiate_with_supported_kwargs(
+        module.ActionExecutor,
+        navigation_timeout_ms=1_000,
+        settle_delay_seconds=0,
+    )
+    page = FakePage()
+    page.evaluate_results.append("ATMOS San Francisco, CA Mostly Sunny")
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+
+    with patch("frontend_visualqa.actions.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+        result = await _call_execute_tool_call(executor, page, "extract_content", {}, viewport)
+
+    assert result.trace == "extract_content()"
+    mock_sleep.assert_not_awaited()

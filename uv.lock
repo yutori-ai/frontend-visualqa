@@ -237,7 +237,7 @@ requires-dist = [
     { name = "pillow", specifier = ">=10.0.0" },
     { name = "playwright", specifier = ">=1.40.0" },
     { name = "pydantic", specifier = ">=2.7.0" },
-    { name = "yutori", specifier = ">=0.4.3" },
+    { name = "yutori", specifier = ">=0.4.5" },
 ]
 
 [package.metadata.requires-dev]
@@ -1169,7 +1169,7 @@ wheels = [
 
 [[package]]
 name = "yutori"
-version = "0.4.3"
+version = "0.4.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx" },
@@ -1177,7 +1177,7 @@ dependencies = [
     { name = "rich" },
     { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/74/4f/f28f98351b4d1ca1437cc57b1863eeca49a613faa2194c7b57bef4a17167/yutori-0.4.3.tar.gz", hash = "sha256:c639e60c67fd2f00c5612e2bca6614ca559a4eb8af3be44323e72965a0fcc383", size = 46194, upload-time = "2026-03-08T23:40:52.709Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/62/8f/77745bbad18a747dbb4707a8776e3e5ee4b98c86bfaf44ae42896a4cd644/yutori-0.4.5.tar.gz", hash = "sha256:f0d0dbda84fbc39c107a3d28e2be7f8db3e579d4dc17f663afec314129706a02", size = 48502, upload-time = "2026-03-11T23:55:16.815Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/25/81/fa3951f7571e27c8d539ec252dd955deb7fa20f131426c08b32b4ba2d6ae/yutori-0.4.3-py3-none-any.whl", hash = "sha256:0744eb1cef447005cef9f884fc2f24c1ef8c7cbb0aded9f7ba6f4ac04d78908c", size = 42983, upload-time = "2026-03-08T23:40:51.579Z" },
+    { url = "https://files.pythonhosted.org/packages/89/2a/b985f0507bbf2af77070ae2e8cc95a2d12b80609054a2f0ac30a061bee6e/yutori-0.4.5-py3-none-any.whl", hash = "sha256:9ec8c9b28794fbe28f624970217981a189eb657b038eaaf9d54e70e70b52dcb4", size = 44017, upload-time = "2026-03-11T23:55:15.554Z" },
 ]

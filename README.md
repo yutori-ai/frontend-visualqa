@@ -201,7 +201,7 @@ cd /path/to/frontend-visualqa
 lsof -ti:8000 | xargs kill 2>/dev/null; python3 -m http.server 8000 -d examples &
 ```
 
-**Self-correcting navigation** — start on the wrong page and watch n1 find its way. In headed mode, a branded cursor follows every action with click pulses, scroll dots, and a status chip:
+**Self-correcting navigation** — start on the wrong page and watch n1 find its way:
 
 ```bash
 # n1 lands on the product catalog, clicks through to find the product detail page
@@ -362,7 +362,12 @@ frontend-visualqa verify http://localhost:3000/dashboard \
 <details>
 <summary><strong>Action visualization</strong></summary>
 
-When running in headed mode (`--headed`), the browser shows visual effects illustrating what n1 is doing (clicking, scrolling, typing). To disable it, use `--no-visualize`:
+When running in headed mode (`--headed`), the browser shows visual effects illustrating what n1 is doing:
+- cursor-led click, scroll, drag, and typing effects
+- a compact thought card when a tool-using model turn includes reasoning text
+- read-only feedback for `extract_elements`, `extract_content`, and `find`, with a scan effect and short preview panel
+
+To disable it, use `--no-visualize`:
 
 ```bash
 frontend-visualqa verify http://localhost:3000 \
@@ -412,7 +417,7 @@ Each claim result contains:
 - **`finding`** — the verdict explanation (what was observed)
 - **`proof`** — the decisive artifact paths, step number, and a compact extracted-text preview
 - **`page`** — URL and viewport where the claim was evaluated
-- **`trace`** — the execution trace: actions taken, screenshot paths, and the saved trace path
+- **`trace`** — the execution trace: actions taken, rich events, screenshot paths, and the saved trace path
 
 <details>
 <summary><strong>Example claim result</strong></summary>
@@ -438,14 +443,14 @@ Each claim result contains:
     "wrong_page_recovered": false,
     "screenshot_paths": ["..."],
     "actions": ["..."],
-    "trace_path": "artifacts/run-.../claim-02/action_trace.json"
+    "trace_path": "artifacts/run-.../claim-02/trace.json"
   }
 }
 ```
 
 `proof.screenshot_path` points to the screenshot n1 was examining when it rendered the verdict.
 `proof.text` is intentionally compact for token efficiency; if `proof.text_path` is present, open that file for the full extracted DOM/content readout.
-`trace.trace_path` remains action-only, so large text payloads do not bloat the action trace.
+`trace.trace_path` points to `trace.json`, which contains the full machine-readable event trace with reasoning and verdict metadata. Events are excluded from the JSON output by default to keep it compact; access them programmatically via `result.trace.events` or read `trace.json` directly.
 
 </details>
 
@@ -468,4 +473,3 @@ Editable install:
 ```bash
 uv pip install -e .
 ```
-

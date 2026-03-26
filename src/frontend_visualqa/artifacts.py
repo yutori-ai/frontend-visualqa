@@ -51,11 +51,11 @@ class ArtifactManager:
         path.write_bytes(image_bytes)
         return str(path)
 
-    def save_trace(self, run: RunArtifacts, claim_index: int, action_trace: list[str]) -> str:
-        """Persist the executed action trace and return its path."""
+    def save_rich_trace(self, run: RunArtifacts, claim_index: int, events: list[dict[str, object]]) -> str:
+        """Persist the rich trace payload and return its path."""
 
-        path = self.claim_dir(run, claim_index) / "action_trace.json"
-        path.write_text(json.dumps(action_trace, indent=2))
+        path = self.claim_dir(run, claim_index) / "trace.json"
+        path.write_text(json.dumps(events, indent=2))
         return str(path)
 
     def save_proof_text(self, run: RunArtifacts, claim_index: int, label: str, text: str) -> str:

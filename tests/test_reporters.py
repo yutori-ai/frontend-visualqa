@@ -64,7 +64,7 @@ def _sample_run_result(artifacts_dir: str) -> RunResult:
                         "artifacts/run-001/claim-02/step-01.webp",
                     ],
                     "actions": ["extract_elements()"],
-                    "trace_path": "artifacts/run-001/claim-02/action_trace.json",
+                    "trace_path": "artifacts/run-001/claim-02/trace.json",
                 },
             ),
         ],
@@ -290,7 +290,7 @@ def test_ctrf_reporter_includes_trace_path_as_attachment(tmp_path: Path) -> None
     assert proof_text_attachment["name"] == "step-01.txt"
     assert proof_text_attachment["contentType"] == "text/plain"
     trace_attachment = t1["attachments"][-1]
-    assert trace_attachment["name"] == "action_trace.json"
+    assert trace_attachment["name"] == "trace.json"
     assert trace_attachment["contentType"] == "application/json"
 
 
