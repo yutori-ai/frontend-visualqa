@@ -41,6 +41,7 @@ def _sample_run_result(artifacts_dir: str) -> RunResult:
                     "wrong_page_recovered": False,
                     "screenshot_paths": ["artifacts/run-001/claim-01/step-00-initial.webp"],
                     "actions": [],
+                    "events": [],
                     "trace_path": None,
                 },
             ),
@@ -64,7 +65,8 @@ def _sample_run_result(artifacts_dir: str) -> RunResult:
                         "artifacts/run-001/claim-02/step-01.webp",
                     ],
                     "actions": ["extract_elements()"],
-                    "trace_path": "artifacts/run-001/claim-02/action_trace.json",
+                    "events": [],
+                    "trace_path": "artifacts/run-001/claim-02/trace.json",
                 },
             ),
         ],
@@ -89,7 +91,7 @@ def _assert_claim_result_payload_shape(result: dict[str, object]) -> None:
 
     trace = result["trace"]
     assert isinstance(trace, dict)
-    assert set(trace) == {"steps_taken", "wrong_page_recovered", "screenshot_paths", "actions", "trace_path"}
+    assert set(trace) == {"steps_taken", "wrong_page_recovered", "screenshot_paths", "actions", "events", "trace_path"}
 
 
 def test_native_reporter_writes_run_result_json(tmp_path: Path) -> None:
@@ -218,6 +220,7 @@ def test_ctrf_reporter_maps_inconclusive_and_not_testable(tmp_path: Path) -> Non
                     "wrong_page_recovered": False,
                     "screenshot_paths": [],
                     "actions": [],
+                    "events": [],
                     "trace_path": None,
                 },
             ),
@@ -232,6 +235,7 @@ def test_ctrf_reporter_maps_inconclusive_and_not_testable(tmp_path: Path) -> Non
                     "wrong_page_recovered": False,
                     "screenshot_paths": [],
                     "actions": [],
+                    "events": [],
                     "trace_path": None,
                 },
             ),
@@ -290,7 +294,7 @@ def test_ctrf_reporter_includes_trace_path_as_attachment(tmp_path: Path) -> None
     assert proof_text_attachment["name"] == "step-01.txt"
     assert proof_text_attachment["contentType"] == "text/plain"
     trace_attachment = t1["attachments"][-1]
-    assert trace_attachment["name"] == "action_trace.json"
+    assert trace_attachment["name"] == "trace.json"
     assert trace_attachment["contentType"] == "application/json"
 
 

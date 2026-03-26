@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import time
 from enum import Enum
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from frontend_visualqa import __version__
@@ -62,6 +63,22 @@ class ClaimPage(FrontendVisualQABaseModel):
     viewport: ViewportConfig
 
 
+class TraceEvent(FrontendVisualQABaseModel):
+    """Canonical machine-readable event emitted during claim verification."""
+
+    type: Literal["action", "verdict"]
+    step: int | None = None
+    reasoning: str | None = None
+    action: str | None = None
+    action_args: dict[str, Any] | None = None
+    output_preview: str | None = None
+    screenshot_path: str | None = None
+    verdict_status: ClaimStatus | None = None
+    verdict_source: Literal["record_claim_result", "fallback_content", "force_stop", "legacy_stop"] | None = None
+    finding: str | None = None
+    timestamp_ms: int = Field(default_factory=lambda: int(time.time() * 1000))
+
+
 class ClaimTrace(FrontendVisualQABaseModel):
     """Execution trace: actions taken and screenshots captured while verifying a claim."""
 
@@ -69,6 +86,7 @@ class ClaimTrace(FrontendVisualQABaseModel):
     wrong_page_recovered: bool = False
     screenshot_paths: list[str] = Field(default_factory=list)
     actions: list[str] = Field(default_factory=list)
+    events: list[TraceEvent] = Field(default_factory=list)
     trace_path: str | None = None
 
 

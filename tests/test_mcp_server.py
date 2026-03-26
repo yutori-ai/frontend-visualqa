@@ -40,7 +40,8 @@ def _sample_claim_result(*, url: str, viewport: ViewportConfig) -> ClaimResult:
                 "artifacts/run-fake/claim-01/step-01.webp",
             ],
             "actions": ["left_click([419, 348])"],
-            "trace_path": "artifacts/run-fake/claim-01/action_trace.json",
+            "events": [],
+            "trace_path": "artifacts/run-fake/claim-01/trace.json",
         },
     )
 
@@ -139,7 +140,7 @@ def _assert_claim_result_payload_shape(result: dict[str, Any]) -> None:
     assert set(page["viewport"]) == {"width", "height", "device_scale_factor"}
 
     trace = result["trace"]
-    assert set(trace) == {"steps_taken", "wrong_page_recovered", "screenshot_paths", "actions", "trace_path"}
+    assert set(trace) == {"steps_taken", "wrong_page_recovered", "screenshot_paths", "actions", "events", "trace_path"}
 
 
 def _install_fake_runner(module: Any, fake_runner: FakeRunner, monkeypatch: pytest.MonkeyPatch) -> None:

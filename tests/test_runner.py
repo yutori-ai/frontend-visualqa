@@ -161,11 +161,11 @@ class FakeArtifactManager:
         path.write_bytes(image_bytes)
         return str(path)
 
-    def save_trace(self, run: RunArtifacts, claim_index: int, action_trace: list[str]) -> str:
+    def save_rich_trace(self, run: RunArtifacts, claim_index: int, events: list[dict[str, Any]]) -> str:
         claim_dir = run.run_dir / f"claim-{claim_index:02d}"
         claim_dir.mkdir(parents=True, exist_ok=True)
-        path = claim_dir / "action_trace.json"
-        path.write_text(json.dumps(action_trace))
+        path = claim_dir / "trace.json"
+        path.write_text(json.dumps(events))
         return str(path)
 
     def save_json(self, run: RunArtifacts, relative_path: str, payload: dict[str, Any]) -> str:
@@ -283,7 +283,8 @@ def _result(name: str, status: str, viewport: ViewportConfig) -> ClaimResult:
                 "artifacts/run-001/claim-01/step-01.webp",
             ],
             "actions": ["extract_elements()"],
-            "trace_path": "artifacts/run-001/claim-01/action_trace.json",
+            "events": [],
+            "trace_path": "artifacts/run-001/claim-01/trace.json",
         },
     )
 
@@ -715,7 +716,8 @@ async def test_runner_uses_partial_claim_result_when_timeout_interrupts_verifier
             "wrong_page_recovered": False,
             "screenshot_paths": ["artifacts/run-001/claim-01/step-00-initial.webp"],
             "actions": ["scroll(direction='down', amount=300)"],
-            "trace_path": "artifacts/run-001/claim-01/action_trace.json",
+            "events": [],
+            "trace_path": "artifacts/run-001/claim-01/trace.json",
         },
     )
     verifier = RunTimeoutClaimVerifier(partial_result=partial_result)
@@ -773,7 +775,8 @@ async def test_runner_uses_partial_claim_result_when_verifier_crashes(
                 "artifacts/run-001/claim-01/step-01.webp",
             ],
             "actions": ["extract_elements()"],
-            "trace_path": "artifacts/run-001/claim-01/action_trace.json",
+            "events": [],
+            "trace_path": "artifacts/run-001/claim-01/trace.json",
         },
     )
     verifier = PartialExplodingClaimVerifier(partial_result)
@@ -799,7 +802,7 @@ async def test_runner_uses_partial_claim_result_when_verifier_crashes(
     assert [item.status for item in result.results] == ["inconclusive"]
     assert result.results[0].proof is not None
     assert result.results[0].proof.after_action == "extract_elements()"
-    assert result.results[0].trace.trace_path == "artifacts/run-001/claim-01/action_trace.json"
+    assert result.results[0].trace.trace_path == "artifacts/run-001/claim-01/trace.json"
 
 
 @pytest.mark.asyncio
@@ -862,7 +865,8 @@ async def test_runner_preserves_partial_claim_result_when_run_timeout_interrupts
                 "artifacts/run-001/claim-01/step-01.webp",
             ],
             "actions": ["extract_elements()"],
-            "trace_path": "artifacts/run-001/claim-01/action_trace.json",
+            "events": [],
+            "trace_path": "artifacts/run-001/claim-01/trace.json",
         },
     )
     verifier = RunTimeoutClaimVerifier(partial_result=partial_result)
@@ -1173,7 +1177,7 @@ async def test_runner_writes_both_native_and_ctrf_reports(
     assert set(first_result) == {"claim", "status", "finding", "proof", "page", "trace"}
     assert set(first_result["proof"]) == {"screenshot_path", "step", "after_action", "text", "text_path"}
     assert set(first_result["page"]) == {"url", "viewport"}
-    assert set(first_result["trace"]) == {"steps_taken", "wrong_page_recovered", "screenshot_paths", "actions", "trace_path"}
+    assert set(first_result["trace"]) == {"steps_taken", "wrong_page_recovered", "screenshot_paths", "actions", "events", "trace_path"}
     assert first_result["finding"] == "Claim one: passed"
     assert first_result["trace"]["wrong_page_recovered"] is False
     # CTRF report

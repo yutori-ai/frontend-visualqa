@@ -109,11 +109,11 @@ class FakeArtifactManager:
         path.write_bytes(image_bytes)
         return str(path)
 
-    def save_trace(self, run: RunArtifacts, claim_index: int, action_trace: list[str]) -> str:
+    def save_rich_trace(self, run: RunArtifacts, claim_index: int, events: list[dict[str, Any]]) -> str:
         claim_dir = run.run_dir / f"claim-{claim_index:02d}"
         claim_dir.mkdir(parents=True, exist_ok=True)
-        path = claim_dir / "action_trace.json"
-        path.write_text(json.dumps(action_trace))
+        path = claim_dir / "trace.json"
+        path.write_text(json.dumps(events))
         return str(path)
 
     def save_proof_text(self, run: RunArtifacts, claim_index: int, label: str, text: str) -> str:
@@ -395,6 +395,9 @@ async def test_claim_verifier_uses_overlay_lifecycle_when_visualize_enabled(
         async def set_status(self, label: str) -> None:
             events.append(("set_status", label))
 
+        async def show_thought(self, text: str) -> None:
+            events.append(("show_thought", text))
+
         async def before_screenshot(self) -> None:
             events.append("before_screenshot")
 
@@ -514,6 +517,217 @@ async def test_claim_verifier_reprompts_after_plain_text_thought_and_continues(t
     )
     reminder_text = reminder_message["content"][0]["text"]
     assert "Do not narrate your intent in plain text." in reminder_text
+
+
+@pytest.mark.asyncio
+async def test_claim_verifier_records_reasoning_events_and_shows_thought_for_tool_turns(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _import_claim_verifier_module()
+    overlay_events: list[Any] = []
+
+    class FakeOverlay:
+        async def claim_started(self) -> None:
+            overlay_events.append("claim_started")
+
+        async def set_status(self, label: str) -> None:
+            overlay_events.append(("set_status", label))
+
+        async def show_thought(self, text: str) -> None:
+            overlay_events.append(("show_thought", text))
+
+        async def before_screenshot(self) -> None:
+            overlay_events.append("before_screenshot")
+
+        async def after_screenshot(self) -> None:
+            overlay_events.append("after_screenshot")
+
+        async def claim_ended(self) -> None:
+            overlay_events.append("claim_ended")
+
+    class ReadOnlyActionExecutor(FakeActionExecutor):
+        async def execute_tool_call(self, session: FakeSession, tool_call: Any) -> Any:
+            result = await super().execute_tool_call(session, tool_call)
+            if tool_call.function.name == "extract_elements":
+                result.output_text = "Visible buttons:\n- Save"
+            return result
+
+    monkeypatch.setattr(module, "_create_overlay_controller", lambda page: FakeOverlay())
+    reasoning = "Inspect the Save button before deciding."
+    verifier, _, _ = _build_claim_verifier(
+        module,
+        tmp_path,
+        responses=[
+            FakeMessage(
+                content=reasoning,
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-1",
+                        function=FakeFunction(name="extract_elements", arguments=json.dumps({"filter": "Save"})),
+                    )
+                ],
+            ),
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-2",
+                        function=FakeFunction(
+                            name="record_claim_result",
+                            arguments=json.dumps({"status": "passed", "finding": "The Save button is visible."}),
+                        ),
+                    )
+                ]
+            ),
+        ],
+        action_executor=ReadOnlyActionExecutor(),
+        visualize=True,
+    )
+
+    result = await _call_verify(
+        verifier,
+        page=FakePage(url="http://fixture.local/page"),
+        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+        claim="The Save button is visible",
+        url="http://fixture.local/page",
+        navigation_hint=None,
+        visualize=True,
+    )
+
+    assert ("show_thought", reasoning) in overlay_events
+    action_event, verdict_event = _field(result, "trace").events
+    assert action_event.type == "action"
+    assert action_event.reasoning == reasoning
+    assert action_event.action == "extract_elements"
+    assert action_event.action_args == {"filter": "Save"}
+    assert action_event.output_preview is not None
+    assert "Visible buttons" in action_event.output_preview
+    assert action_event.screenshot_path.endswith("step-01.webp")
+    assert verdict_event.type == "verdict"
+    assert verdict_event.reasoning is None
+    assert verdict_event.verdict_source == "record_claim_result"
+    assert verdict_event.verdict_status == "passed"
+    assert "Save button" in verdict_event.finding
+    trace_payload = json.loads(Path(_field(result, "trace").trace_path).read_text(encoding="utf-8"))
+    assert [item["type"] for item in trace_payload] == ["action", "verdict"]
+    assert trace_payload[0]["reasoning"] == reasoning
+    assert trace_payload[1]["finding"] == verdict_event.finding
+
+
+@pytest.mark.asyncio
+async def test_claim_verifier_does_not_show_thought_for_plain_text_turn_without_tool_calls(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _import_claim_verifier_module()
+    overlay_events: list[Any] = []
+
+    class FakeOverlay:
+        async def claim_started(self) -> None:
+            overlay_events.append("claim_started")
+
+        async def set_status(self, label: str) -> None:
+            overlay_events.append(("set_status", label))
+
+        async def show_thought(self, text: str) -> None:
+            overlay_events.append(("show_thought", text))
+
+        async def before_screenshot(self) -> None:
+            overlay_events.append("before_screenshot")
+
+        async def after_screenshot(self) -> None:
+            overlay_events.append("after_screenshot")
+
+        async def claim_ended(self) -> None:
+            overlay_events.append("claim_ended")
+
+    monkeypatch.setattr(module, "_create_overlay_controller", lambda page: FakeOverlay())
+    verifier, _, _ = _build_claim_verifier(
+        module,
+        tmp_path,
+        responses=[
+            FakeMessage(content="I should inspect the page title before deciding."),
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-1",
+                        function=FakeFunction(
+                            name="record_claim_result",
+                            arguments=json.dumps({"status": "passed", "finding": "The page title reads Dashboard."}),
+                        ),
+                    )
+                ]
+            ),
+        ],
+        visualize=True,
+    )
+
+    result = await _call_verify(
+        verifier,
+        page=FakePage(url="http://fixture.local/page"),
+        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+        claim="The page title reads 'Dashboard'",
+        url="http://fixture.local/page",
+        navigation_hint=None,
+        visualize=True,
+    )
+
+    assert _field(result, "status") == "passed"
+    assert not any(event[0] == "show_thought" for event in overlay_events if isinstance(event, tuple))
+    assert len(_field(result, "trace").events) == 1
+    verdict_event = _field(result, "trace").events[0]
+    assert verdict_event.type == "verdict"
+    assert verdict_event.reasoning is None
+    assert verdict_event.verdict_source == "record_claim_result"
+
+
+@pytest.mark.asyncio
+async def test_claim_verifier_records_fallback_content_verdict_source(tmp_path: Path) -> None:
+    module = _import_claim_verifier_module()
+    verifier, _, _ = _build_claim_verifier(
+        module,
+        tmp_path,
+        responses=[FakeMessage(content="Status: passed\nThe page title reads Dashboard.")],
+    )
+
+    result = await _call_verify(
+        verifier,
+        page=FakePage(url="http://fixture.local/page"),
+        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+        claim="The page title reads 'Dashboard'",
+        url="http://fixture.local/page",
+        navigation_hint=None,
+    )
+
+    verdict_event = _field(result, "trace").events[0]
+    assert verdict_event.type == "verdict"
+    assert verdict_event.verdict_source == "fallback_content"
+
+
+@pytest.mark.asyncio
+async def test_claim_verifier_records_force_stop_verdict_source_for_plain_text_recovery(tmp_path: Path) -> None:
+    module = _import_claim_verifier_module()
+    verifier, _, _ = _build_claim_verifier(
+        module,
+        tmp_path,
+        responses=[
+            FakeMessage(content="I should inspect the page."),
+            FakeMessage(content="I still need more time."),
+            FakeMessage(content="I cannot decide yet."),
+            FakeMessage(content="Status: inconclusive\nThe model hit the step limit."),
+        ],
+    )
+
+    result = await _call_verify(
+        verifier,
+        page=FakePage(url="http://fixture.local/page"),
+        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+        claim="The page title reads 'Dashboard'",
+        url="http://fixture.local/page",
+        navigation_hint=None,
+    )
+
+    verdict_event = _field(result, "trace").events[0]
+    assert verdict_event.type == "verdict"
+    assert verdict_event.verdict_source == "force_stop"
 
 
 @pytest.mark.asyncio
@@ -839,6 +1053,10 @@ async def test_claim_verifier_treats_stop_tool_call_as_a_final_inconclusive_verd
     assert _field(result, "status") == "inconclusive"
     assert "Need a human" in _field(result, "finding")
     assert action_executor.calls == []
+    verdict_event = _field(result, "trace").events[0]
+    assert verdict_event.type == "verdict"
+    assert verdict_event.verdict_source == "legacy_stop"
+    assert _field(result, "trace").events[0].verdict_source == "legacy_stop"
 
 
 @pytest.mark.asyncio
@@ -894,6 +1112,62 @@ async def test_claim_verifier_records_proof_text_for_read_only_final_action(tmp_
     assert _field(result, "proof").text == "Visible buttons:\n- Save"
     assert _field(result, "proof").text_path.endswith("step-01.txt")
     assert Path(_field(result, "proof").text_path).read_text(encoding="utf-8") == "Visible buttons:\n- Save"
+
+
+@pytest.mark.asyncio
+async def test_claim_verifier_writes_trace_json_with_action_and_verdict_events(tmp_path: Path) -> None:
+    module = _import_claim_verifier_module()
+
+    class ReadOnlyActionExecutor(FakeActionExecutor):
+        async def execute_tool_call(self, session: FakeSession, tool_call: Any) -> Any:
+            result = await super().execute_tool_call(session, tool_call)
+            if tool_call.function.name == "extract_elements":
+                result.output_text = "Visible buttons:\n- Save"
+            return result
+
+    verifier, _, _ = _build_claim_verifier(
+        module,
+        tmp_path,
+        responses=[
+            FakeMessage(
+                content="Inspect the Save button before deciding.",
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-1",
+                        function=FakeFunction(name="extract_elements", arguments=json.dumps({"filter": "Save"})),
+                    )
+                ],
+            ),
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-2",
+                        function=FakeFunction(
+                            name="record_claim_result",
+                            arguments=json.dumps({"status": "passed", "finding": "The Save button is visible."}),
+                        ),
+                    )
+                ]
+            ),
+        ],
+        action_executor=ReadOnlyActionExecutor(),
+    )
+
+    result = await _call_verify(
+        verifier,
+        page=FakePage(url="http://fixture.local/page"),
+        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+        claim="The Save button is visible",
+        url="http://fixture.local/page",
+        navigation_hint=None,
+    )
+
+    trace_path = _field(_field(result, "trace"), "trace_path")
+    assert trace_path is not None
+    trace_payload = json.loads(Path(trace_path).read_text())
+    assert [event["type"] for event in trace_payload] == ["action", "verdict"]
+    assert trace_payload[0]["action"] == "extract_elements"
+    assert trace_payload[1]["verdict_source"] == "record_claim_result"
 
 
 @pytest.mark.asyncio

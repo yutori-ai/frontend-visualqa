@@ -23,16 +23,22 @@ PERSISTENT_ROOT_ID = "__n1PersistentRoot"
 TRANSIENT_ROOT_ID = "__n1TransientRoot"
 GRADIENT_BORDER_ID = "__n1GradientBorder"
 STATUS_CHIP_ID = "__n1StatusChip"
+THOUGHT_CARD_ID = "__n1ThoughtCard"
+THOUGHT_STYLE_ID = "__n1ThoughtStyle"
 CLICK_STYLE_ID = "__n1ClickStyle"
 SCROLL_STYLE_ID = "__n1ScrollStyle"
 TYPE_STYLE_ID = "__n1TypeStyle"
 
 CURSOR_ID = "__n1Cursor"
 DRAG_STYLE_ID = "__n1DragStyle"
+READ_SCAN_ID = "__n1ReadScan"
+READ_STYLE_ID = "__n1ReadStyle"
 CLICK_DURATION_MS = 250
 SCROLL_DURATION_MS = 1000
 DRAG_DURATION_MS = 200
 CURSOR_TRANSITION_MS = 80
+THOUGHT_DURATION_MS = 6000
+READ_SCAN_DURATION_MS = 3000
 
 _CURSOR_SVG = (
     '<svg width="134" height="181" viewBox="0 0 134 181" fill="none" xmlns="http://www.w3.org/2000/svg">'
@@ -103,7 +109,7 @@ _PERSISTENT_ROOT_JS = f"""() => {{
 
     const border = document.createElement('div');
     border.id = '{GRADIENT_BORDER_ID}';
-    border.style.cssText = 'position:absolute;inset:0;pointer-events:none;filter:blur(8px);';
+    border.style.cssText = 'position:absolute;inset:0;pointer-events:none;filter:blur(4px);';
     root.appendChild(border);
 
     const chip = document.createElement('div');
@@ -131,7 +137,7 @@ _PERSISTENT_ROOT_JS = f"""() => {{
         const pingPong = cycle < 0.5 ? cycle * 2 : 2 - cycle * 2;
         const eased = easeInOut(pingPong);
         const opacity = lerp(0.25, 0.4, eased);
-        const spread = lerp(5, 10, eased);
+        const spread = lerp(3, 6, eased);
         const borderElement = document.getElementById('{GRADIENT_BORDER_ID}');
         if (!borderElement) return;
         borderElement.style.background =
@@ -143,6 +149,70 @@ _PERSISTENT_ROOT_JS = f"""() => {{
     }};
 
     root.__n1AnimationFrame = requestAnimationFrame(animate);
+}}"""
+
+_THOUGHT_CARD_JS = f"""(text) => {{
+    const root = document.getElementById('{PERSISTENT_ROOT_ID}');
+    if (!root) return;
+    const existing = document.getElementById('{THOUGHT_CARD_ID}');
+    if (existing) existing.remove();
+
+    const style = document.getElementById('{THOUGHT_STYLE_ID}') || document.createElement('style');
+    style.id = '{THOUGHT_STYLE_ID}';
+    style.textContent = '@keyframes n1thoughtShimmer{{0%{{background-position:0% 50%}}100%{{background-position:200% 50%}}}}';
+    if (!style.isConnected) root.appendChild(style);
+
+    const card = document.createElement('div');
+    card.id = '{THOUGHT_CARD_ID}';
+    card.style.cssText = 'position:fixed;top:46px;right:12px;max-width:560px;min-width:360px;pointer-events:none;z-index:{Z_INDEX + 1};padding:18px 20px;border-radius:18px;background:rgba(8,16,20,0.92);border:1px solid rgba(29,205,152,0.25);box-shadow:0 10px 24px rgba(0,0,0,0.18),0 0 0 1px rgba(29,205,152,0.08) inset;color:#eef6f3;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;';
+    const header = document.createElement('div');
+    header.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:10px;';
+    const badge = document.createElement('span');
+    badge.style.cssText = 'display:inline-block;padding:5px 10px;border-radius:999px;background:linear-gradient(90deg, rgba(29,205,152,0.22), rgba(90,232,189,0.45), rgba(29,205,152,0.22));background-size:200% 200%;animation:n1thoughtShimmer 1.6s linear infinite;color:#d9fff1;font-size:10px;font-weight:800;letter-spacing:0.9px;text-transform:uppercase;';
+    badge.textContent = 'Thinking';
+    header.appendChild(badge);
+
+    const body = document.createElement('div');
+    body.style.cssText = 'font-size:16px;line-height:1.5;color:rgba(238,246,243,0.92);display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word;';
+    body.textContent = text;
+
+    card.appendChild(header);
+    card.appendChild(body);
+    root.appendChild(card);
+
+    const previousTimer = root.__n1ThoughtTimer;
+    if (previousTimer) clearTimeout(previousTimer);
+    root.__n1ThoughtTimer = setTimeout(() => {{
+        const current = document.getElementById('{THOUGHT_CARD_ID}');
+        if (current) current.remove();
+    }}, {THOUGHT_DURATION_MS});
+}}"""
+
+_READ_EFFECT_JS = f"""() => {{
+    const root = document.getElementById('{TRANSIENT_ROOT_ID}');
+    if (!root) return;
+
+    if (!document.getElementById('{READ_STYLE_ID}')) {{
+        const style = document.createElement('style');
+        style.id = '{READ_STYLE_ID}';
+        style.textContent = '@keyframes n1readSweep{{0%{{transform:translateY(-12px);opacity:0}}8%{{opacity:1}}92%{{opacity:1}}100%{{transform:translateY(100vh);opacity:0}}}}';
+        root.appendChild(style);
+    }}
+
+    let scan = document.getElementById('{READ_SCAN_ID}');
+    if (!scan) {{
+        scan = document.createElement('div');
+        scan.id = '{READ_SCAN_ID}';
+        scan.style.cssText = 'position:fixed;left:0;top:0;width:100%;height:6px;opacity:0;pointer-events:none;z-index:{Z_INDEX};will-change:transform,opacity;background:rgba(90,232,189,0.9);box-shadow:0 0 12px 2px rgba(90,232,189,0.6),0 0 32px 4px rgba(29,205,152,0.25);animation:n1readSweep {READ_SCAN_DURATION_MS}ms cubic-bezier(0.2, 0.72, 0.24, 1) forwards;';
+        root.appendChild(scan);
+    }}
+
+    const previousTimer = root.__n1ScanTimer;
+    if (previousTimer) clearTimeout(previousTimer);
+    root.__n1ScanTimer = setTimeout(() => {{
+        const current = document.getElementById('{READ_SCAN_ID}');
+        if (current) current.remove();
+    }}, {READ_SCAN_DURATION_MS} + 100);
 }}"""
 
 _TRANSIENT_ROOT_JS = f"""() => {{
@@ -162,11 +232,15 @@ _REMOVE_ALL_JS = f"""() => {{
     const persistent = document.getElementById('{PERSISTENT_ROOT_ID}');
     if (persistent) {{
         if (persistent.__n1AnimationFrame) cancelAnimationFrame(persistent.__n1AnimationFrame);
+        if (persistent.__n1ThoughtTimer) clearTimeout(persistent.__n1ThoughtTimer);
         persistent.remove();
     }}
     const transient = document.getElementById('{TRANSIENT_ROOT_ID}');
-    if (transient) transient.remove();
-    for (const styleId of ['{CLICK_STYLE_ID}', '{SCROLL_STYLE_ID}', '{TYPE_STYLE_ID}', '{DRAG_STYLE_ID}']) {{
+    if (transient) {{
+        if (transient.__n1ScanTimer) clearTimeout(transient.__n1ScanTimer);
+        transient.remove();
+    }}
+    for (const styleId of ['{CLICK_STYLE_ID}', '{SCROLL_STYLE_ID}', '{TYPE_STYLE_ID}', '{DRAG_STYLE_ID}', '{THOUGHT_STYLE_ID}']) {{
         const style = document.getElementById(styleId);
         if (style) style.remove();
     }}
@@ -268,6 +342,19 @@ class OverlayController:
                 if (chip) chip.textContent = {label!r};
             }}"""
         )
+
+    async def show_thought(self, text: str) -> None:
+        if not self._active:
+            return
+        await self._inject_persistent_root()
+        clipped = self._clip_text(text, 400)
+        await self._eval(_THOUGHT_CARD_JS, clipped)
+
+    async def show_read_effect(self) -> None:
+        if not self._active:
+            return
+        await self._ensure_transient_root()
+        await self._eval(_READ_EFFECT_JS)
 
     async def before_screenshot(self) -> None:
         if not self._active:
@@ -447,8 +534,18 @@ class OverlayController:
     async def _ensure_transient_root(self) -> None:
         await self._eval(_TRANSIENT_ROOT_JS)
 
-    async def _eval(self, script: str) -> None:
+    async def _eval(self, script: str, arg: object | None = None) -> None:
         try:
-            await self._page.evaluate(script)
+            if arg is None:
+                await self._page.evaluate(script)
+            else:
+                await self._page.evaluate(script, arg)
         except Exception:
             logger.debug("Overlay evaluate failed (best-effort)", exc_info=True)
+
+    @staticmethod
+    def _clip_text(text: str, limit: int) -> str:
+        normalized = " ".join(str(text).split())
+        if len(normalized) <= limit:
+            return normalized
+        return normalized[: max(limit - 1, 0)].rstrip() + "…"

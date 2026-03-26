@@ -28,7 +28,7 @@ dependencies = [
     "pillow>=10.0.0",
     "playwright>=1.40.0",
     "pydantic>=2.7.0",
-    "yutori>=0.4.3",
+    "yutori>=0.4.5",
 ]
 
 [project.urls]
