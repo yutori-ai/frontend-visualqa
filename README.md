@@ -201,7 +201,7 @@ cd /path/to/frontend-visualqa
 lsof -ti:8000 | xargs kill 2>/dev/null; python3 -m http.server 8000 -d examples &
 ```
 
-**Self-correcting navigation** — start on the wrong page and watch n1 find its way. In headed mode, a branded cursor follows every action with click pulses, scroll dots, and a status chip, while tool-using turns show a compact thought card and read-only tools show a scan + preview panel:
+**Self-correcting navigation** — start on the wrong page and watch n1 find its way:
 
 ```bash
 # n1 lands on the product catalog, clicks through to find the product detail page
