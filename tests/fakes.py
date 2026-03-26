@@ -111,7 +111,7 @@ class FakeArtifactManager:
         return str(path)
 
     def save_json(self, run: RunArtifacts, relative_path: str, payload: dict[str, Any]) -> str:
-        path = self.run.run_dir / relative_path
+        path = run.run_dir / relative_path
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(payload))
         return str(path)
