@@ -127,6 +127,7 @@ class VerifyVisualClaimsInput(FrontendVisualQABaseModel):
     claims: list[str] = Field(min_length=1)
     viewport: ViewportConfig = Field(default_factory=ViewportConfig)
     session_key: str = "default"
+    run_label: str | None = None
     reuse_session: bool = True
     reset_between_claims: bool = True
     visualize: bool | None = None
@@ -168,6 +169,7 @@ class RunResult(FrontendVisualQABaseModel):
     started_at: float | None = None
     completed_at: float | None = None
     session_key: str
+    run_label: str | None = None
     results: list[ClaimResult] = Field(default_factory=list)
     summary: str
     artifacts_dir: str
@@ -178,6 +180,7 @@ class ScreenshotResult(FrontendVisualQABaseModel):
 
     status: ScreenshotStatus = "completed"
     session_key: str
+    run_label: str | None = None
     final_url: str
     viewport: ViewportConfig
     screenshot_path: str | None = None

@@ -114,6 +114,8 @@ class CTRFReporter:
                 "tests": ctrf_tests,
             },
         }
+        if run_result.run_label is not None:
+            ctrf_report["results"]["extra"] = {"runLabel": run_result.run_label}
 
         path = output_dir / "ctrf-report.json"
         path.parent.mkdir(parents=True, exist_ok=True)

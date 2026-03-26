@@ -22,8 +22,9 @@ DEFAULT_SCREENSHOT_JPEG_QUALITY = 75
 DEFAULT_SCREENSHOT_WEBP_QUALITY = 90
 logger = logging.getLogger(__name__)
 PERSISTENT_SESSION_KEY_ERROR = (
-    "Persistent browser mode supports only the 'default' session. "
-    "Use ephemeral mode for multiple sessions, or omit session_key."
+    "Persistent browser mode supports exactly one named session at a time. "
+    "Use the existing session key, close the current persistent session before switching names, "
+    "or use ephemeral mode for multiple sessions."
 )
 
 
@@ -69,6 +70,13 @@ class BrowserManager:
         self._browser: Browser | None = None
         self._persistent_context: BrowserContext | None = None
         self._sessions: dict[str, BrowserSession] = {}
+
+    @property
+    def _persistent_session_key(self) -> str | None:
+        """Derive the active persistent session key from ``_sessions``."""
+        if self.config.mode != BrowserMode.persistent or not self._sessions:
+            return None
+        return next(iter(self._sessions))
 
     async def ensure_browser(self, viewport: ViewportConfig | None = None) -> Browser | BrowserContext:
         """Start Playwright and Chromium if needed."""
@@ -391,12 +399,22 @@ class BrowserManager:
             await self._playwright.stop()
             self._playwright = None
 
+    def _evict_dead_persistent_session(self) -> None:
+        """Remove a dead persistent session so it does not hold the name lock."""
+        if self.config.mode != BrowserMode.persistent:
+            return
+        for key in list(self._sessions):
+            if not self._session_is_open(self._sessions[key]):
+                logger.info("Evicting dead persistent session %r (page was closed or crashed)", key)
+                self._sessions.pop(key, None)
+
     def _validate_session_key(self, session_key: str) -> None:
         if self.config.mode != BrowserMode.persistent:
             return
-        if session_key == "default":
+        self._evict_dead_persistent_session()
+        if self._persistent_session_key is None or session_key == self._persistent_session_key:
             return
-        raise ValueError(PERSISTENT_SESSION_KEY_ERROR)
+        raise ValueError(f"{PERSISTENT_SESSION_KEY_ERROR} Active session key: {self._persistent_session_key!r}.")
 
     def _handle_persistent_context_close(self) -> None:
         self._persistent_context = None

@@ -119,6 +119,7 @@ class VisualQARunner:
         claims: list[str],
         viewport: ViewportConfig | dict[str, Any] | None = None,
         session_key: str = "default",
+        run_label: str | None = None,
         reuse_session: bool = True,
         reset_between_claims: bool = True,
         visualize: bool | None = None,
@@ -134,6 +135,7 @@ class VisualQARunner:
             claims=claims,
             viewport=self._coerce_viewport(viewport),
             session_key=session_key,
+            run_label=run_label,
             reuse_session=reuse_session,
             reset_between_claims=reset_between_claims,
             visualize=visualize,
@@ -298,6 +300,7 @@ class VisualQARunner:
                 started_at=run_started_at,
                 completed_at=time.time(),
                 session_key=request.session_key,
+                run_label=request.run_label,
                 results=claim_results,
                 summary=summary,
                 artifacts_dir=str(run_artifacts.run_dir),
@@ -334,6 +337,7 @@ class VisualQARunner:
         url: str,
         viewport: ViewportConfig | dict[str, Any] | None = None,
         session_key: str = "default",
+        run_label: str | None = None,
         reuse_session: bool = True,
     ) -> ScreenshotResult:
         """Navigate to a page and persist a screenshot."""
@@ -347,6 +351,7 @@ class VisualQARunner:
                 result = ScreenshotResult(
                     status="not_testable",
                     session_key=session_key,
+                    run_label=run_label,
                     final_url=url,
                     viewport=viewport_config,
                     screenshot_path=None,
@@ -365,6 +370,7 @@ class VisualQARunner:
                 result = ScreenshotResult(
                     status="completed",
                     session_key=session_key,
+                    run_label=run_label,
                     final_url=session.page.url,
                     viewport=session.viewport,
                     screenshot_path=screenshot_path,
@@ -374,6 +380,7 @@ class VisualQARunner:
                 result = ScreenshotResult(
                     status="not_testable",
                     session_key=session_key,
+                    run_label=run_label,
                     final_url=url,
                     viewport=viewport_config,
                     screenshot_path=None,
@@ -487,6 +494,7 @@ class VisualQARunner:
             started_at=started_at,
             completed_at=completed_at,
             session_key=request.session_key,
+            run_label=request.run_label,
             results=results,
             summary=VisualQARunner._summarize_results(results),
             artifacts_dir=run_dir,

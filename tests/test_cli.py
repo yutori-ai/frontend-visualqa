@@ -61,6 +61,7 @@ class FakeRunner:
         return RunResult(
             overall_status="completed",
             session_key=kwargs["session_key"],
+            run_label=kwargs.get("run_label"),
             results=[_sample_claim_result(url=kwargs["url"], viewport=viewport)],
             summary="1/1 claims passed.",
             artifacts_dir="artifacts/run-fake",
@@ -70,6 +71,7 @@ class FakeRunner:
         self.screenshot_calls.append(kwargs)
         return ScreenshotResult(
             session_key=kwargs["session_key"],
+            run_label=kwargs.get("run_label"),
             final_url=kwargs["url"],
             viewport=kwargs["viewport"],
             screenshot_path="artifacts/run-fake/screenshot.webp",
@@ -171,6 +173,7 @@ def test_handle_verify_closes_runner_and_forwards_browser_config(monkeypatch: An
             user_data_dir="/tmp/frontend-visualqa-profile",
             headed=True,
             session_key="verify-session",
+            run_label="auth-ci",
             reuse_session=True,
             reset_between_claims=True,
             max_steps_per_claim=4,
@@ -194,6 +197,7 @@ def test_handle_verify_closes_runner_and_forwards_browser_config(monkeypatch: An
     ]
     assert emitted[0]["overall_status"] == "completed"
     assert emitted[0]["runner_version"] == __version__
+    assert emitted[0]["run_label"] == "auth-ci"
     claim_result = emitted[0]["results"][0]
     _assert_claim_result_payload_shape(claim_result)
     assert claim_result["finding"] == "The modal title reads Edit Task."
@@ -226,6 +230,7 @@ def test_handle_screenshot_closes_runner_and_forwards_browser_config(monkeypatch
             user_data_dir=None,
             headed=False,
             session_key="shot-session",
+            run_label="mobile-home",
             reuse_session=False,
         )
     )
@@ -235,6 +240,7 @@ def test_handle_screenshot_closes_runner_and_forwards_browser_config(monkeypatch
     assert fake_runner.screenshot_calls[0]["viewport"] == ViewportConfig(width=390, height=844, device_scale_factor=1.0)
     assert browser_configs == [BrowserConfig(mode=BrowserMode.ephemeral, user_data_dir=None, headless=True)]
     assert emitted[0]["final_url"] == "http://localhost:3000/tasks/123"
+    assert emitted[0]["run_label"] == "mobile-home"
 
 
 def test_handle_status_closes_runner(monkeypatch: Any) -> None:
@@ -310,6 +316,7 @@ def test_handle_verify_passes_reporters_to_runner(monkeypatch: Any) -> None:
             user_data_dir=None,
             headed=False,
             session_key="default",
+            run_label=None,
             reuse_session=True,
             reset_between_claims=True,
             max_steps_per_claim=12,
@@ -373,6 +380,7 @@ def test_handle_verify_returns_nonzero_when_any_claim_is_not_passed(monkeypatch:
             user_data_dir=None,
             headed=False,
             session_key="default",
+            run_label=None,
             reuse_session=True,
             reset_between_claims=True,
             max_steps_per_claim=12,
@@ -414,6 +422,7 @@ def test_handle_verify_returns_nonzero_without_json_when_auth_preflight_fails(
             user_data_dir=None,
             headed=False,
             session_key="default",
+            run_label=None,
             reuse_session=True,
             reset_between_claims=True,
             max_steps_per_claim=12,
@@ -459,6 +468,20 @@ def test_verify_parser_supports_visualize_flags_and_headed_default() -> None:
     ])
     assert explicit_false_args.visualize is False
     assert _build_browser_config(explicit_false_args).visualize is False
+
+
+def test_session_arg_help_mentions_persistent_singleton_and_run_label_scope() -> None:
+    from frontend_visualqa.cli import build_parser
+
+    parser = build_parser()
+    subparsers = next(action for action in parser._actions if getattr(action, "choices", None))
+    verify_help = " ".join(subparsers.choices["verify"].format_help().split())
+    screenshot_help = " ".join(subparsers.choices["screenshot"].format_help().split())
+
+    assert "Persistent mode supports one named session at a time." in verify_help
+    assert "Optional label included in JSON output and reports." in verify_help
+    assert "Persistent mode supports one named session at a time." in screenshot_help
+    assert "Optional label included in JSON output." in screenshot_help
 
 
 def test_handle_login_requires_tty(monkeypatch: Any, capsys: pytest.CaptureFixture[str]) -> None:
