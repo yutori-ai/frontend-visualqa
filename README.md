@@ -443,34 +443,6 @@ Each claim result contains:
     "wrong_page_recovered": false,
     "screenshot_paths": ["..."],
     "actions": ["..."],
-    "events": [
-      {
-        "type": "action",
-        "step": 4,
-        "reasoning": "I should inspect the quota section before deciding.",
-        "action": "extract_elements",
-        "action_args": { "filter": "quota" },
-        "output_preview": "Visible headings: - Monthly Quota ...",
-        "screenshot_path": "artifacts/run-.../claim-02/step-04.webp",
-        "verdict_status": null,
-        "verdict_source": null,
-        "finding": null,
-        "timestamp_ms": 1710000000000
-      },
-      {
-        "type": "verdict",
-        "step": 4,
-        "reasoning": "I should inspect the quota section before deciding.",
-        "action": null,
-        "action_args": null,
-        "output_preview": null,
-        "screenshot_path": null,
-        "verdict_status": "failed",
-        "verdict_source": "record_claim_result",
-        "finding": "The bar is visually only about 65% filled.",
-        "timestamp_ms": 1710000000123
-      }
-    ],
     "trace_path": "artifacts/run-.../claim-02/trace.json"
   }
 }
@@ -478,7 +450,7 @@ Each claim result contains:
 
 `proof.screenshot_path` points to the screenshot n1 was examining when it rendered the verdict.
 `proof.text` is intentionally compact for token efficiency; if `proof.text_path` is present, open that file for the full extracted DOM/content readout.
-`trace.actions` stays as a compact summary, while `trace.events` is the canonical machine-readable trace with separate reasoning and verdict metadata.
+`trace.trace_path` points to `trace.json`, which contains the full machine-readable event trace with reasoning and verdict metadata. Events are excluded from the JSON output by default to keep it compact; access them programmatically via `result.trace.events` or read `trace.json` directly.
 
 </details>
 
