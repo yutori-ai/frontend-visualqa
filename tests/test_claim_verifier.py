@@ -1211,11 +1211,9 @@ async def test_claim_verifier_treats_stop_tool_call_as_a_final_inconclusive_verd
     assert _field(result, "status") == "inconclusive"
     assert "Need a human" in _field(result, "finding")
     assert action_executor.calls == BOOTSTRAP_CALLS
-    assert action_executor.calls[len(BOOTSTRAP_CALLS):] == []
     verdict_event = _field(result, "trace").events[0]
     assert verdict_event.type == "verdict"
     assert verdict_event.verdict_source == "legacy_stop"
-    assert _field(result, "trace").events[0].verdict_source == "legacy_stop"
 
 
 @pytest.mark.asyncio
