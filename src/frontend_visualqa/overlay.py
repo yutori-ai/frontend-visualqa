@@ -199,13 +199,12 @@ _READ_EFFECT_JS = f"""() => {{
         root.appendChild(style);
     }}
 
-    let scan = document.getElementById('{READ_SCAN_ID}');
-    if (!scan) {{
-        scan = document.createElement('div');
-        scan.id = '{READ_SCAN_ID}';
-        scan.style.cssText = 'position:fixed;left:0;top:0;width:100%;height:6px;opacity:0;pointer-events:none;z-index:{Z_INDEX};will-change:transform,opacity;background:rgba(90,232,189,0.9);box-shadow:0 0 12px 2px rgba(90,232,189,0.6),0 0 32px 4px rgba(29,205,152,0.25);animation:n1readSweep {READ_SCAN_DURATION_MS}ms cubic-bezier(0.2, 0.72, 0.24, 1) forwards;';
-        root.appendChild(scan);
-    }}
+    const existing = document.getElementById('{READ_SCAN_ID}');
+    if (existing) existing.remove();
+    const scan = document.createElement('div');
+    scan.id = '{READ_SCAN_ID}';
+    scan.style.cssText = 'position:fixed;left:0;top:0;width:100%;height:6px;opacity:0;pointer-events:none;z-index:{Z_INDEX};will-change:transform,opacity;background:rgba(90,232,189,0.9);box-shadow:0 0 12px 2px rgba(90,232,189,0.6),0 0 32px 4px rgba(29,205,152,0.25);animation:n1readSweep {READ_SCAN_DURATION_MS}ms cubic-bezier(0.2, 0.72, 0.24, 1) forwards;';
+    root.appendChild(scan);
 
     const previousTimer = root.__n1ScanTimer;
     if (previousTimer) clearTimeout(previousTimer);
