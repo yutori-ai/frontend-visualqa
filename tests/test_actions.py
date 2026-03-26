@@ -675,10 +675,11 @@ async def test_execute_tool_call_extract_elements_returns_output_text() -> None:
     assert "Visible headings" in result.output_text
     assert "ATMOS" in result.output_text
     assert result.current_url == page.url
-    overlay.show_read_effect.assert_awaited_once()
+    # Scan bar is now triggered by the claim verifier after the evidence
+    # screenshot, not by _execute_read_only_tool.
+    overlay.show_read_effect.assert_not_awaited()
     overlay.ensure_persistent_ui.assert_awaited_once()
-    assert mock_sleep.await_args_list[0].args == (module._overlay_lead_time_seconds(),)
-    assert mock_sleep.await_args_list[1].args == (module.READ_ONLY_POST_ACTION_DELAY_SECONDS,)
+    assert mock_sleep.await_args_list[0].args == (module.READ_ONLY_POST_ACTION_DELAY_SECONDS,)
 
 
 @pytest.mark.asyncio
@@ -708,7 +709,7 @@ async def test_execute_tool_call_extract_content_and_find_return_read_only_text(
     assert "Page text:" in content_result.output_text
     assert find_result.trace == "find(text='ATMOS')"
     assert "Found 1 visible text match" in find_result.output_text
-    assert overlay.show_read_effect.await_count == 2
+    assert overlay.show_read_effect.await_count == 0
 
 
 @pytest.mark.asyncio

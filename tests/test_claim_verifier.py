@@ -77,6 +77,10 @@ class FakeActionExecutor:
         self.calls: list[tuple[str, dict[str, Any]]] = []
         self.overlays_seen: list[Any] = []
 
+    @staticmethod
+    def is_read_only_action(tool_name: str) -> bool:
+        return tool_name in {"extract_elements", "extract_content", "find"}
+
     async def execute_tool_call(self, session: FakeSession, tool_call: Any) -> Any:
         resolved_name = tool_call.function.name
         resolved_args = json.loads(tool_call.function.arguments or "{}")
@@ -536,6 +540,9 @@ async def test_claim_verifier_records_reasoning_events_and_shows_thought_for_too
         async def show_thought(self, text: str) -> None:
             overlay_events.append(("show_thought", text))
 
+        async def show_read_effect(self) -> None:
+            overlay_events.append("show_read_effect")
+
         async def before_screenshot(self) -> None:
             overlay_events.append("before_screenshot")
 
@@ -594,6 +601,18 @@ async def test_claim_verifier_records_reasoning_events_and_shows_thought_for_too
     )
 
     assert ("show_thought", reasoning) in overlay_events
+    assert "show_read_effect" in overlay_events
+    # Both thought card and scan bar must appear AFTER evidence capture
+    # (after_screenshot) — they play during the next LLM call, avoiding flash.
+    last_after = len(overlay_events) - 1 - overlay_events[::-1].index("after_screenshot")
+    first_thought = overlay_events.index(("show_thought", reasoning))
+    first_scan = overlay_events.index("show_read_effect")
+    assert first_thought > last_after, (
+        f"show_thought at index {first_thought} should come after after_screenshot at index {last_after}"
+    )
+    assert first_scan > last_after, (
+        f"show_read_effect at index {first_scan} should come after after_screenshot at index {last_after}"
+    )
     action_event, verdict_event = _field(result, "trace").events
     assert action_event.type == "action"
     assert action_event.reasoning == reasoning
