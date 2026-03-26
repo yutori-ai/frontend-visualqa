@@ -354,7 +354,7 @@ class TestOverlayScreenshotBoundary:
         assert "opacity = '0'" in script
 
     @pytest.mark.asyncio
-    async def test_after_screenshot_restores_persistent_root_only(self) -> None:
+    async def test_after_screenshot_restores_both_roots(self) -> None:
         from frontend_visualqa.overlay import OverlayController
 
         page = _make_mock_page()
@@ -367,12 +367,14 @@ class TestOverlayScreenshotBoundary:
 
         script = str(page.evaluate.call_args.args[0])
         assert "__n1PersistentRoot" in script
-        assert "__n1TransientRoot" not in script
+        assert "__n1TransientRoot" in script
+        assert "visibility = 'visible'" in script
+        assert "opacity = '1'" in script
 
     @pytest.mark.asyncio
-    async def test_transient_root_restored_when_effect_injected_after_screenshot(self) -> None:
-        """After before_screenshot hides both roots and after_screenshot restores
-        only persistent, the next show_action must restore transient root visibility."""
+    async def test_follow_up_effect_reuses_visible_transient_root_after_screenshot(self) -> None:
+        """Transient root stays visible across the screenshot boundary so
+        a follow-up effect doesn't need to re-create it."""
         from frontend_visualqa.overlay import OverlayController
 
         page = _make_mock_page()

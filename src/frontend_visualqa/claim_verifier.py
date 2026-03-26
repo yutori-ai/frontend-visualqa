@@ -180,8 +180,6 @@ class ClaimVerifier:
                 response = await self.n1_client.create(messages, tools=model_tools)
                 assistant_message = self._coerce_assistant_message(response)
                 await self._safe_hook_call("on_llm_end", response=assistant_message)
-                if self._hook and self._hook._current_turn_reasoning and self._overlay:
-                    await asyncio.sleep(1.0)
                 messages.append(self._message_to_dict(assistant_message))
 
                 tool_calls = list(getattr(assistant_message, "tool_calls", []) or [])
@@ -215,6 +213,7 @@ class ClaimVerifier:
                         continue
                     break
 
+                executed_tool_names: list[str] = []
                 for tool_call in tool_calls:
                     tool_name = getattr(tool_call.function, "name", "")
                     if tool_name == "record_claim_result":
@@ -285,6 +284,7 @@ class ClaimVerifier:
                         label=f"step-{step_count:02d}",
                     )
                     screenshot_paths.append(screenshot_path)
+                    executed_tool_names.append(tool_name)
                     self._record_action_event(
                         step=step_count,
                         action=tool_name,
@@ -321,6 +321,18 @@ class ClaimVerifier:
                             ],
                         }
                     )
+
+                # Show thought card and scan bar once per turn, after all
+                # evidence is captured — they play while the next LLM call
+                # is in flight.  Placed outside the tool loop so multi-tool
+                # turns show the overlays exactly once.
+                reasoning = self._hook.current_turn_reasoning if self._hook else None
+                if reasoning and self._overlay:
+                    await self._best_effort_overlay_call("show_thought", reasoning)
+                if self._overlay and any(
+                    self.action_executor.is_read_only_action(name) for name in executed_tool_names
+                ):
+                    await self._best_effort_overlay_call("show_read_effect")
 
             result = await self._force_stop(
                 claim=claim,

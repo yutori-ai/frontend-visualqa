@@ -16,20 +16,15 @@ class VisualQAHookAdapter(RunHooksBase):
         self.events: list[TraceEvent] = []
         self._current_turn_reasoning: str | None = None
 
+    @property
+    def current_turn_reasoning(self) -> str | None:
+        return self._current_turn_reasoning
+
     async def on_llm_end(self, *, response: Any) -> None:
         message = response.choices[0].message if hasattr(response, "choices") else response
         tool_calls = list(getattr(message, "tool_calls", []) or [])
         reasoning = extract_text_content(getattr(message, "content", None))
         self._current_turn_reasoning = reasoning if reasoning and tool_calls else None
-        if self._current_turn_reasoning is None or self._overlay is None:
-            return
-        show_thought = getattr(self._overlay, "show_thought", None)
-        if not callable(show_thought):
-            return
-        try:
-            await show_thought(self._current_turn_reasoning)
-        except Exception:
-            return
 
     def record_action_event(
         self,

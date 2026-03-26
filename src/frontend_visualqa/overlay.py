@@ -195,7 +195,7 @@ _READ_EFFECT_JS = f"""() => {{
     if (!document.getElementById('{READ_STYLE_ID}')) {{
         const style = document.createElement('style');
         style.id = '{READ_STYLE_ID}';
-        style.textContent = '@keyframes n1readSweep{{0%{{transform:translateY(-12px);opacity:0}}8%{{opacity:1}}92%{{opacity:1}}100%{{transform:translateY(100vh);opacity:0}}}}';
+        style.textContent = '@keyframes n1readSweep{{0%{{transform:translateY(-12px)}}100%{{transform:translateY(100vh)}}}}';
         root.appendChild(style);
     }}
 
@@ -203,7 +203,7 @@ _READ_EFFECT_JS = f"""() => {{
     if (existing) existing.remove();
     const scan = document.createElement('div');
     scan.id = '{READ_SCAN_ID}';
-    scan.style.cssText = 'position:fixed;left:0;top:0;width:100%;height:6px;opacity:0;pointer-events:none;z-index:{Z_INDEX};will-change:transform,opacity;background:rgba(90,232,189,0.9);box-shadow:0 0 12px 2px rgba(90,232,189,0.6),0 0 32px 4px rgba(29,205,152,0.25);animation:n1readSweep {READ_SCAN_DURATION_MS}ms cubic-bezier(0.2, 0.72, 0.24, 1) forwards;';
+    scan.style.cssText = 'position:fixed;left:0;top:0;width:100%;height:6px;pointer-events:none;z-index:{Z_INDEX};will-change:transform;background:rgba(90,232,189,0.9);box-shadow:0 0 12px 2px rgba(90,232,189,0.6),0 0 32px 4px rgba(29,205,152,0.25);animation:n1readSweep {READ_SCAN_DURATION_MS}ms linear forwards;';
     root.appendChild(scan);
 
     const previousTimer = root.__n1ScanTimer;
@@ -245,26 +245,25 @@ _REMOVE_ALL_JS = f"""() => {{
     }}
 }}"""
 
-_HIDE_BOTH_JS = f"""() => {{
-    // Keep the full-viewport overlay layers mounted during capture.
-    // In headed Chromium, toggling display on these layers can trigger
-    // a visible compositor snap even though the page viewport is unchanged.
+def _toggle_both_roots_js(*, visibility: str, opacity: str) -> str:
+    """Generate JS to set visibility/opacity on both overlay roots."""
+    return f"""() => {{
     const persistent = document.getElementById('{PERSISTENT_ROOT_ID}');
     if (persistent) {{
-        {_set_visibility_opacity_js("persistent", visibility="hidden", opacity="0")}
+        {_set_visibility_opacity_js("persistent", visibility=visibility, opacity=opacity)}
     }}
     const transient = document.getElementById('{TRANSIENT_ROOT_ID}');
     if (transient) {{
-        {_set_visibility_opacity_js("transient", visibility="hidden", opacity="0")}
+        {_set_visibility_opacity_js("transient", visibility=visibility, opacity=opacity)}
     }}
 }}"""
 
-_RESTORE_PERSISTENT_JS = f"""() => {{
-    const persistent = document.getElementById('{PERSISTENT_ROOT_ID}');
-    if (persistent) {{
-        {_set_visibility_opacity_js("persistent", visibility="visible", opacity="1")}
-    }}
-}}"""
+
+# Keep the full-viewport overlay layers mounted during capture.
+# In headed Chromium, toggling display on these layers can trigger
+# a visible compositor snap even though the page viewport is unchanged.
+_HIDE_BOTH_JS = _toggle_both_roots_js(visibility="hidden", opacity="0")
+_RESTORE_BOTH_JS = _toggle_both_roots_js(visibility="visible", opacity="1")
 
 _CHECK_PERSISTENT_JS = f"!!document.getElementById('{PERSISTENT_ROOT_ID}')"
 
@@ -363,7 +362,7 @@ class OverlayController:
     async def after_screenshot(self) -> None:
         if not self._active:
             return
-        await self._eval(_RESTORE_PERSISTENT_JS)
+        await self._eval(_RESTORE_BOTH_JS)
 
     async def ensure_persistent_ui(self) -> None:
         if not self._active:
