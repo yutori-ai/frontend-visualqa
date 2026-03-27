@@ -637,7 +637,7 @@ async def test_execute_action_rejects_invalid_scroll_direction() -> None:
 
 
 @pytest.mark.asyncio
-async def test_execute_tool_call_read_page_returns_output_text() -> None:
+async def test_execute_tool_call_rejects_removed_find_tool() -> None:
     module = _import_actions_module()
     executor = instantiate_with_supported_kwargs(
         module.ActionExecutor,
@@ -645,96 +645,7 @@ async def test_execute_tool_call_read_page_returns_output_text() -> None:
         settle_delay_seconds=0,
     )
     page = FakePage()
-    page.evaluate_results.append(
-        {
-            "headings": ["ATMOS"],
-            "buttons": ["11°"],
-            "links": [{"text": "Forecast", "href": "http://fixture.local/forecast"}],
-            "inputs": [{"label": "Search", "type": "search", "placeholder": ""}],
-            "visibleText": ["ATMOS", "San Francisco, CA"],
-            "rawText": "ATMOS San Francisco, CA Mostly Sunny",
-        }
-    )
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
-    overlay = SimpleNamespace(show_read_effect=AsyncMock(), ensure_persistent_ui=AsyncMock())
-    executor.overlay = overlay
-
-    with patch("frontend_visualqa.actions.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
-        result = await _call_execute_tool_call(executor, page, "read_page", {"filter": "ATMOS"}, viewport)
-
-    assert result.trace == "read_page(filter='ATMOS')"
-    assert "Visible headings" in result.output_text
-    assert "Page text:" in result.output_text
-    assert "ATMOS" in result.output_text
-    assert result.current_url == page.url
-    # Scan bar is now triggered by the claim verifier after the evidence
-    # screenshot, not by _execute_read_only_tool.
-    overlay.show_read_effect.assert_not_awaited()
-    overlay.ensure_persistent_ui.assert_awaited_once()
-    assert mock_sleep.await_args_list[0].args == (module.READ_ONLY_POST_ACTION_DELAY_SECONDS,)
-
-
-@pytest.mark.asyncio
-async def test_execute_tool_call_read_page_and_find_return_read_only_text() -> None:
-    module = _import_actions_module()
-    executor = instantiate_with_supported_kwargs(
-        module.ActionExecutor,
-        navigation_timeout_ms=1_000,
-        settle_delay_seconds=0,
-    )
-    page = FakePage()
-    page.evaluate_results.extend(
-        [
-            {
-                "headings": ["ATMOS Weather"],
-                "buttons": [],
-                "links": [],
-                "inputs": [],
-                "visibleText": ["Mostly Sunny"],
-                "rawText": "ATMOS San Francisco, CA Mostly Sunny",
-            },
-            {"count": 1, "matches": ["ATMOS San Francisco, CA Mostly Sunny"]},
-        ]
-    )
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
-    overlay = SimpleNamespace(show_read_effect=AsyncMock(), ensure_persistent_ui=AsyncMock())
-    executor.overlay = overlay
-
-    with patch("frontend_visualqa.actions.asyncio.sleep", new_callable=AsyncMock):
-        content_result = await _call_execute_tool_call(executor, page, "read_page", {}, viewport)
-        find_result = await _call_execute_tool_call(executor, page, "find", {"text": "ATMOS"}, viewport)
-
-    assert content_result.trace == "read_page()"
-    assert "Visible headings" in content_result.output_text
-    assert "Page text:" in content_result.output_text
-    assert find_result.trace == "find(text='ATMOS')"
-    assert "Found 1 visible text match" in find_result.output_text
-    assert overlay.show_read_effect.await_count == 0
-
-
-@pytest.mark.asyncio
-async def test_execute_tool_call_read_only_sleeps_post_action_without_overlay() -> None:
-    module = _import_actions_module()
-    executor = instantiate_with_supported_kwargs(
-        module.ActionExecutor,
-        navigation_timeout_ms=1_000,
-        settle_delay_seconds=0,
-    )
-    page = FakePage()
-    page.evaluate_results.append(
-        {
-            "headings": [],
-            "buttons": [],
-            "links": [],
-            "inputs": [],
-            "visibleText": [],
-            "rawText": "ATMOS San Francisco, CA Mostly Sunny",
-        }
-    )
     viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
 
-    with patch("frontend_visualqa.actions.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
-        result = await _call_execute_tool_call(executor, page, "read_page", {}, viewport)
-
-    assert result.trace == "read_page()"
-    mock_sleep.assert_not_awaited()
+    with pytest.raises(Exception):
+        await _call_execute_tool_call(executor, page, "find", {"text": "ATMOS"}, viewport)

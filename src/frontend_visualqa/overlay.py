@@ -31,14 +31,11 @@ TYPE_STYLE_ID = "__n1TypeStyle"
 
 CURSOR_ID = "__n1Cursor"
 DRAG_STYLE_ID = "__n1DragStyle"
-READ_SCAN_ID = "__n1ReadScan"
-READ_STYLE_ID = "__n1ReadStyle"
 CLICK_DURATION_MS = 250
 SCROLL_DURATION_MS = 1000
 DRAG_DURATION_MS = 200
 CURSOR_TRANSITION_MS = 80
 THOUGHT_DURATION_MS = 6000
-READ_SCAN_DURATION_MS = 3000
 
 _CURSOR_SVG = (
     '<svg width="134" height="181" viewBox="0 0 134 181" fill="none" xmlns="http://www.w3.org/2000/svg">'
@@ -188,32 +185,6 @@ _THOUGHT_CARD_JS = f"""(text) => {{
     }}, {THOUGHT_DURATION_MS});
 }}"""
 
-_READ_EFFECT_JS = f"""() => {{
-    const root = document.getElementById('{TRANSIENT_ROOT_ID}');
-    if (!root) return;
-
-    if (!document.getElementById('{READ_STYLE_ID}')) {{
-        const style = document.createElement('style');
-        style.id = '{READ_STYLE_ID}';
-        style.textContent = '@keyframes n1readSweep{{0%{{transform:translateY(-12px)}}100%{{transform:translateY(100vh)}}}}';
-        root.appendChild(style);
-    }}
-
-    const existing = document.getElementById('{READ_SCAN_ID}');
-    if (existing) existing.remove();
-    const scan = document.createElement('div');
-    scan.id = '{READ_SCAN_ID}';
-    scan.style.cssText = 'position:fixed;left:0;top:0;width:100%;height:6px;pointer-events:none;z-index:{Z_INDEX};will-change:transform;background:rgba(90,232,189,0.9);box-shadow:0 0 12px 2px rgba(90,232,189,0.6),0 0 32px 4px rgba(29,205,152,0.25);animation:n1readSweep {READ_SCAN_DURATION_MS}ms linear forwards;';
-    root.appendChild(scan);
-
-    const previousTimer = root.__n1ScanTimer;
-    if (previousTimer) clearTimeout(previousTimer);
-    root.__n1ScanTimer = setTimeout(() => {{
-        const current = document.getElementById('{READ_SCAN_ID}');
-        if (current) current.remove();
-    }}, {READ_SCAN_DURATION_MS} + 100);
-}}"""
-
 _TRANSIENT_ROOT_JS = f"""() => {{
     let root = document.getElementById('{TRANSIENT_ROOT_ID}');
     if (root) {{
@@ -235,10 +206,7 @@ _REMOVE_ALL_JS = f"""() => {{
         persistent.remove();
     }}
     const transient = document.getElementById('{TRANSIENT_ROOT_ID}');
-    if (transient) {{
-        if (transient.__n1ScanTimer) clearTimeout(transient.__n1ScanTimer);
-        transient.remove();
-    }}
+    if (transient) transient.remove();
     for (const styleId of ['{CLICK_STYLE_ID}', '{SCROLL_STYLE_ID}', '{TYPE_STYLE_ID}', '{DRAG_STYLE_ID}', '{THOUGHT_STYLE_ID}']) {{
         const style = document.getElementById(styleId);
         if (style) style.remove();
@@ -347,12 +315,6 @@ class OverlayController:
         await self._inject_persistent_root()
         clipped = self._clip_text(text, 400)
         await self._eval(_THOUGHT_CARD_JS, clipped)
-
-    async def show_read_effect(self) -> None:
-        if not self._active:
-            return
-        await self._ensure_transient_root()
-        await self._eval(_READ_EFFECT_JS)
 
     async def before_screenshot(self) -> None:
         if not self._active:

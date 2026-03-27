@@ -13,7 +13,7 @@ import pytest
 from frontend_visualqa.artifacts import RunArtifacts
 from frontend_visualqa.schemas import ViewportConfig
 
-from fakes import FakeArtifactManager, FakeFunction, FakeMessage, FakeN1Client, FakeToolCall, instantiate_with_supported_kwargs, is_bootstrap_step_artifact
+from fakes import FakeArtifactManager, FakeFunction, FakeMessage, FakeN1Client, FakeToolCall, instantiate_with_supported_kwargs
 
 
 def _import_claim_verifier_module():
@@ -31,9 +31,6 @@ def _field(result: Any, name: str) -> Any:
     if isinstance(result, dict):
         return result[name]
     return getattr(result, name)
-
-
-BOOTSTRAP_CALLS = [("read_page", {})]
 
 
 @dataclass
@@ -71,10 +68,6 @@ class FakeActionExecutor:
         self.calls: list[tuple[str, dict[str, Any]]] = []
         self.overlays_seen: list[Any] = []
 
-    @staticmethod
-    def is_read_only_action(tool_name: str) -> bool:
-        return tool_name in {"read_page", "find"}
-
     async def execute_tool_call(self, session: FakeSession, tool_call: Any) -> Any:
         resolved_name = tool_call.function.name
         resolved_args = json.loads(tool_call.function.arguments or "{}")
@@ -84,18 +77,10 @@ class FakeActionExecutor:
             session.page.url = resolved_args["url"]
         return SimpleNamespace(
             trace=f"{resolved_name}({resolved_args})",
-            output_text=(f"Executed {resolved_name}" if resolved_name in {"read_page", "find"} else None),
+            output_text=None,
             current_url=session.page.url,
             success=True,
         )
-
-
-class ReadOnlyActionExecutor(FakeActionExecutor):
-    async def execute_tool_call(self, session: FakeSession, tool_call: Any) -> Any:
-        result = await super().execute_tool_call(session, tool_call)
-        if tool_call.function.name == "read_page":
-            result.output_text = "Visible buttons:\n- Save"
-        return result
 
 
 class BlockingN1Client(FakeN1Client):
@@ -228,13 +213,15 @@ async def test_claim_verifier_returns_structured_verdict_from_record_claim_resul
     assert "red button" in _field(result, "finding")
     assert _field(result, "page").url == "http://fixture.local/page"
     assert _field(result, "trace").steps_taken == 0
-    assert is_bootstrap_step_artifact(_field(result, "proof").screenshot_path)
+    assert _field(result, "proof").screenshot_path.endswith("step-00.webp")
     assert _field(result, "proof").step == 0
     assert _field(result, "proof").text is None
     assert _field(result, "trace").actions == []
-    assert action_executor.calls == BOOTSTRAP_CALLS
+    assert action_executor.calls == []
     assert n1_client.calls
     assert any(tool["function"]["name"] == "goto_url" for tool in n1_client.calls[0]["tools"])
+    assert not any(tool["function"]["name"] == "read_page" for tool in n1_client.calls[0]["tools"])
+    assert not any(tool["function"]["name"] == "find" for tool in n1_client.calls[0]["tools"])
     assert any(tool["function"]["name"] == "record_claim_result" for tool in n1_client.calls[0]["tools"])
 
 
@@ -285,8 +272,7 @@ async def test_claim_verifier_executes_actions_before_final_verdict(tmp_path: Pa
         navigation_hint="Open the modal before deciding.",
     )
 
-    assert action_executor.calls[: len(BOOTSTRAP_CALLS)] == BOOTSTRAP_CALLS
-    assert action_executor.calls[len(BOOTSTRAP_CALLS):] == [("goto_url", {"url": "http://fixture.local/modal"})]
+    assert action_executor.calls == [("goto_url", {"url": "http://fixture.local/modal"})]
     assert _field(result, "status") == "passed"
     assert _field(result, "page").url == "http://fixture.local/modal"
     assert _field(result, "trace").steps_taken >= 1
@@ -390,10 +376,8 @@ async def test_claim_verifier_uses_overlay_lifecycle_when_visualize_enabled(
     assert events.index("before_screenshot") > events.index("claim_started")
     assert ("set_status", "Analyzing") in events
     assert events[-1] == "claim_ended"
-    assert action_executor.calls[: len(BOOTSTRAP_CALLS)] == BOOTSTRAP_CALLS
-    assert action_executor.calls[len(BOOTSTRAP_CALLS):] == [("goto_url", {"url": "http://fixture.local/modal"})]
-    assert action_executor.overlays_seen[: len(BOOTSTRAP_CALLS)] == [None]
-    assert action_executor.overlays_seen[len(BOOTSTRAP_CALLS)] is fake_overlay
+    assert action_executor.calls == [("goto_url", {"url": "http://fixture.local/modal"})]
+    assert action_executor.overlays_seen == [fake_overlay]
     assert action_executor.overlay is None
 
 
@@ -440,8 +424,7 @@ async def test_claim_verifier_reprompts_after_plain_text_thought_and_continues(t
     )
 
     assert _field(result, "status") == "passed"
-    assert action_executor.calls[: len(BOOTSTRAP_CALLS)] == BOOTSTRAP_CALLS
-    assert action_executor.calls[len(BOOTSTRAP_CALLS):] == [("goto_url", {"url": "http://fixture.local/tasks/123"})]
+    assert action_executor.calls == [("goto_url", {"url": "http://fixture.local/tasks/123"})]
     assert len(n1_client.calls) == 3
     reminder_message = next(
         message
@@ -469,9 +452,6 @@ async def test_claim_verifier_records_reasoning_events_and_shows_thought_for_too
         async def show_thought(self, text: str) -> None:
             overlay_events.append(("show_thought", text))
 
-        async def show_read_effect(self) -> None:
-            overlay_events.append("show_read_effect")
-
         async def before_screenshot(self) -> None:
             overlay_events.append("before_screenshot")
 
@@ -492,7 +472,7 @@ async def test_claim_verifier_records_reasoning_events_and_shows_thought_for_too
                 tool_calls=[
                     FakeToolCall(
                         id="tool-1",
-                        function=FakeFunction(name="read_page", arguments=json.dumps({"filter": "Save"})),
+                        function=FakeFunction(name="goto_url", arguments=json.dumps({"url": "http://fixture.local/save"})),
                     )
                 ],
             ),
@@ -508,7 +488,6 @@ async def test_claim_verifier_records_reasoning_events_and_shows_thought_for_too
                 ]
             ),
         ],
-        action_executor=ReadOnlyActionExecutor(),
         visualize=True,
     )
 
@@ -523,25 +502,19 @@ async def test_claim_verifier_records_reasoning_events_and_shows_thought_for_too
     )
 
     assert ("show_thought", reasoning) in overlay_events
-    assert "show_read_effect" in overlay_events
-    # Both thought card and scan bar must appear AFTER evidence capture
-    # (after_screenshot) — they play during the next LLM call, avoiding flash.
+    # The thought card must appear AFTER evidence capture (after_screenshot)
+    # so it plays during the next LLM call, avoiding flash.
     last_after = len(overlay_events) - 1 - overlay_events[::-1].index("after_screenshot")
     first_thought = overlay_events.index(("show_thought", reasoning))
-    first_scan = overlay_events.index("show_read_effect")
     assert first_thought > last_after, (
         f"show_thought at index {first_thought} should come after after_screenshot at index {last_after}"
-    )
-    assert first_scan > last_after, (
-        f"show_read_effect at index {first_scan} should come after after_screenshot at index {last_after}"
     )
     action_event, verdict_event = _field(result, "trace").events
     assert action_event.type == "action"
     assert action_event.reasoning == reasoning
-    assert action_event.action == "read_page"
-    assert action_event.action_args == {"filter": "Save"}
-    assert action_event.output_preview is not None
-    assert "Visible buttons" in action_event.output_preview
+    assert action_event.action == "goto_url"
+    assert action_event.action_args == {"url": "http://fixture.local/save"}
+    assert action_event.output_preview is None
     assert action_event.screenshot_path.endswith("step-01.webp")
     assert verdict_event.type == "verdict"
     assert verdict_event.reasoning is None
@@ -632,7 +605,7 @@ async def test_claim_verifier_does_not_show_thought_for_plain_text_turn_without_
 
 
 @pytest.mark.asyncio
-async def test_claim_verifier_seeds_first_model_turn_with_bootstrap_observation_and_screenshot(
+async def test_claim_verifier_seeds_first_model_turn_with_current_url_and_screenshot(
     tmp_path: Path,
 ) -> None:
     module = _import_claim_verifier_module()
@@ -664,134 +637,20 @@ async def test_claim_verifier_seeds_first_model_turn_with_bootstrap_observation_
     )
 
     assert _field(result, "status") == "passed"
-    assert action_executor.calls == BOOTSTRAP_CALLS
+    assert action_executor.calls == []
     first_call_messages = n1_client.calls[0]["messages"]
     assert first_call_messages[0]["role"] == "user"
     first_content = first_call_messages[0]["content"]
     assert isinstance(first_content, list)
     text_parts = [part.get("text", "") for part in first_content if isinstance(part, dict) and part.get("type") == "text"]
-    assert any(
-        "Current URL:" in text for text in text_parts
-    )
-    assert any("Verifier-owned bootstrap observation." in text for text in text_parts)
-    assert any("Executed read_page" in text for text in text_parts)
+    assert any("Current URL:" in text for text in text_parts)
+    assert not any("Verifier-owned bootstrap observation." in text for text in text_parts)
     assert any(isinstance(part, dict) and part.get("type") == "image_url" for part in first_content)
-    assert is_bootstrap_step_artifact(_field(result, "proof").screenshot_path)
+    assert _field(result, "proof").screenshot_path.endswith("step-00.webp")
     assert _field(result, "proof").step == 0
     assert _field(result, "proof").after_action is None
     assert _field(result, "proof").text is None
     assert _field(result, "trace").actions == []
-
-
-@pytest.mark.asyncio
-async def test_claim_verifier_degrades_to_screenshot_only_seed_when_bootstrap_fails(tmp_path: Path) -> None:
-    module = _import_claim_verifier_module()
-
-    class BootstrapFailingActionExecutor(FakeActionExecutor):
-        async def execute_tool_call(self, session: FakeSession, tool_call: Any) -> Any:
-            if tool_call.function.name == "read_page":
-                raise RuntimeError("bootstrap failed")
-            return await super().execute_tool_call(session, tool_call)
-
-    verifier, n1_client, _ = _build_claim_verifier(
-        module,
-        tmp_path,
-        responses=[
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-1",
-                        function=FakeFunction(
-                            name="record_claim_result",
-                            arguments=json.dumps({"status": "passed", "finding": "Seeded."}),
-                        ),
-                    )
-                ]
-            )
-        ],
-        action_executor=BootstrapFailingActionExecutor(),
-    )
-
-    result = await _call_verify(
-        verifier,
-        page=FakePage(url="http://fixture.local/page"),
-        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
-        claim="The page title reads 'Dashboard'",
-        url="http://fixture.local/page",
-        navigation_hint=None,
-    )
-
-    assert _field(result, "status") == "passed"
-    first_content = n1_client.calls[0]["messages"][0]["content"]
-    assert any(
-        isinstance(part, dict) and part.get("type") == "text" and "Current URL:" in part.get("text", "")
-        for part in first_content
-    )
-    assert not any(
-        isinstance(part, dict)
-        and part.get("type") == "text"
-        and "Verifier-owned bootstrap observation." in part.get("text", "")
-        for part in first_content
-    )
-    assert any(isinstance(part, dict) and part.get("type") == "image_url" for part in first_content)
-    assert _field(result, "trace").actions == []
-    assert is_bootstrap_step_artifact(_field(result, "proof").screenshot_path)
-    assert _field(result, "trace").screenshot_paths == [_field(result, "proof").screenshot_path]
-    assert _field(result, "proof").text is None
-
-
-@pytest.mark.asyncio
-async def test_claim_verifier_executes_duplicate_initial_bootstrap_read_normally(
-    tmp_path: Path,
-) -> None:
-    module = _import_claim_verifier_module()
-    verifier, n1_client, action_executor = _build_claim_verifier(
-        module,
-        tmp_path,
-        responses=[
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-1",
-                        function=FakeFunction(name="read_page", arguments=json.dumps({})),
-                    )
-                ]
-            ),
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-2",
-                        function=FakeFunction(
-                            name="record_claim_result",
-                            arguments=json.dumps({"status": "passed", "finding": "The modal is visible."}),
-                        ),
-                    )
-                ]
-            ),
-        ],
-    )
-
-    result = await _call_verify(
-        verifier,
-        page=FakePage(url="http://fixture.local/start"),
-        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
-        claim="The modal opens on click",
-        url="http://fixture.local/modal",
-        navigation_hint=None,
-    )
-
-    assert _field(result, "status") == "passed"
-    assert action_executor.calls == [*BOOTSTRAP_CALLS, ("read_page", {})]
-    assert _field(result, "trace").steps_taken == 1
-    assert _field(result, "trace").actions == ["read_page({})"]
-    assert _field(result, "proof").step == 1
-    assert _field(result, "proof").after_action == "read_page({})"
-    second_call_messages = n1_client.calls[1]["messages"]
-    first_tool_message = next(
-        message for message in second_call_messages if message.get("role") == "tool" and message.get("tool_call_id") == "tool-1"
-    )
-    assert "Executed read_page" in first_tool_message["content"][0]["text"]
-    assert first_tool_message["content"][1]["type"] == "image_url"
 
 
 @pytest.mark.asyncio
@@ -883,8 +742,7 @@ async def test_claim_verifier_preserves_tool_call_order_when_action_and_verdict_
     )
 
     assert _field(result, "status") == "passed"
-    assert action_executor.calls[: len(BOOTSTRAP_CALLS)] == BOOTSTRAP_CALLS
-    assert action_executor.calls[len(BOOTSTRAP_CALLS):] == [("goto_url", {"url": "http://fixture.local/modal"})]
+    assert action_executor.calls == [("goto_url", {"url": "http://fixture.local/modal"})]
     assert _field(result, "page").url == "http://fixture.local/modal"
 
 
@@ -1167,61 +1025,10 @@ async def test_claim_verifier_treats_stop_tool_call_as_a_final_inconclusive_verd
 
     assert _field(result, "status") == "inconclusive"
     assert "Need a human" in _field(result, "finding")
-    assert action_executor.calls == BOOTSTRAP_CALLS
+    assert action_executor.calls == []
     verdict_event = _field(result, "trace").events[0]
     assert verdict_event.type == "verdict"
     assert verdict_event.verdict_source == "legacy_stop"
-
-
-@pytest.mark.asyncio
-async def test_claim_verifier_records_proof_text_for_read_only_final_action(tmp_path: Path) -> None:
-    module = _import_claim_verifier_module()
-
-    verifier, _, action_executor = _build_claim_verifier(
-        module,
-        tmp_path,
-        responses=[
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-1",
-                        function=FakeFunction(name="read_page", arguments=json.dumps({"filter": "Save"})),
-                    )
-                ]
-            ),
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-2",
-                        function=FakeFunction(
-                            name="record_claim_result",
-                            arguments=json.dumps({"status": "passed", "finding": "The Save button is visible."}),
-                        ),
-                    )
-                ]
-            ),
-        ],
-        action_executor=ReadOnlyActionExecutor(),
-    )
-
-    result = await _call_verify(
-        verifier,
-        page=FakePage(url="http://fixture.local/page"),
-        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
-        claim="The Save button is visible",
-        url="http://fixture.local/page",
-        navigation_hint=None,
-    )
-
-    assert action_executor.calls == [
-        *BOOTSTRAP_CALLS,
-        ("read_page", {"filter": "Save"}),
-    ]
-    assert _field(result, "proof").step == 1
-    assert _field(result, "proof").after_action == "read_page({'filter': 'Save'})"
-    assert _field(result, "proof").text == "Visible buttons:\n- Save"
-    assert _field(result, "proof").text_path.endswith("step-01.txt")
-    assert Path(_field(result, "proof").text_path).read_text(encoding="utf-8") == "Visible buttons:\n- Save"
 
 
 @pytest.mark.asyncio
@@ -1233,11 +1040,11 @@ async def test_claim_verifier_writes_trace_json_with_action_and_verdict_events(t
         tmp_path,
         responses=[
             FakeMessage(
-                content="Inspect the Save button before deciding.",
+                content="Open the save page before deciding.",
                 tool_calls=[
                     FakeToolCall(
                         id="tool-1",
-                        function=FakeFunction(name="read_page", arguments=json.dumps({"filter": "Save"})),
+                        function=FakeFunction(name="goto_url", arguments=json.dumps({"url": "http://fixture.local/save"})),
                     )
                 ],
             ),
@@ -1253,7 +1060,6 @@ async def test_claim_verifier_writes_trace_json_with_action_and_verdict_events(t
                 ]
             ),
         ],
-        action_executor=ReadOnlyActionExecutor(),
     )
 
     result = await _call_verify(
@@ -1269,64 +1075,8 @@ async def test_claim_verifier_writes_trace_json_with_action_and_verdict_events(t
     assert trace_path is not None
     trace_payload = json.loads(Path(trace_path).read_text())
     assert [event["type"] for event in trace_payload] == ["action", "verdict"]
-    assert trace_payload[0]["action"] == "read_page"
+    assert trace_payload[0]["action"] == "goto_url"
     assert trace_payload[1]["verdict_source"] == "record_claim_result"
-
-
-@pytest.mark.asyncio
-async def test_claim_verifier_truncates_inline_proof_text_but_saves_full_artifact(tmp_path: Path) -> None:
-    module = _import_claim_verifier_module()
-    full_proof_text = "Page text:\n" + " ".join(f"token-{index:03d}" for index in range(80))
-
-    class ReadOnlyActionExecutor(FakeActionExecutor):
-        async def execute_tool_call(self, session: FakeSession, tool_call: Any) -> Any:
-            result = await super().execute_tool_call(session, tool_call)
-            if tool_call.function.name == "read_page":
-                result.output_text = full_proof_text
-            return result
-
-    verifier, _, _ = _build_claim_verifier(
-        module,
-        tmp_path,
-        responses=[
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-1",
-                        function=FakeFunction(name="read_page", arguments=json.dumps({"filter": "Main content"})),
-                    )
-                ]
-            ),
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-2",
-                        function=FakeFunction(
-                            name="record_claim_result",
-                            arguments=json.dumps({"status": "failed", "finding": "The page text does not match."}),
-                        ),
-                    )
-                ]
-            ),
-        ],
-        action_executor=ReadOnlyActionExecutor(),
-    )
-
-    result = await _call_verify(
-        verifier,
-        page=FakePage(url="http://fixture.local/page"),
-        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
-        claim="The page text matches exactly",
-        url="http://fixture.local/page",
-        navigation_hint=None,
-    )
-
-    assert _field(result, "proof").text is not None
-    assert _field(result, "proof").text != full_proof_text
-    assert _field(result, "proof").text.endswith("...")
-    assert _field(result, "proof").text_path.endswith("step-01.txt")
-    assert Path(_field(result, "proof").text_path).read_text(encoding="utf-8") == full_proof_text
-    assert _field(result, "trace").actions == ["read_page({'filter': 'Main content'})"]
 
 
 @pytest.mark.asyncio
@@ -1361,70 +1111,6 @@ async def test_claim_verifier_accepts_stop_finding_field(tmp_path: Path) -> None
 
     assert _field(result, "status") == "inconclusive"
     assert "human judgment" in _field(result, "finding")
-
-
-@pytest.mark.asyncio
-async def test_claim_verifier_clears_stale_read_only_proof_text_after_mutating_action(tmp_path: Path) -> None:
-    module = _import_claim_verifier_module()
-
-    class MixedActionExecutor(FakeActionExecutor):
-        async def execute_tool_call(self, session: FakeSession, tool_call: Any) -> Any:
-            result = await super().execute_tool_call(session, tool_call)
-            if tool_call.function.name == "read_page":
-                result.output_text = "Visible buttons:\n- Save"
-            return result
-
-    verifier, _, action_executor = _build_claim_verifier(
-        module,
-        tmp_path,
-        responses=[
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-1",
-                        function=FakeFunction(name="read_page", arguments=json.dumps({"filter": "Save"})),
-                    )
-                ]
-            ),
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-2",
-                        function=FakeFunction(name="goto_url", arguments=json.dumps({"url": "http://fixture.local/modal"})),
-                    )
-                ]
-            ),
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-3",
-                        function=FakeFunction(
-                            name="record_claim_result",
-                            arguments=json.dumps({"status": "passed", "finding": "The modal is visible."}),
-                        ),
-                    )
-                ]
-            ),
-        ],
-        action_executor=MixedActionExecutor(),
-    )
-
-    result = await _call_verify(
-        verifier,
-        page=FakePage(url="http://fixture.local/start"),
-        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
-        claim="The modal opens on click",
-        url="http://fixture.local/modal",
-        navigation_hint=None,
-    )
-
-    assert action_executor.calls[: len(BOOTSTRAP_CALLS)] == BOOTSTRAP_CALLS
-    assert action_executor.calls[len(BOOTSTRAP_CALLS):] == [
-        ("read_page", {"filter": "Save"}),
-        ("goto_url", {"url": "http://fixture.local/modal"}),
-    ]
-    assert _field(result, "proof").after_action == "goto_url({'url': 'http://fixture.local/modal'})"
-    assert _field(result, "proof").text is None
 
 
 def test_parse_fallback_verdict_requires_explicit_status_markers() -> None:
@@ -1509,7 +1195,7 @@ async def test_claim_verifier_normalizes_initial_screenshot_failures_to_not_test
 
     assert _field(result, "status") == "not_testable"
     assert "Failed to capture screenshot for step-00" in _field(result, "finding")
-    assert action_executor.calls == BOOTSTRAP_CALLS
+    assert action_executor.calls == []
 
 
 @pytest.mark.asyncio
@@ -1543,11 +1229,10 @@ async def test_claim_verifier_normalizes_post_action_screenshot_failures_to_not_
         navigation_hint=None,
     )
 
-    assert action_executor.calls[: len(BOOTSTRAP_CALLS)] == BOOTSTRAP_CALLS
-    assert action_executor.calls[len(BOOTSTRAP_CALLS):] == [("goto_url", {"url": "http://fixture.local/modal"})]
+    assert action_executor.calls == [("goto_url", {"url": "http://fixture.local/modal"})]
     assert _field(result, "status") == "not_testable"
     assert "Failed to capture screenshot for step-01" in _field(result, "finding")
-    assert is_bootstrap_step_artifact(_field(_field(result, "proof"), "screenshot_path"))
+    assert _field(_field(result, "proof"), "screenshot_path").endswith("step-00.webp")
     assert _field(_field(result, "proof"), "step") == 0
     assert _field(_field(result, "proof"), "after_action") is None
     assert _field(_field(result, "trace"), "steps_taken") == 1
@@ -1579,10 +1264,10 @@ async def test_claim_verifier_preserves_partial_result_on_cancellation(tmp_path:
 
     assert partial is not None
     assert _field(partial, "status") == "inconclusive"
-    assert is_bootstrap_step_artifact(_field(_field(partial, "proof"), "screenshot_path"))
+    assert _field(_field(partial, "proof"), "screenshot_path").endswith("step-00.webp")
     assert _field(_field(partial, "proof"), "step") == 0
     assert _field(_field(partial, "trace"), "steps_taken") == 0
-    assert is_bootstrap_step_artifact(_field(_field(partial, "trace"), "screenshot_paths")[0])
+    assert _field(_field(partial, "trace"), "screenshot_paths")[0].endswith("step-00.webp")
 
 
 @pytest.mark.asyncio
@@ -1626,7 +1311,6 @@ async def test_claim_verifier_uses_stop_reason_in_force_stop_path(tmp_path: Path
         navigation_hint=None,
     )
 
-    assert action_executor.calls[: len(BOOTSTRAP_CALLS)] == BOOTSTRAP_CALLS
-    assert action_executor.calls[len(BOOTSTRAP_CALLS):] == [("goto_url", {"url": "http://fixture.local/modal"})]
+    assert action_executor.calls == [("goto_url", {"url": "http://fixture.local/modal"})]
     assert _field(result, "status") == "inconclusive"
     assert "Reached the step limit" in _field(result, "finding")

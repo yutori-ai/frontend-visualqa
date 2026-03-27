@@ -230,7 +230,7 @@ def _result(name: str, status: str, viewport: ViewportConfig) -> ClaimResult:
         proof={
             "screenshot_path": "artifacts/run-001/claim-01/step-01.webp",
             "step": 1,
-            "after_action": "read_page()",
+            "after_action": "goto_url(\"http://fixture.local/claim-status\")",
             "text": f"{name}: {status}",
             "text_path": "artifacts/run-001/claim-01/step-01.txt",
         },
@@ -242,7 +242,7 @@ def _result(name: str, status: str, viewport: ViewportConfig) -> ClaimResult:
                 "artifacts/run-001/claim-01/step-00.webp",
                 "artifacts/run-001/claim-01/step-01.webp",
             ],
-            "actions": ["read_page()"],
+            "actions": ["goto_url(\"http://fixture.local/claim-status\")"],
             "trace_path": "artifacts/run-001/claim-01/trace.json",
         },
     )
@@ -726,7 +726,7 @@ async def test_runner_uses_partial_claim_result_when_verifier_crashes(
         proof={
             "screenshot_path": "artifacts/run-001/claim-01/step-01.webp",
             "step": 1,
-            "after_action": "read_page()",
+            "after_action": "goto_url(\"http://fixture.local/dashboard\")",
             "text": "Visible text included 'Dashboard'.",
             "text_path": "artifacts/run-001/claim-01/step-01.txt",
         },
@@ -738,7 +738,7 @@ async def test_runner_uses_partial_claim_result_when_verifier_crashes(
                 "artifacts/run-001/claim-01/step-00.webp",
                 "artifacts/run-001/claim-01/step-01.webp",
             ],
-            "actions": ["read_page()"],
+            "actions": ["goto_url(\"http://fixture.local/dashboard\")"],
             "trace_path": "artifacts/run-001/claim-01/trace.json",
         },
     )
@@ -764,7 +764,7 @@ async def test_runner_uses_partial_claim_result_when_verifier_crashes(
 
     assert [item.status for item in result.results] == ["inconclusive"]
     assert result.results[0].proof is not None
-    assert result.results[0].proof.after_action == "read_page()"
+    assert result.results[0].proof.after_action == "goto_url(\"http://fixture.local/dashboard\")"
     assert result.results[0].trace.trace_path == "artifacts/run-001/claim-01/trace.json"
 
 
@@ -815,7 +815,7 @@ async def test_runner_preserves_partial_claim_result_when_run_timeout_interrupts
         proof={
             "screenshot_path": "artifacts/run-001/claim-01/step-01.webp",
             "step": 1,
-            "after_action": "read_page()",
+            "after_action": "goto_url(\"http://fixture.local/dashboard\")",
             "text": "Visible text included 'Dashboard'.",
             "text_path": "artifacts/run-001/claim-01/step-01.txt",
         },
@@ -827,7 +827,7 @@ async def test_runner_preserves_partial_claim_result_when_run_timeout_interrupts
                 "artifacts/run-001/claim-01/step-00.webp",
                 "artifacts/run-001/claim-01/step-01.webp",
             ],
-            "actions": ["read_page()"],
+            "actions": ["goto_url(\"http://fixture.local/dashboard\")"],
             "trace_path": "artifacts/run-001/claim-01/trace.json",
         },
     )
@@ -854,7 +854,7 @@ async def test_runner_preserves_partial_claim_result_when_run_timeout_interrupts
 
     assert [item.status for item in result.results] == ["inconclusive", "inconclusive"]
     assert result.results[0].proof is not None
-    assert result.results[0].proof.after_action == "read_page()"
+    assert result.results[0].proof.after_action == "goto_url(\"http://fixture.local/dashboard\")"
     assert result.results[0].trace.steps_taken == 1
     assert result.results[1].proof is None
     assert result.results[1].trace.steps_taken == 0

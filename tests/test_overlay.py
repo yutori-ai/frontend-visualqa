@@ -67,7 +67,6 @@ class TestOverlayControllerLifecycle:
         assert any("__n1TypeStyle" in script for script in scripts)
         assert any("__n1DragStyle" in script for script in scripts)
         assert any("__n1ThoughtTimer" in script for script in scripts)
-        assert any("__n1ScanTimer" in script for script in scripts)
 
         page.evaluate.reset_mock()
         await controller.claim_ended()
@@ -137,26 +136,6 @@ class TestOverlayInformationalCards:
         call = page.evaluate.call_args_list[-1]
         assert "__n1ThoughtCard" in str(call.args[0])
         assert len(call.args[1]) <= 150
-
-    @pytest.mark.asyncio
-    async def test_show_read_effect_uses_full_page_vertical_scan_without_panel(self) -> None:
-        from frontend_visualqa.overlay import OverlayController
-
-        page = _make_mock_page()
-        controller = OverlayController(page)
-
-        await controller.claim_started()
-        page.evaluate.reset_mock()
-
-        await controller.show_read_effect()
-
-        read_call = page.evaluate.call_args_list[1]
-        assert "__n1ReadScan" in str(read_call.args[0])
-        assert "translateY" in str(read_call.args[0])
-        assert "width:100%" in str(read_call.args[0])
-        assert "__n1ReadPanel" not in str(read_call.args[0])
-        assert len(read_call.args) == 1  # no payload argument
-
 
 class TestOverlayShowAction:
     @pytest.mark.asyncio
