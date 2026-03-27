@@ -237,6 +237,12 @@ class ClaimVerifier:
                             if reprompt_text is not None:
                                 if non_action_reprompts < MAX_NON_ACTION_REPROMPTS:
                                     non_action_reprompts += 1
+                                    for tc in tool_calls:
+                                        messages.append({
+                                            "role": "tool",
+                                            "tool_call_id": tc.id,
+                                            "content": [{"type": "text", "text": "Verdict not accepted; see follow-up instructions."}],
+                                        })
                                     messages.append(_user_text_message(reprompt_text))
                                     break
                                 result = await self._finalize_result(
