@@ -231,7 +231,7 @@ class ClaimVerifier:
                             ):
                                 reprompt_text = build_take_action_prompt(claim)
                                 force_stop_finding = "The model kept saying more interaction was needed without taking the next browser action."
-                            elif navigation_hint and progress.step_count == 0:
+                            elif navigation_hint and progress.step_count == 0 and verdict[0] != "not_testable":
                                 reprompt_text = build_follow_navigation_hint_prompt(claim, navigation_hint)
                                 force_stop_finding = "The model tried to render a verdict before following the navigation hint."
                             if reprompt_text is not None:
