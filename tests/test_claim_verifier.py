@@ -219,10 +219,7 @@ async def test_claim_verifier_returns_structured_verdict_from_record_claim_resul
     assert _field(result, "trace").actions == []
     assert action_executor.calls == []
     assert n1_client.calls
-    assert any(tool["function"]["name"] == "goto_url" for tool in n1_client.calls[0]["tools"])
-    assert not any(tool["function"]["name"] == "read_page" for tool in n1_client.calls[0]["tools"])
-    assert not any(tool["function"]["name"] == "find" for tool in n1_client.calls[0]["tools"])
-    assert any(tool["function"]["name"] == "record_claim_result" for tool in n1_client.calls[0]["tools"])
+    assert [tool["function"]["name"] for tool in n1_client.calls[0]["tools"]] == ["record_claim_result"]
 
 
 @pytest.mark.asyncio
