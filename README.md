@@ -246,6 +246,7 @@ Navigation hint for claims that require interaction:
 
 ```bash
 frontend-visualqa verify http://localhost:8000/ecommerce_store.html \
+  --headed \
   --claims 'The cart badge shows 3 items' \
   --navigation-hint "Click 'Add to Cart' on the Mechanical Keyboard K7 product card."
 ```
@@ -254,6 +255,7 @@ Autonomous form filling — n1 picks a date and catches a timezone bug:
 
 ```bash
 frontend-visualqa verify 'http://localhost:8000/booking_form.html#step3' \
+  --headed \
   --claims 'The date on the confirmation page matches the date selected on the calendar'
 # → fails: n1 picks a date, books the slot, and catches the off-by-one on the confirmation page
 ```
@@ -262,6 +264,7 @@ Scrolling to find off-screen content:
 
 ```bash
 frontend-visualqa verify http://localhost:8000/analytics_dashboard.html \
+  --headed \
   --claims 'The /api/v1/webhooks endpoint returned a 200 OK status'
 # → fails: n1 scrolls to the request table and finds a 500 Error
 ```
