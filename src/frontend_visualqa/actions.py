@@ -48,8 +48,6 @@ ACTION_NAME_ALIASES: dict[str, str] = {
     "back": "go_back",
     "goto": "goto_url",
     "key": "key_press",
-    "extract_elements": "read_page",
-    "extract_content": "read_page",
 }
 
 BROWSER_ACTION_TOOLS: list[dict[str, Any]] = [
