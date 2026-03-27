@@ -27,6 +27,17 @@ def _import_claim_verifier_module():
         raise
 
 
+def _import_recovery_module():
+    import importlib
+
+    try:
+        return importlib.import_module("frontend_visualqa.recovery")
+    except ModuleNotFoundError as exc:
+        if exc.name and exc.name.startswith("frontend_visualqa"):
+            pytest.skip("frontend_visualqa.recovery is not implemented in this worktree yet")
+        raise
+
+
 def _field(result: Any, name: str) -> Any:
     if isinstance(result, dict):
         return result[name]
@@ -39,11 +50,11 @@ class FakePage:
 
 
 class EvaluatingPage(FakePage):
-    def __init__(self, url: str, visual_state: dict[str, list[str]]) -> None:
+    def __init__(self, url: str, visual_state: dict[str, Any]) -> None:
         super().__init__(url=url)
         self.visual_state = visual_state
 
-    async def evaluate(self, _: str) -> dict[str, list[str]]:
+    async def evaluate(self, _: str) -> dict[str, Any]:
         return self.visual_state
 
 
@@ -278,6 +289,146 @@ async def test_claim_verifier_executes_actions_before_final_verdict(tmp_path: Pa
     assert _field(result, "proof").step == _field(result, "trace").steps_taken
     assert _field(result, "proof").after_action == "goto_url({'url': 'http://fixture.local/modal'})"
     assert _field(result, "proof").text is None
+
+
+@pytest.mark.asyncio
+async def test_claim_verifier_requires_an_action_before_accepting_a_verdict_with_navigation_hint(
+    tmp_path: Path,
+) -> None:
+    module = _import_claim_verifier_module()
+    verifier, n1_client, action_executor = _build_claim_verifier(
+        module,
+        tmp_path,
+        responses=[
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-1",
+                        function=FakeFunction(
+                            name="record_claim_result",
+                            arguments=json.dumps({"status": "failed", "finding": "The cart badge shows 2 items."}),
+                        ),
+                    )
+                ]
+            ),
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-2",
+                        function=FakeFunction(
+                            name="goto_url",
+                            arguments=json.dumps({"url": "http://fixture.local/cart"}),
+                        ),
+                    )
+                ]
+            ),
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-3",
+                        function=FakeFunction(
+                            name="record_claim_result",
+                            arguments=json.dumps({"status": "passed", "finding": "The cart badge now shows 3 items."}),
+                        ),
+                    )
+                ]
+            ),
+        ],
+    )
+
+    result = await _call_verify(
+        verifier,
+        page=FakePage(url="http://fixture.local/products"),
+        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+        claim="The cart badge shows 3 items",
+        url="http://fixture.local/products",
+        navigation_hint="Click Add to Cart before deciding.",
+    )
+
+    assert _field(result, "status") == "passed"
+    assert action_executor.calls == [("goto_url", {"url": "http://fixture.local/cart"})]
+    assert len(n1_client.calls) == 3
+    reminder_message = next(
+        message
+        for message in reversed(n1_client.calls[1]["messages"])
+        if message.get("role") == "user" and isinstance(message.get("content"), list)
+    )
+    assert "You have not followed the navigation hint yet." in reminder_message["content"][0]["text"]
+
+
+@pytest.mark.asyncio
+async def test_claim_verifier_reprompts_when_model_says_action_is_needed_but_records_inconclusive(
+    tmp_path: Path,
+) -> None:
+    module = _import_claim_verifier_module()
+    verifier, n1_client, action_executor = _build_claim_verifier(
+        module,
+        tmp_path,
+        responses=[
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-1",
+                        function=FakeFunction(
+                            name="record_claim_result",
+                            arguments=json.dumps(
+                                {
+                                    "status": "inconclusive",
+                                    "finding": "I need to click on the product to open the detail page before I can verify this.",
+                                }
+                            ),
+                        ),
+                    )
+                ]
+            ),
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-2",
+                        function=FakeFunction(
+                            name="goto_url",
+                            arguments=json.dumps({"url": "http://fixture.local/products/1"}),
+                        ),
+                    )
+                ]
+            ),
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-3",
+                        function=FakeFunction(
+                            name="record_claim_result",
+                            arguments=json.dumps(
+                                {
+                                    "status": "passed",
+                                    "finding": "The product detail page shows Wireless Headphones Pro priced at $149.99.",
+                                }
+                            ),
+                        ),
+                    )
+                ]
+            ),
+        ],
+    )
+
+    result = await _call_verify(
+        verifier,
+        page=FakePage(url="http://fixture.local/products"),
+        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+        claim="The product detail page shows Wireless Headphones Pro priced at $149.99",
+        url="http://fixture.local/products",
+        navigation_hint=None,
+    )
+
+    assert _field(result, "status") == "passed"
+    assert action_executor.calls == [("goto_url", {"url": "http://fixture.local/products/1"})]
+    assert _field(result, "trace").wrong_page_recovered is True
+    reminder_message = next(
+        message
+        for message in reversed(n1_client.calls[1]["messages"])
+        if message.get("role") == "user" and isinstance(message.get("content"), list)
+    )
+    assert "more browser interaction is needed" in reminder_message["content"][0]["text"]
 
 
 def test_claim_verifier_accepts_visualize_flag(tmp_path: Path) -> None:
@@ -794,6 +945,281 @@ async def test_claim_verifier_downgrades_pass_when_button_grounding_disagrees(tm
 
 
 @pytest.mark.asyncio
+async def test_claim_verifier_downgrades_pass_when_finding_contradicts_verdict(tmp_path: Path) -> None:
+    module = _import_claim_verifier_module()
+    verifier, _, _ = _build_claim_verifier(
+        module,
+        tmp_path,
+        responses=[
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-1",
+                        function=FakeFunction(
+                            name="record_claim_result",
+                            arguments=json.dumps(
+                                {
+                                    "status": "passed",
+                                    "finding": "The displayed subtotal does not equal the visible sale prices.",
+                                }
+                            ),
+                        ),
+                    )
+                ]
+            )
+        ],
+    )
+
+    result = await _call_verify(
+        verifier,
+        page=EvaluatingPage(
+            url="http://fixture.local/cart",
+            visual_state={
+                "visibleHeadings": [],
+                "visibleButtons": [],
+                "buttonStates": [],
+                "dialogTitles": [],
+            },
+        ),
+        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+        claim="The cart subtotal is correct",
+        url="http://fixture.local/cart",
+        navigation_hint=None,
+    )
+
+    assert _field(result, "status") == "failed"
+    assert "contradictory evidence" in _field(result, "finding")
+
+
+@pytest.mark.asyncio
+async def test_claim_verifier_downgrades_pass_to_inconclusive_when_finding_is_uncertain(tmp_path: Path) -> None:
+    module = _import_claim_verifier_module()
+    verifier, _, _ = _build_claim_verifier(
+        module,
+        tmp_path,
+        responses=[
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-1",
+                        function=FakeFunction(
+                            name="record_claim_result",
+                            arguments=json.dumps(
+                                {
+                                    "status": "passed",
+                                    "finding": "The screenshot cannot be definitively verified from the current evidence.",
+                                }
+                            ),
+                        ),
+                    )
+                ]
+            )
+        ],
+    )
+
+    result = await _call_verify(
+        verifier,
+        page=EvaluatingPage(
+            url="http://fixture.local/page",
+            visual_state={
+                "visibleHeadings": [],
+                "visibleButtons": [],
+                "buttonStates": [],
+                "dialogTitles": [],
+            },
+        ),
+        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+        claim="The chart is visible",
+        url="http://fixture.local/page",
+        navigation_hint=None,
+    )
+
+    assert _field(result, "status") == "inconclusive"
+    assert "evidence was inconclusive" in _field(result, "finding")
+
+
+@pytest.mark.asyncio
+async def test_claim_verifier_preserves_pass_for_negative_claims_with_negative_findings(tmp_path: Path) -> None:
+    module = _import_claim_verifier_module()
+    verifier, _, _ = _build_claim_verifier(
+        module,
+        tmp_path,
+        responses=[
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-1",
+                        function=FakeFunction(
+                            name="record_claim_result",
+                            arguments=json.dumps({"status": "passed", "finding": "The Save button is not visible."}),
+                        ),
+                    )
+                ]
+            )
+        ],
+    )
+
+    result = await _call_verify(
+        verifier,
+        page=EvaluatingPage(
+            url="http://fixture.local/page",
+            visual_state={
+                "visibleHeadings": [],
+                "visibleButtons": [],
+                "buttonStates": [],
+                "dialogTitles": [],
+            },
+        ),
+        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+        claim="The Save button is not visible",
+        url="http://fixture.local/page",
+        navigation_hint=None,
+    )
+
+    assert _field(result, "status") == "passed"
+    assert _field(result, "finding") == "The Save button is not visible."
+
+
+@pytest.mark.asyncio
+async def test_claim_verifier_still_downgrades_positive_error_state_claims_when_finding_contradicts_verdict(
+    tmp_path: Path,
+) -> None:
+    module = _import_claim_verifier_module()
+    verifier, _, _ = _build_claim_verifier(
+        module,
+        tmp_path,
+        responses=[
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-1",
+                        function=FakeFunction(
+                            name="record_claim_result",
+                            arguments=json.dumps({"status": "passed", "finding": "The error message is not visible."}),
+                        ),
+                    )
+                ]
+            )
+        ],
+    )
+
+    result = await _call_verify(
+        verifier,
+        page=EvaluatingPage(
+            url="http://fixture.local/login",
+            visual_state={
+                "visibleHeadings": [],
+                "visibleButtons": [],
+                "buttonStates": [],
+                "dialogTitles": [],
+            },
+        ),
+        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+        claim="The error message is visible",
+        url="http://fixture.local/login",
+        navigation_hint=None,
+    )
+
+    assert _field(result, "status") == "failed"
+    assert "contradictory evidence" in _field(result, "finding")
+
+
+@pytest.mark.asyncio
+async def test_claim_verifier_does_not_treat_ambiguous_ui_copy_as_inconclusive_evidence(tmp_path: Path) -> None:
+    module = _import_claim_verifier_module()
+    verifier, _, _ = _build_claim_verifier(
+        module,
+        tmp_path,
+        responses=[
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-1",
+                        function=FakeFunction(
+                            name="record_claim_result",
+                            arguments=json.dumps(
+                                {
+                                    "status": "passed",
+                                    "finding": 'The label is ambiguous but reads "Total".',
+                                }
+                            ),
+                        ),
+                    )
+                ]
+            )
+        ],
+    )
+
+    result = await _call_verify(
+        verifier,
+        page=EvaluatingPage(
+            url="http://fixture.local/checkout",
+            visual_state={
+                "visibleHeadings": [],
+                "visibleButtons": [],
+                "buttonStates": [],
+                "dialogTitles": [],
+            },
+        ),
+        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+        claim='The label reads "Total"',
+        url="http://fixture.local/checkout",
+        navigation_hint=None,
+    )
+
+    assert _field(result, "status") == "passed"
+    assert _field(result, "finding") == 'The label is ambiguous but reads "Total".'
+
+
+@pytest.mark.asyncio
+async def test_claim_verifier_downgrades_partially_filled_progress_bar_claim(tmp_path: Path) -> None:
+    module = _import_claim_verifier_module()
+    verifier, _, _ = _build_claim_verifier(
+        module,
+        tmp_path,
+        responses=[
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-1",
+                        function=FakeFunction(
+                            name="record_claim_result",
+                            arguments=json.dumps(
+                                {
+                                    "status": "passed",
+                                    "finding": "The Monthly Quota progress bar appears completely filled.",
+                                }
+                            ),
+                        ),
+                    )
+                ]
+            )
+        ],
+    )
+
+    result = await _call_verify(
+        verifier,
+        page=EvaluatingPage(
+            url="http://fixture.local/dashboard",
+            visual_state={
+                "visibleHeadings": [],
+                "visibleButtons": [],
+                "buttonStates": [],
+                "dialogTitles": [],
+                "progressBars": [{"label": "Monthly Quota", "fillRatio": 0.65}],
+            },
+        ),
+        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+        claim="The Monthly Quota progress bar is completely filled",
+        url="http://fixture.local/dashboard",
+        navigation_hint=None,
+    )
+
+    assert _field(result, "status") == "failed"
+    assert "65% filled" in _field(result, "finding")
+
+
+@pytest.mark.asyncio
 async def test_claim_verifier_converts_inconclusive_full_visibility_button_claim_to_fail(tmp_path: Path) -> None:
     module = _import_claim_verifier_module()
     verifier, _, _ = _build_claim_verifier(
@@ -1124,29 +1550,49 @@ def test_parse_fallback_verdict_requires_explicit_status_markers() -> None:
     )
 
 
-def test_wrong_page_recovered_handles_reaching_or_leaving_the_starting_url() -> None:
-    module = _import_claim_verifier_module()
+def test_wrong_page_recovered_distinguishes_recovery_from_unrelated_navigation() -> None:
+    module = _import_recovery_module()
 
-    assert module.ClaimVerifier._wrong_page_recovered(["http://fixture.local/page"], "http://fixture.local/page") is False
+    assert module.wrong_page_recovered(["http://fixture.local/page"], "http://fixture.local/page") is False
     assert (
-        module.ClaimVerifier._wrong_page_recovered(
+        module.wrong_page_recovered(
             ["http://fixture.local/start", "http://fixture.local/page"],
             "http://fixture.local/page",
         )
         is True
     )
     assert (
-        module.ClaimVerifier._wrong_page_recovered(
+        module.wrong_page_recovered(
             ["http://fixture.local/tasks", "http://fixture.local/tasks/123"],
             "http://fixture.local/tasks",
         )
         is True
     )
     assert (
-        module.ClaimVerifier._wrong_page_recovered(
+        module.wrong_page_recovered(
+            ["http://fixture.local/store#/products", "http://fixture.local/store#/products/1"],
+            "http://fixture.local/store",
+        )
+        is True
+    )
+    assert (
+        module.wrong_page_recovered(
+            ["http://fixture.local/store#/products", "http://fixture.local/store#/cart"],
+            "http://fixture.local/store",
+        )
+        is False
+    )
+    assert (
+        module.wrong_page_recovered(
+            ["http://fixture.local/dashboard", "http://fixture.local/dashboard#"],
+            "http://fixture.local/dashboard",
+        )
+        is False
+    )
+    assert (
+        module.wrong_page_recovered(
             ["http://fixture.local/page"],
             "http://fixture.local/page",
-            ["refresh()"],
         )
         is False
     )

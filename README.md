@@ -227,8 +227,8 @@ frontend-visualqa verify http://localhost:8000/analytics_dashboard.html \
 ```bash
 frontend-visualqa verify 'http://localhost:8000/ecommerce_store.html#/cart' \
   --headed \
-  --claims 'The cart subtotal is correct'
-# → fails: n1 sums the sale prices ($229.98) and catches the $279.98 subtotal
+  --claims 'The displayed cart subtotal equals the sum of the visible sale prices'
+# → fails: n1 sees the sale prices sum to $229.98 while the displayed subtotal is $279.98
 ```
 
 Use against your own frontend the same way — just swap the URL:
@@ -387,10 +387,12 @@ Overlay elements are automatically hidden during screenshot capture so they neve
 ## Writing good claims
 
 Claims should be observable, scoped, and provable from pixels.
+Prefer direct, falsifiable wording over broad interpretations like "is correct."
 
 | Good | Weak |
 |------|------|
 | The cart total is $261.37 | The cart works correctly |
+| The displayed subtotal equals the sum of the visible sale prices | The cart subtotal is correct |
 | The product price shows $149.99 in monospace font | The page looks polished |
 | At 375px width, the stat cards stack in a single column | The dashboard is responsive |
 

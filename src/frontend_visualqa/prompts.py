@@ -64,6 +64,8 @@ def build_verification_task(claim: str, url: str, navigation_hint: str | None = 
         "",
         "If a button or control is unresponsive, disabled, or you find yourself repeating the same action without progress, stop immediately and report what you found. A disabled button, a broken interaction, or an unresponsive control is itself a meaningful finding — report it as failed with a description of what is blocked and why.",
         "",
+        "If the claim involves a calculation or total, compute the expected value step by step, then compare it to the displayed value digit by digit. If the two numbers differ, report failed immediately — do not assume hidden items, rounding, or other explanations.",
+        "",
         "Known limitation: native HTML <select> dropdowns render as OS-level widgets outside the browser viewport. You cannot see or interact with their options. If you encounter a native <select> dropdown, report the claim as inconclusive and note that the page uses a native select element that requires a custom in-browser dropdown component for visual testing.",
     ]
     if navigation_hint:
@@ -95,5 +97,32 @@ def build_action_or_verdict_prompt(claim: str) -> str:
             "Do not narrate your intent in plain text.",
             "Either take exactly one browser action next, or call record_claim_result now if you already have enough evidence.",
             "A plain-text response without a tool call will be treated as a failure to follow instructions.",
+        ]
+    )
+
+
+def build_follow_navigation_hint_prompt(claim: str, navigation_hint: str) -> str:
+    """Prompt appended when the model tries to verdict before following the navigation hint."""
+
+    return "\n".join(
+        [
+            "You have not followed the navigation hint yet.",
+            f'Claim: "{claim}"',
+            f"Navigation hint: {navigation_hint}",
+            "Do not render a final verdict before taking a browser action that follows the hint.",
+            "Take exactly one browser action now, then reassess from the next screenshot.",
+        ]
+    )
+
+
+def build_take_action_prompt(claim: str) -> str:
+    """Prompt appended when the model says more interaction is needed but does not take it."""
+
+    return "\n".join(
+        [
+            "Your last finding said more browser interaction is needed before you can decide this claim.",
+            f'Claim: "{claim}"',
+            "Do not narrate the next step or record another provisional inconclusive verdict.",
+            "Take exactly one browser action now, then reassess from the next screenshot.",
         ]
     )

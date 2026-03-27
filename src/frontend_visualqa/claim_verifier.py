@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-import unicodedata
 from dataclasses import dataclass
 from typing import Any, TYPE_CHECKING
 
@@ -13,11 +12,15 @@ from frontend_visualqa.actions import ActionExecutor
 from frontend_visualqa.artifacts import ArtifactManager, RunArtifacts
 from frontend_visualqa.browser import BrowserManager, BrowserSession, image_bytes_to_data_url
 from frontend_visualqa.errors import BrowserActionError, N1ClientError
+from frontend_visualqa.grounding import capture_grounding_state, ground_claim_verdict
 from frontend_visualqa.hook_adapter import VisualQAHookAdapter
+from frontend_visualqa.recovery import wrong_page_recovered
 from frontend_visualqa.prompts import (
     RECORD_CLAIM_RESULT_TOOL,
     build_action_or_verdict_prompt,
+    build_follow_navigation_hint_prompt,
     build_force_stop_prompt,
+    build_take_action_prompt,
     build_verification_task,
 )
 from frontend_visualqa.schemas import ClaimPage, ClaimProof, ClaimResult, ClaimStatus, ClaimTrace
@@ -31,23 +34,46 @@ FALLBACK_VERDICT_PATTERN = re.compile(
     r"""["']?(?:status|verdict)["']?\s*[:=]\s*["']?(passed|failed|inconclusive|not[_ ]testable)\b""",
     re.IGNORECASE,
 )
-BUTTON_VISIBLE_PATTERN = re.compile(
-    r"""^The\s+(?P<label>(?:(?!\b(?:is|are|was|were|has|have|does|do|should|can)\b).)+?)\s+button\s+is\s+visible(?:\s+without\s+scrolling)?\.?$""",
+NEGATIVE_CLAIM_PATTERN = re.compile(
+    r"""\bnot\b|\bno\s+\w+|\bhidden\b|\bdisabled\b|\bmissing\b|\babsent\b""",
     re.IGNORECASE,
 )
-BUTTON_FULLY_VISIBLE_PATTERN = re.compile(
-    r"""^The\s+(?P<label>.+?)\s+button\s+is\s+fully\s+visible(?:\s+within\s+its\s+container)?\.?$""",
-    re.IGNORECASE,
+FAILED_FINDING_PATTERNS = (
+    re.compile(r"""\b(?:does not|do not|did not|doesn't|don't)\s+match\b""", re.IGNORECASE),
+    re.compile(r"""\b(?:does not|do not|did not|doesn't|don't)\s+equal\b""", re.IGNORECASE),
+    re.compile(r"""\bnot\s+equal\b""", re.IGNORECASE),
+    re.compile(r"""\b(?:is|are)\s+not\s+visible\b""", re.IGNORECASE),
+    re.compile(r"""\bnot\s+fully\s+visible\b""", re.IGNORECASE),
+    re.compile(r"""\bnot\s+correct\b""", re.IGNORECASE),
+    re.compile(r"""\bincorrect\b""", re.IGNORECASE),
+    re.compile(r"""\bclaim\s+is\s+false\b""", re.IGNORECASE),
 )
-HEADING_READS_PATTERN = re.compile(r"""^The\s+heading\s+reads\s+["'](?P<text>.+?)["']\.?$""", re.IGNORECASE)
-PAGE_TITLE_READS_PATTERN = re.compile(r"""^The\s+page\s+title\s+reads\s+["'](?P<text>.+?)["']\.?$""", re.IGNORECASE)
-MODAL_TITLE_READS_PATTERN = re.compile(r"""^The\s+modal\s+title\s+reads\s+["'](?P<text>.+?)["']\.?$""", re.IGNORECASE)
+INCONCLUSIVE_FINDING_PATTERNS = (
+    re.compile(r"""\bcannot\s+(?:be\s+)?(?:definitively\s+)?(?:verify|verified|determine|tell)\b""", re.IGNORECASE),
+    re.compile(r"""\bcan['’]?t\s+(?:determine|tell|verify)\b""", re.IGNORECASE),
+    re.compile(r"""\bnot\s+enough\s+evidence\b""", re.IGNORECASE),
+    re.compile(r"""\binconclusive\b""", re.IGNORECASE),
+)
+ACTION_NEEDED_FINDING_PATTERNS = (
+    re.compile(r"""\b(?:i\s+)?need\s+to\s+(?:click|tap|open|navigate|go|scroll|expand|select|hover)\b""", re.IGNORECASE),
+    re.compile(r"""\b(?:i\s+)?should\s+(?:click|tap|open|navigate|go|scroll|expand|select|hover)\b""", re.IGNORECASE),
+    re.compile(r"""\bbefore\s+i\s+can\s+(?:verify|determine|confirm|decide)\b""", re.IGNORECASE),
+)
 
 logger = logging.getLogger(__name__)
 
 MAX_NON_ACTION_REPROMPTS = 2
 MAX_INLINE_PROOF_TEXT_CHARS = 280
 MAX_INLINE_PROOF_TEXT_LINES = 6
+
+VERDICT_SOURCE_RECORD = "record_claim_result"
+VERDICT_SOURCE_FALLBACK = "fallback_content"
+VERDICT_SOURCE_LEGACY_STOP = "legacy_stop"
+VERDICT_SOURCE_FORCE_STOP = "force_stop"
+
+
+def _user_text_message(text: str) -> dict[str, Any]:
+    return {"role": "user", "content": [{"type": "text", "text": text}]}
 
 
 @dataclass
@@ -114,14 +140,8 @@ class ClaimVerifier:
     ) -> ClaimResult:
         """Verify a single claim within an existing browser session."""
 
-        action_trace: list[str] = []
-        url_history = [session.page.url or url]
-        screenshot_paths: list[str] = []
         messages: list[dict[str, Any]] = []
-        step_count = 0
         non_action_reprompts = 0
-        last_proof_text: str | None = None
-        last_proof_text_path: str | None = None
         should_visualize = self._visualize if visualize is None else visualize
         progress = _VerificationProgress(
             claim=claim,
@@ -129,10 +149,10 @@ class ClaimVerifier:
             url=url,
             run_artifacts=run_artifacts,
             claim_index=claim_index,
-            step_count=step_count,
-            screenshot_paths=screenshot_paths,
-            action_trace=action_trace,
-            url_history=url_history,
+            step_count=0,
+            screenshot_paths=[],
+            action_trace=[],
+            url_history=[session.page.url or url],
         )
         self._partial_progress = progress
         preserve_partial_progress = False
@@ -148,7 +168,7 @@ class ClaimVerifier:
                 claim_index=claim_index,
                 label="step-00",
             )
-            screenshot_paths.append(initial_path)
+            progress.screenshot_paths.append(initial_path)
 
             if should_visualize:
                 self._overlay = _create_overlay_controller(session.page)
@@ -173,7 +193,7 @@ class ClaimVerifier:
 
             await self._safe_hook_call("on_agent_start", messages=messages)
 
-            while step_count < max_steps:
+            while progress.step_count < max_steps:
                 messages = self._prepare_messages_for_request(messages)
                 model_tools = self._model_tools()
                 await self._safe_hook_call("on_llm_start", messages=messages, tools=model_tools)
@@ -188,29 +208,12 @@ class ClaimVerifier:
                     fallback = self._parse_fallback_verdict(getattr(assistant_message, "content", None))
                     if fallback is not None:
                         result = await self._finalize_result(
-                            claim=claim,
-                            session=session,
-                            verdict=fallback,
-                            verdict_source="fallback_content",
-                            step_count=step_count,
-                            screenshot_paths=screenshot_paths,
-                            action_trace=action_trace,
-                            proof_text=last_proof_text,
-                            proof_text_path=last_proof_text_path,
-                            url_history=url_history,
-                            url=url,
-                            run_artifacts=run_artifacts,
-                            claim_index=claim_index,
+                            progress=progress, verdict=fallback, verdict_source=VERDICT_SOURCE_FALLBACK,
                         )
                         return await self._complete_result(result)
                     if non_action_reprompts < MAX_NON_ACTION_REPROMPTS:
                         non_action_reprompts += 1
-                        messages.append(
-                            {
-                                "role": "user",
-                                "content": [{"type": "text", "text": build_action_or_verdict_prompt(claim)}],
-                            }
-                        )
+                        messages.append(_user_text_message(build_action_or_verdict_prompt(claim)))
                         continue
                     break
 
@@ -219,20 +222,31 @@ class ClaimVerifier:
                     if tool_name == "record_claim_result":
                         verdict = self._extract_structured_verdict([tool_call])
                         if verdict is not None:
+                            reprompt_text: str | None = None
+                            force_stop_finding: str | None = None
+                            if (
+                                progress.step_count == 0
+                                and verdict[0] == "inconclusive"
+                                and self._finding_says_action_is_needed(verdict[1])
+                            ):
+                                reprompt_text = build_take_action_prompt(claim)
+                                force_stop_finding = "The model kept saying more interaction was needed without taking the next browser action."
+                            elif navigation_hint and progress.step_count == 0:
+                                reprompt_text = build_follow_navigation_hint_prompt(claim, navigation_hint)
+                                force_stop_finding = "The model tried to render a verdict before following the navigation hint."
+                            if reprompt_text is not None:
+                                if non_action_reprompts < MAX_NON_ACTION_REPROMPTS:
+                                    non_action_reprompts += 1
+                                    messages.append(_user_text_message(reprompt_text))
+                                    continue
+                                result = await self._finalize_result(
+                                    progress=progress,
+                                    verdict=("inconclusive", force_stop_finding or ""),
+                                    verdict_source=VERDICT_SOURCE_FORCE_STOP,
+                                )
+                                return await self._complete_result(result)
                             result = await self._finalize_result(
-                                claim=claim,
-                                session=session,
-                                verdict=verdict,
-                                verdict_source="record_claim_result",
-                                step_count=step_count,
-                                screenshot_paths=screenshot_paths,
-                                action_trace=action_trace,
-                                proof_text=last_proof_text,
-                                proof_text_path=last_proof_text_path,
-                                url_history=url_history,
-                                url=url,
-                                run_artifacts=run_artifacts,
-                                claim_index=claim_index,
+                                progress=progress, verdict=verdict, verdict_source=VERDICT_SOURCE_RECORD,
                             )
                             return await self._complete_result(result)
                         continue
@@ -240,29 +254,17 @@ class ClaimVerifier:
                         stop_verdict = self._extract_stop_verdict([tool_call])
                         if stop_verdict is not None:
                             result = await self._finalize_result(
-                                claim=claim,
-                                session=session,
-                                verdict=stop_verdict,
-                                verdict_source="legacy_stop",
-                                step_count=step_count,
-                                screenshot_paths=screenshot_paths,
-                                action_trace=action_trace,
-                                proof_text=last_proof_text,
-                                proof_text_path=last_proof_text_path,
-                                url_history=url_history,
-                                url=url,
-                                run_artifacts=run_artifacts,
-                                claim_index=claim_index,
+                                progress=progress, verdict=stop_verdict, verdict_source=VERDICT_SOURCE_LEGACY_STOP,
                             )
                             return await self._complete_result(result)
                         continue
-                    if step_count >= max_steps:
+                    if progress.step_count >= max_steps:
                         break
                     tool_arguments = parse_tool_arguments(tool_call)
                     await self._safe_hook_call("on_tool_start", name=tool_name, arguments=tool_arguments)
                     execution = await self._execute_tool_call(session, tool_call)
                     trace = execution["trace"]
-                    action_trace.append(trace)
+                    progress.action_trace.append(trace)
                     output_text = execution.get("output_text")
                     await self._safe_hook_call(
                         "on_tool_end",
@@ -271,35 +273,31 @@ class ClaimVerifier:
                         output=output_text,
                         trace=trace,
                     )
-                    pending_proof_text = str(output_text) if output_text else None
                     current_url = execution.get("current_url", session.page.url) or url
-                    url_history.append(current_url)
-                    step_count += 1
-                    progress.step_count = step_count
+                    progress.url_history.append(current_url)
+                    progress.step_count += 1
                     non_action_reprompts = 0
                     screenshot_bytes, screenshot_path = await self._capture_evidence_screenshot(
                         session=session,
                         run_artifacts=run_artifacts,
                         claim_index=claim_index,
-                        label=f"step-{step_count:02d}",
+                        label=f"step-{progress.step_count:02d}",
                     )
-                    screenshot_paths.append(screenshot_path)
+                    progress.screenshot_paths.append(screenshot_path)
                     self._record_action_event(
-                        step=step_count,
+                        step=progress.step_count,
                         action=tool_name,
                         action_args=tool_arguments,
                         output_text=output_text,
                         screenshot_path=screenshot_path,
                     )
-                    last_proof_text = pending_proof_text
-                    last_proof_text_path = self._save_proof_text(
+                    progress.proof_text = str(output_text) if output_text else None
+                    progress.proof_text_path = self._save_proof_text(
                         run_artifacts=run_artifacts,
                         claim_index=claim_index,
-                        label=f"step-{step_count:02d}",
-                        proof_text=pending_proof_text,
+                        label=f"step-{progress.step_count:02d}",
+                        proof_text=progress.proof_text,
                     )
-                    progress.proof_text = last_proof_text
-                    progress.proof_text_path = last_proof_text_path
                     messages.append(
                         {
                             "role": "tool",
@@ -328,20 +326,7 @@ class ClaimVerifier:
                 reasoning = self._hook.current_turn_reasoning if self._hook else None
                 if reasoning and self._overlay:
                     await self._best_effort_overlay_call("show_thought", reasoning)
-            result = await self._force_stop(
-                claim=claim,
-                session=session,
-                messages=messages,
-                step_count=step_count,
-                screenshot_paths=screenshot_paths,
-                action_trace=action_trace,
-                proof_text=last_proof_text,
-                proof_text_path=last_proof_text_path,
-                url_history=url_history,
-                url=url,
-                run_artifacts=run_artifacts,
-                claim_index=claim_index,
-            )
+            result = await self._force_stop(progress=progress, messages=messages)
             return await self._complete_result(result)
         except asyncio.CancelledError:
             # on_agent_end is intentionally skipped here: the task is being
@@ -351,38 +336,15 @@ class ClaimVerifier:
             preserve_partial_progress = True
             raise
         except (BrowserActionError, N1ClientError) as exc:
-            result = self._build_result(
-                claim=claim,
-                session=session,
-                status="not_testable",
-                finding=str(exc),
-                step_count=step_count,
-                screenshot_paths=screenshot_paths,
-                action_trace=action_trace,
-                proof_text=last_proof_text,
-                proof_text_path=last_proof_text_path,
-                url_history=url_history,
-                url=url,
-                run_artifacts=run_artifacts,
-                claim_index=claim_index,
+            result = self._build_result(progress=progress, status="not_testable", finding=str(exc)
             )
             return await self._complete_result(result)
         except Exception as exc:
             logger.warning("Unexpected verifier failure for claim %r", claim, exc_info=True)
             result = self._build_result(
-                claim=claim,
-                session=session,
+                progress=progress,
                 status="inconclusive",
                 finding=f"Verification failed unexpectedly before a verdict was recorded: {exc}",
-                step_count=step_count,
-                screenshot_paths=screenshot_paths,
-                action_trace=action_trace,
-                proof_text=last_proof_text,
-                proof_text_path=last_proof_text_path,
-                url_history=url_history,
-                url=url,
-                run_artifacts=run_artifacts,
-                claim_index=claim_index,
             )
             return await self._complete_result(result)
         finally:
@@ -421,25 +383,10 @@ class ClaimVerifier:
     async def _force_stop(
         self,
         *,
-        claim: str,
-        session: BrowserSession,
+        progress: _VerificationProgress,
         messages: list[dict[str, Any]],
-        step_count: int,
-        screenshot_paths: list[str],
-        action_trace: list[str],
-        proof_text: str | None,
-        proof_text_path: str | None,
-        url_history: list[str],
-        url: str,
-        run_artifacts: RunArtifacts,
-        claim_index: int,
     ) -> ClaimResult:
-        messages.append(
-            {
-                "role": "user",
-                "content": [{"type": "text", "text": build_force_stop_prompt(claim)}],
-            }
-        )
+        messages.append(_user_text_message(build_force_stop_prompt(progress.claim)))
         messages = self._prepare_messages_for_request(messages)
         model_tools = self._model_tools()
         await self._safe_hook_call("on_llm_start", messages=messages, tools=model_tools)
@@ -449,33 +396,19 @@ class ClaimVerifier:
         await self._safe_hook_call("on_llm_end", response=assistant_message)
         messages.append(self._message_to_dict(assistant_message))
 
-        verdict_source = "record_claim_result"
+        verdict_source = VERDICT_SOURCE_RECORD
         verdict = self._extract_structured_verdict(getattr(assistant_message, "tool_calls", []) or [])
         if verdict is None:
-            verdict_source = "legacy_stop"
+            verdict_source = VERDICT_SOURCE_LEGACY_STOP
             verdict = self._extract_stop_verdict(getattr(assistant_message, "tool_calls", []) or [])
         if verdict is None:
-            verdict_source = "force_stop"
+            verdict_source = VERDICT_SOURCE_FORCE_STOP
             verdict = self._parse_fallback_verdict(getattr(assistant_message, "content", None))
         if verdict is None:
-            verdict_source = "force_stop"
+            verdict_source = VERDICT_SOURCE_FORCE_STOP
             verdict = ("inconclusive", "The model did not provide a structured verdict before the step limit.")
 
-        return await self._finalize_result(
-            claim=claim,
-            session=session,
-            verdict=verdict,
-            verdict_source=verdict_source,
-            step_count=step_count,
-            screenshot_paths=screenshot_paths,
-            action_trace=action_trace,
-            proof_text=proof_text,
-            proof_text_path=proof_text_path,
-            url_history=url_history,
-            url=url,
-            run_artifacts=run_artifacts,
-            claim_index=claim_index,
-        )
+        return await self._finalize_result(progress=progress, verdict=verdict, verdict_source=verdict_source)
 
     async def _best_effort_overlay_call(self, method_name: str, *args: Any, **kwargs: Any) -> None:
         overlay = self._overlay
@@ -508,50 +441,40 @@ class ClaimVerifier:
     def _build_result(
         self,
         *,
-        claim: str,
-        session: BrowserSession,
+        progress: _VerificationProgress,
         status: ClaimStatus,
         finding: str,
-        step_count: int,
-        screenshot_paths: list[str],
-        action_trace: list[str],
-        proof_text: str | None,
-        proof_text_path: str | None,
-        url_history: list[str],
-        url: str,
-        run_artifacts: RunArtifacts,
-        claim_index: int,
     ) -> ClaimResult:
         events = list(self._hook.events) if self._hook is not None else []
         try:
             trace_path = self.artifact_manager.save_rich_trace(
-                run_artifacts,
-                claim_index,
+                progress.run_artifacts,
+                progress.claim_index,
                 [event.model_dump(mode="json") for event in events],
             )
         except Exception:
             trace_path = None
         proof = None
-        if screenshot_paths:
-            proof_step = max(len(screenshot_paths) - 1, 0)
+        if progress.screenshot_paths:
+            proof_step = max(len(progress.screenshot_paths) - 1, 0)
             proof = ClaimProof(
-                screenshot_path=screenshot_paths[-1],
+                screenshot_path=progress.screenshot_paths[-1],
                 step=proof_step,
-                after_action=action_trace[proof_step - 1] if proof_step > 0 and len(action_trace) >= proof_step else None,
-                text=self._build_inline_proof_text(proof_text),
-                text_path=proof_text_path,
+                after_action=progress.action_trace[proof_step - 1] if proof_step > 0 and len(progress.action_trace) >= proof_step else None,
+                text=self._build_inline_proof_text(progress.proof_text),
+                text_path=progress.proof_text_path,
             )
         return ClaimResult(
-            claim=claim,
+            claim=progress.claim,
             status=status,
             finding=finding,
             proof=proof,
-            page=ClaimPage(url=session.page.url or url, viewport=session.viewport),
+            page=ClaimPage(url=progress.session.page.url or progress.url, viewport=progress.session.viewport),
             trace=ClaimTrace(
-                steps_taken=step_count,
-                wrong_page_recovered=self._wrong_page_recovered(url_history, url, action_trace),
-                screenshot_paths=screenshot_paths,
-                actions=action_trace,
+                steps_taken=progress.step_count,
+                wrong_page_recovered=wrong_page_recovered(progress.url_history, progress.url),
+                screenshot_paths=progress.screenshot_paths,
+                actions=progress.action_trace,
                 events=events,
                 trace_path=trace_path,
             ),
@@ -562,21 +485,7 @@ class ClaimVerifier:
         self._partial_progress = None
         if progress is None:
             return None
-        result = self._build_result(
-            claim=progress.claim,
-            session=progress.session,
-            status=status,
-            finding=finding,
-            step_count=progress.step_count,
-            screenshot_paths=progress.screenshot_paths,
-            action_trace=progress.action_trace,
-            proof_text=progress.proof_text,
-            proof_text_path=progress.proof_text_path,
-            url_history=progress.url_history,
-            url=progress.url,
-            run_artifacts=progress.run_artifacts,
-            claim_index=progress.claim_index,
-        )
+        result = self._build_result(progress=progress, status=status, finding=finding)
         self._hook = None
         return result
 
@@ -776,39 +685,17 @@ class ClaimVerifier:
         status = match.group(1).lower().replace(" ", "_")
         return status, text
 
-    @staticmethod
-    def _wrong_page_recovered(url_history: list[str], target_url: str, action_trace: list[str] | None = None) -> bool:
-        del action_trace
-        if not url_history:
-            return False
-
-        starting_url = url_history[0]
-        if starting_url != target_url:
-            return any(current_url == target_url for current_url in url_history[1:])
-
-        return any(current_url != target_url for current_url in url_history[1:])
-
     async def _finalize_result(
         self,
         *,
-        claim: str,
-        session: BrowserSession,
+        progress: _VerificationProgress,
         verdict: tuple[ClaimStatus, str],
         verdict_source: str | None = None,
-        step_count: int,
-        screenshot_paths: list[str],
-        action_trace: list[str],
-        proof_text: str | None,
-        proof_text_path: str | None,
-        url_history: list[str],
-        url: str,
-        run_artifacts: RunArtifacts,
-        claim_index: int,
     ) -> ClaimResult:
         status, finding = verdict
         grounded_status, grounded_finding = await self._ground_verdict(
-            session=session,
-            claim=claim,
+            session=progress.session,
+            claim=progress.claim,
             status=status,
             finding=finding,
         )
@@ -816,28 +703,14 @@ class ClaimVerifier:
         if verdict_source is not None and hook is not None:
             try:
                 hook.record_verdict_event(
-                    step=step_count,
+                    step=progress.step_count,
                     source=verdict_source,
                     status=grounded_status,
                     finding=grounded_finding,
                 )
             except Exception:
                 logger.debug("record_verdict_event failed", exc_info=True)
-        return self._build_result(
-            claim=claim,
-            session=session,
-            status=grounded_status,
-            finding=grounded_finding,
-            step_count=step_count,
-            screenshot_paths=screenshot_paths,
-            action_trace=action_trace,
-            proof_text=proof_text,
-            proof_text_path=proof_text_path,
-            url_history=url_history,
-            url=url,
-            run_artifacts=run_artifacts,
-            claim_index=claim_index,
-        )
+        return self._build_result(progress=progress, status=grounded_status, finding=grounded_finding)
 
     async def _ground_verdict(
         self,
@@ -851,258 +724,56 @@ class ClaimVerifier:
             return status, finding
 
         try:
-            visual_state = await self._capture_visible_text_state(session)
+            grounding_state = await capture_grounding_state(session)
         except Exception:
-            logger.warning("Failed to gather DOM grounding hints for pass verdict", exc_info=True)
+            logger.warning("Failed to gather grounding state for claim %r", claim, exc_info=True)
+            return self._reconcile_verdict_and_finding(claim=claim, status=status, finding=finding)
+
+        grounded_status, grounded_finding = ground_claim_verdict(
+            claim=claim,
+            status=status,
+            finding=finding,
+            grounding_state=grounding_state,
+        )
+        return self._reconcile_verdict_and_finding(
+            claim=claim,
+            status=grounded_status,
+            finding=grounded_finding,
+        )
+
+    @classmethod
+    def _reconcile_verdict_and_finding(
+        cls,
+        *,
+        claim: str,
+        status: ClaimStatus,
+        finding: str,
+    ) -> tuple[ClaimStatus, str]:
+        if status != "passed":
             return status, finding
 
-        normalized_claim = self._normalize_text(claim)
-        for pattern, checker in (
-            (BUTTON_FULLY_VISIBLE_PATTERN, self._check_button_fully_visible),
-            (MODAL_TITLE_READS_PATTERN, self._check_dialog_title_match),
-            (HEADING_READS_PATTERN, self._check_heading_match),
-            (PAGE_TITLE_READS_PATTERN, self._check_heading_match),
-            (BUTTON_VISIBLE_PATTERN, self._check_button_match),
-        ):
-            match = pattern.match(claim.strip())
-            if match is None:
-                continue
-            grounded = checker(visual_state, match.groupdict())
-            if grounded is None:
-                return status, finding
-            grounded_status, grounded_finding = grounded
-            if grounded_status != "passed":
-                logger.info("Downgrading pass verdict for claim %r after grounding check", claim)
-            return grounded_status, grounded_finding
+        if cls._finding_has_failure_cue(finding) and not cls._claim_is_negative(claim):
+            logger.info("Downgrading pass verdict for claim %r because the finding described contradictory evidence", claim)
+            return "failed", f"Model reported passed, but its own finding described contradictory evidence. {finding}"
 
-        if any(marker in normalized_claim for marker in {" title reads ", " heading reads ", " button is visible"}):
-            logger.info("No grounding rule matched pass verdict for claim %r", claim)
+        if cls._finding_has_inconclusive_cue(finding):
+            logger.info("Downgrading pass verdict for claim %r because the finding described uncertainty", claim)
+            return "inconclusive", f"Model reported passed, but its own finding said the evidence was inconclusive. {finding}"
+
         return status, finding
 
-    async def _capture_visible_text_state(self, session: BrowserSession) -> dict[str, list[str]]:
-        return await session.page.evaluate(
-            """() => {
-                const normalize = (value) => (value || "").replace(/\\s+/g, " ").trim();
-                const isVisible = (element) => {
-                    if (!element) return false;
-                    const style = window.getComputedStyle(element);
-                    if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0) {
-                        return false;
-                    }
-                    const rect = element.getBoundingClientRect();
-                    if (rect.width <= 0 || rect.height <= 0) {
-                        return false;
-                    }
-                    if (rect.bottom <= 0 || rect.right <= 0) {
-                        return false;
-                    }
-                    if (rect.top >= window.innerHeight || rect.left >= window.innerWidth) {
-                        return false;
-                    }
-                    return true;
-                };
-                const elementText = (element) => {
-                    if (!element) return "";
-                    const explicitText = normalize(element.innerText || element.textContent || "");
-                    if (explicitText) return explicitText;
-                    const ariaLabel = normalize(element.getAttribute("aria-label"));
-                    if (ariaLabel) return ariaLabel;
-                    const value = normalize(element.value);
-                    return value;
-                };
-                const visibleHeadings = Array.from(document.querySelectorAll("h1, h2, h3, h4, [role='heading']"))
-                    .filter(isVisible)
-                    .map(elementText)
-                    .filter(Boolean);
-                const visibleButtons = Array.from(
-                    document.querySelectorAll("button, [role='button'], input[type='button'], input[type='submit']")
-                )
-                    .filter(isVisible)
-                    .map(elementText)
-                    .filter(Boolean);
-                const buttonStates = Array.from(
-                    document.querySelectorAll("button, [role='button'], input[type='button'], input[type='submit']")
-                )
-                    .filter(isVisible)
-                    .map((element) => {
-                        const text = elementText(element);
-                        if (!text) return null;
-                        const rect = element.getBoundingClientRect();
-                        let fullyVisible =
-                            rect.top >= 0 &&
-                            rect.left >= 0 &&
-                            rect.bottom <= window.innerHeight &&
-                            rect.right <= window.innerWidth;
-                        for (let ancestor = element.parentElement; ancestor && fullyVisible; ancestor = ancestor.parentElement) {
-                            const style = window.getComputedStyle(ancestor);
-                            const clips =
-                                ["hidden", "clip", "scroll", "auto"].includes(style.overflow) ||
-                                ["hidden", "clip", "scroll", "auto"].includes(style.overflowX) ||
-                                ["hidden", "clip", "scroll", "auto"].includes(style.overflowY);
-                            if (!clips) continue;
-                            const ancestorRect = ancestor.getBoundingClientRect();
-                            if (
-                                rect.top < ancestorRect.top ||
-                                rect.left < ancestorRect.left ||
-                                rect.bottom > ancestorRect.bottom ||
-                                rect.right > ancestorRect.right
-                            ) {
-                                fullyVisible = false;
-                            }
-                        }
-                        return { text, fullyVisible };
-                    })
-                    .filter(Boolean);
-                const dialogTitles = Array.from(document.querySelectorAll("[role='dialog'], dialog, [aria-modal='true']"))
-                    .filter(isVisible)
-                    .flatMap((dialog) => {
-                        const titles = [];
-                        const labelledBy = dialog.getAttribute("aria-labelledby");
-                        if (labelledBy) {
-                            const labelElement = document.getElementById(labelledBy);
-                            if (isVisible(labelElement)) {
-                                const text = elementText(labelElement);
-                                if (text) titles.push(text);
-                            }
-                        }
-                        for (const heading of dialog.querySelectorAll("h1, h2, h3, h4, [role='heading']")) {
-                            if (!isVisible(heading)) continue;
-                            const text = elementText(heading);
-                            if (text) titles.push(text);
-                        }
-                        return titles;
-                    })
-                    .filter(Boolean);
-                return { visibleHeadings, visibleButtons, buttonStates, dialogTitles };
-            }"""
-        )
+    @staticmethod
+    def _claim_is_negative(claim: str) -> bool:
+        return NEGATIVE_CLAIM_PATTERN.search(claim) is not None
 
     @staticmethod
-    def _normalize_text(value: str) -> str:
-        return " ".join(value.split()).strip().casefold()
+    def _finding_has_failure_cue(finding: str) -> bool:
+        return any(pattern.search(finding) for pattern in FAILED_FINDING_PATTERNS)
 
     @staticmethod
-    def _normalize_label_for_match(value: str) -> str:
-        """Normalize a label for fuzzy button matching.
+    def _finding_has_inconclusive_cue(finding: str) -> bool:
+        return any(pattern.search(finding) for pattern in INCONCLUSIVE_FINDING_PATTERNS)
 
-        Strips surrounding quotes, common decorative characters (▼▶✕×…),
-        and trailing descriptor words like 'dropdown', 'menu', 'icon'.
-        """
-        text = " ".join(value.split()).strip().casefold()
-        # Remove all quote characters (surrounding and embedded)
-        for q in ("'", '"', "\u2018", "\u2019", "\u201c", "\u201d"):
-            text = text.replace(q, "")
-        # Remove common trailing descriptors that don't appear in button text
-        for suffix in (" dropdown", " menu", " icon", " button"):
-            if text.endswith(suffix):
-                text = text[: -len(suffix)]
-        # Category "S" catches Symbol chars (▼▶▾▸◀◂✕×); the explicit set also
-        # includes punctuation quote-marks (›‹«») that fall under Pi/Pf.
-        text = "".join(
-            ch for ch in text if unicodedata.category(ch)[0] not in ("S",) and ch not in "▼▶▾▸◀◂✕×›‹«»"
-        )
-        return " ".join(text.split()).strip()
-
-    def _check_heading_match(
-        self,
-        visual_state: dict[str, list[str]],
-        groups: dict[str, str],
-    ) -> tuple[ClaimStatus, str] | None:
-        expected = self._normalize_text(groups["text"])
-        visible_headings = visual_state.get("visibleHeadings", [])
-        if any(self._normalize_text(text) == expected for text in visible_headings):
-            return "passed", f"Visible heading matched {groups['text']!r}."
-        return (
-            "failed",
-            f"No visible heading matched {groups['text']!r}. Visible headings: {visible_headings or ['<none>']}.",
-        )
-
-    def _check_dialog_title_match(
-        self,
-        visual_state: dict[str, list[str]],
-        groups: dict[str, str],
-    ) -> tuple[ClaimStatus, str] | None:
-        expected = self._normalize_text(groups["text"])
-        dialog_titles = visual_state.get("dialogTitles", [])
-        if any(self._normalize_text(text) == expected for text in dialog_titles):
-            return "passed", f"Visible dialog title matched {groups['text']!r}."
-        return (
-            "failed",
-            f"No visible dialog title matched {groups['text']!r}. Visible dialog titles: {dialog_titles or ['<none>']}.",
-        )
-
-    def _check_button_match(
-        self,
-        visual_state: dict[str, list[str]],
-        groups: dict[str, str],
-    ) -> tuple[ClaimStatus, str] | None:
-        matched_states = self._matching_button_states(visual_state, groups["label"])
-        if matched_states:
-            if any(state.get("fullyVisible", False) for state in matched_states):
-                candidate = matched_states[0].get("text", groups["label"])
-                return "passed", f"Visible button label matched {groups['label']!r}: {candidate!r}."
-            candidate = matched_states[0].get("text", groups["label"])
-            return (
-                "failed",
-                f"Visible button label matched {groups['label']!r}, but {candidate!r} is clipped or only partially visible.",
-            )
-
-        label = self._normalize_text(groups["label"])
-        fuzzy_label = self._normalize_label_for_match(groups["label"])
-        visible_buttons = visual_state.get("visibleButtons", [])
-        for candidate in visible_buttons:
-            normalized_candidate = self._normalize_text(candidate)
-            fuzzy_candidate = self._normalize_label_for_match(candidate)
-            if (
-                normalized_candidate == label
-                or normalized_candidate.startswith(f"{label} ")
-                or (fuzzy_label and fuzzy_candidate == fuzzy_label)
-                or (fuzzy_label and fuzzy_candidate.startswith(f"{fuzzy_label} "))
-            ):
-                return "passed", f"Visible button label matched {groups['label']!r}: {candidate!r}."
-        return (
-            "failed",
-            f"No visible button label matched {groups['label']!r}. Visible buttons: {visible_buttons or ['<none>']}.",
-        )
-
-    def _check_button_fully_visible(
-        self,
-        visual_state: dict[str, list[str]],
-        groups: dict[str, str],
-    ) -> tuple[ClaimStatus, str] | None:
-        matched_states = self._matching_button_states(visual_state, groups["label"])
-        if not matched_states:
-            visible_buttons = visual_state.get("visibleButtons", [])
-            return (
-                "failed",
-                f"No visible button label matched {groups['label']!r}. Visible buttons: {visible_buttons or ['<none>']}.",
-            )
-
-        if any(state.get("fullyVisible", False) for state in matched_states):
-            candidate = next(
-                state.get("text", groups["label"]) for state in matched_states if state.get("fullyVisible", False)
-            )
-            return "passed", f"Visible button label matched {groups['label']!r} and is fully visible: {candidate!r}."
-
-        candidate = matched_states[0].get("text", groups["label"])
-        return (
-            "failed",
-            f"Visible button label matched {groups['label']!r}, but {candidate!r} is clipped or not fully visible.",
-        )
-
-    def _matching_button_states(self, visual_state: dict[str, list[str]], label: str) -> list[dict[str, Any]]:
-        normalized_label = self._normalize_text(label)
-        fuzzy_label = self._normalize_label_for_match(label)
-        matched_states: list[dict[str, Any]] = []
-        for state in visual_state.get("buttonStates", []):
-            text = str(state.get("text", ""))
-            normalized_candidate = self._normalize_text(text)
-            fuzzy_candidate = self._normalize_label_for_match(text)
-            if (
-                normalized_candidate == normalized_label
-                or normalized_candidate.startswith(f"{normalized_label} ")
-                or (fuzzy_label and fuzzy_candidate == fuzzy_label)
-                or (fuzzy_label and fuzzy_candidate.startswith(f"{fuzzy_label} "))
-            ):
-                matched_states.append(state)
-        return matched_states
+    @staticmethod
+    def _finding_says_action_is_needed(finding: str) -> bool:
+        return any(pattern.search(finding) for pattern in ACTION_NEEDED_FINDING_PATTERNS)
