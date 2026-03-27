@@ -33,14 +33,13 @@ ACTION_DELAY_SECONDS: dict[str, float] = {
     "go_back": 0.8,
     "go_forward": 0.8,
     "refresh": 0.8,
-    "extract_elements": 0.0,
-    "extract_content": 0.0,
+    "read_page": 0.0,
     "find": 0.0,
     "screenshot": 0.0,
     "wait": 0.0,
 }
 
-READ_ONLY_ACTIONS = {"extract_elements", "extract_content", "find"}
+READ_ONLY_ACTIONS = {"read_page", "find"}
 READ_ONLY_POST_ACTION_DELAY_SECONDS = 0.3
 
 _OVERLAY_LEAD_TIME_FALLBACK_SECONDS = 0.45
@@ -49,6 +48,8 @@ ACTION_NAME_ALIASES: dict[str, str] = {
     "back": "go_back",
     "goto": "goto_url",
     "key": "key_press",
+    "extract_elements": "read_page",
+    "extract_content": "read_page",
 }
 
 BROWSER_ACTION_TOOLS: list[dict[str, Any]] = [
@@ -297,8 +298,8 @@ BROWSER_ACTION_TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
-            "name": "extract_elements",
-            "description": "Extract visible page elements and nearby text without interacting.",
+            "name": "read_page",
+            "description": "Read visible page elements and text content without interacting.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -306,14 +307,6 @@ BROWSER_ACTION_TOOLS: list[dict[str, Any]] = [
                 },
                 "required": [],
             },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "extract_content",
-            "description": "Extract readable text from the current page without interacting.",
-            "parameters": {"type": "object", "properties": {}},
         },
     },
     {
@@ -754,10 +747,8 @@ class ActionExecutor:
             height=session.viewport.height,
         )
 
-        if action_name == "extract_elements":
-            output_text = await self._extract_elements(session.page, filter_text=str(arguments.get("filter") or "").strip())
-        elif action_name == "extract_content":
-            output_text = await self._extract_content(session.page)
+        if action_name == "read_page":
+            output_text = await self._read_page(session.page, filter_text=str(arguments.get("filter") or "").strip())
         elif action_name == "find":
             needle = str(arguments.get("text") or "").strip()
             if not needle:
@@ -768,7 +759,7 @@ class ActionExecutor:
 
         return ActionExecutionResult(trace=trace, output_text=output_text, current_url=session.page.url)
 
-    async def _extract_elements(self, page: Any, filter_text: str) -> str:
+    async def _read_page(self, page: Any, filter_text: str) -> str:
         payload = await page.evaluate(
             """(filterText) => {
                 const limit = (items, max = 12) => items.slice(0, max);
@@ -837,21 +828,20 @@ class ActionExecutor:
                     seen.add(text);
                     visibleText.push(text);
                 }
-                return { headings, buttons, links, inputs, visibleText };
+                const rawText = (document.body?.innerText || "").replace(/\\s+/g, " ").trim().slice(0, 4000);
+                return { headings, buttons, links, inputs, visibleText, rawText };
             }""",
             filter_text,
         )
-        return self._format_extract_elements_output(payload, filter_text=filter_text)
-
-    async def _extract_content(self, page: Any) -> str:
-        content = await page.evaluate(
-            """() => (document.body?.innerText || "").replace(/\\s+/g, " ").trim()"""
-        )
-        if not content:
-            return "Page text: <none>"
-        clipped = content[:4000]
-        suffix = "..." if len(content) > 4000 else ""
-        return f"Page text:\n{clipped}{suffix}"
+        elements_section = self._format_extract_elements_output(payload, filter_text=filter_text)
+        raw_text = (payload.get("rawText") or "") if isinstance(payload, dict) else ""
+        if raw_text:
+            clipped = raw_text[:4000]
+            suffix = "..." if len(raw_text) > 4000 else ""
+            content_section = f"Page text:\n{clipped}{suffix}"
+        else:
+            content_section = "Page text: <none>"
+        return f"{elements_section}\n\n---\n\n{content_section}"
 
     async def _find_text(self, page: Any, needle: str) -> str:
         payload = await page.evaluate(

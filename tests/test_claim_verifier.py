@@ -33,7 +33,7 @@ def _field(result: Any, name: str) -> Any:
     return getattr(result, name)
 
 
-BOOTSTRAP_CALLS = [("extract_elements", {})]
+BOOTSTRAP_CALLS = [("read_page", {})]
 
 
 @dataclass
@@ -73,7 +73,7 @@ class FakeActionExecutor:
 
     @staticmethod
     def is_read_only_action(tool_name: str) -> bool:
-        return tool_name in {"extract_elements", "extract_content", "find"}
+        return tool_name in {"read_page", "find"}
 
     async def execute_tool_call(self, session: FakeSession, tool_call: Any) -> Any:
         resolved_name = tool_call.function.name
@@ -84,7 +84,7 @@ class FakeActionExecutor:
             session.page.url = resolved_args["url"]
         return SimpleNamespace(
             trace=f"{resolved_name}({resolved_args})",
-            output_text=(f"Executed {resolved_name}" if resolved_name in {"extract_elements", "extract_content", "find"} else None),
+            output_text=(f"Executed {resolved_name}" if resolved_name in {"read_page", "find"} else None),
             current_url=session.page.url,
             success=True,
         )
@@ -93,7 +93,7 @@ class FakeActionExecutor:
 class ReadOnlyActionExecutor(FakeActionExecutor):
     async def execute_tool_call(self, session: FakeSession, tool_call: Any) -> Any:
         result = await super().execute_tool_call(session, tool_call)
-        if tool_call.function.name == "extract_elements":
+        if tool_call.function.name == "read_page":
             result.output_text = "Visible buttons:\n- Save"
         return result
 
@@ -492,7 +492,7 @@ async def test_claim_verifier_records_reasoning_events_and_shows_thought_for_too
                 tool_calls=[
                     FakeToolCall(
                         id="tool-1",
-                        function=FakeFunction(name="extract_elements", arguments=json.dumps({"filter": "Save"})),
+                        function=FakeFunction(name="read_page", arguments=json.dumps({"filter": "Save"})),
                     )
                 ],
             ),
@@ -538,7 +538,7 @@ async def test_claim_verifier_records_reasoning_events_and_shows_thought_for_too
     action_event, verdict_event = _field(result, "trace").events
     assert action_event.type == "action"
     assert action_event.reasoning == reasoning
-    assert action_event.action == "extract_elements"
+    assert action_event.action == "read_page"
     assert action_event.action_args == {"filter": "Save"}
     assert action_event.output_preview is not None
     assert "Visible buttons" in action_event.output_preview
@@ -674,8 +674,7 @@ async def test_claim_verifier_seeds_first_model_turn_with_bootstrap_observation_
         "Current URL:" in text for text in text_parts
     )
     assert any("Verifier-owned bootstrap observation." in text for text in text_parts)
-    assert any("Executed extract_elements" in text for text in text_parts)
-    assert not any("Executed extract_content" in text for text in text_parts)
+    assert any("Executed read_page" in text for text in text_parts)
     assert any(isinstance(part, dict) and part.get("type") == "image_url" for part in first_content)
     assert is_bootstrap_step_artifact(_field(result, "proof").screenshot_path)
     assert _field(result, "proof").step == 0
@@ -690,7 +689,7 @@ async def test_claim_verifier_degrades_to_screenshot_only_seed_when_bootstrap_fa
 
     class BootstrapFailingActionExecutor(FakeActionExecutor):
         async def execute_tool_call(self, session: FakeSession, tool_call: Any) -> Any:
-            if tool_call.function.name == "extract_elements":
+            if tool_call.function.name == "read_page":
                 raise RuntimeError("bootstrap failed")
             return await super().execute_tool_call(session, tool_call)
 
@@ -754,7 +753,7 @@ async def test_claim_verifier_executes_duplicate_initial_bootstrap_read_normally
                 tool_calls=[
                     FakeToolCall(
                         id="tool-1",
-                        function=FakeFunction(name="extract_elements", arguments=json.dumps({})),
+                        function=FakeFunction(name="read_page", arguments=json.dumps({})),
                     )
                 ]
             ),
@@ -782,16 +781,16 @@ async def test_claim_verifier_executes_duplicate_initial_bootstrap_read_normally
     )
 
     assert _field(result, "status") == "passed"
-    assert action_executor.calls == [*BOOTSTRAP_CALLS, ("extract_elements", {})]
+    assert action_executor.calls == [*BOOTSTRAP_CALLS, ("read_page", {})]
     assert _field(result, "trace").steps_taken == 1
-    assert _field(result, "trace").actions == ["extract_elements({})"]
+    assert _field(result, "trace").actions == ["read_page({})"]
     assert _field(result, "proof").step == 1
-    assert _field(result, "proof").after_action == "extract_elements({})"
+    assert _field(result, "proof").after_action == "read_page({})"
     second_call_messages = n1_client.calls[1]["messages"]
     first_tool_message = next(
         message for message in second_call_messages if message.get("role") == "tool" and message.get("tool_call_id") == "tool-1"
     )
-    assert "Executed extract_elements" in first_tool_message["content"][0]["text"]
+    assert "Executed read_page" in first_tool_message["content"][0]["text"]
     assert first_tool_message["content"][1]["type"] == "image_url"
 
 
@@ -1186,7 +1185,7 @@ async def test_claim_verifier_records_proof_text_for_read_only_final_action(tmp_
                 tool_calls=[
                     FakeToolCall(
                         id="tool-1",
-                        function=FakeFunction(name="extract_elements", arguments=json.dumps({"filter": "Save"})),
+                        function=FakeFunction(name="read_page", arguments=json.dumps({"filter": "Save"})),
                     )
                 ]
             ),
@@ -1216,10 +1215,10 @@ async def test_claim_verifier_records_proof_text_for_read_only_final_action(tmp_
 
     assert action_executor.calls == [
         *BOOTSTRAP_CALLS,
-        ("extract_elements", {"filter": "Save"}),
+        ("read_page", {"filter": "Save"}),
     ]
     assert _field(result, "proof").step == 1
-    assert _field(result, "proof").after_action == "extract_elements({'filter': 'Save'})"
+    assert _field(result, "proof").after_action == "read_page({'filter': 'Save'})"
     assert _field(result, "proof").text == "Visible buttons:\n- Save"
     assert _field(result, "proof").text_path.endswith("step-01.txt")
     assert Path(_field(result, "proof").text_path).read_text(encoding="utf-8") == "Visible buttons:\n- Save"
@@ -1238,7 +1237,7 @@ async def test_claim_verifier_writes_trace_json_with_action_and_verdict_events(t
                 tool_calls=[
                     FakeToolCall(
                         id="tool-1",
-                        function=FakeFunction(name="extract_elements", arguments=json.dumps({"filter": "Save"})),
+                        function=FakeFunction(name="read_page", arguments=json.dumps({"filter": "Save"})),
                     )
                 ],
             ),
@@ -1270,7 +1269,7 @@ async def test_claim_verifier_writes_trace_json_with_action_and_verdict_events(t
     assert trace_path is not None
     trace_payload = json.loads(Path(trace_path).read_text())
     assert [event["type"] for event in trace_payload] == ["action", "verdict"]
-    assert trace_payload[0]["action"] == "extract_elements"
+    assert trace_payload[0]["action"] == "read_page"
     assert trace_payload[1]["verdict_source"] == "record_claim_result"
 
 
@@ -1282,7 +1281,7 @@ async def test_claim_verifier_truncates_inline_proof_text_but_saves_full_artifac
     class ReadOnlyActionExecutor(FakeActionExecutor):
         async def execute_tool_call(self, session: FakeSession, tool_call: Any) -> Any:
             result = await super().execute_tool_call(session, tool_call)
-            if tool_call.function.name == "extract_elements":
+            if tool_call.function.name == "read_page":
                 result.output_text = full_proof_text
             return result
 
@@ -1294,7 +1293,7 @@ async def test_claim_verifier_truncates_inline_proof_text_but_saves_full_artifac
                 tool_calls=[
                     FakeToolCall(
                         id="tool-1",
-                        function=FakeFunction(name="extract_elements", arguments=json.dumps({"filter": "Main content"})),
+                        function=FakeFunction(name="read_page", arguments=json.dumps({"filter": "Main content"})),
                     )
                 ]
             ),
@@ -1327,7 +1326,7 @@ async def test_claim_verifier_truncates_inline_proof_text_but_saves_full_artifac
     assert _field(result, "proof").text.endswith("...")
     assert _field(result, "proof").text_path.endswith("step-01.txt")
     assert Path(_field(result, "proof").text_path).read_text(encoding="utf-8") == full_proof_text
-    assert _field(result, "trace").actions == ["extract_elements({'filter': 'Main content'})"]
+    assert _field(result, "trace").actions == ["read_page({'filter': 'Main content'})"]
 
 
 @pytest.mark.asyncio
@@ -1371,7 +1370,7 @@ async def test_claim_verifier_clears_stale_read_only_proof_text_after_mutating_a
     class MixedActionExecutor(FakeActionExecutor):
         async def execute_tool_call(self, session: FakeSession, tool_call: Any) -> Any:
             result = await super().execute_tool_call(session, tool_call)
-            if tool_call.function.name == "extract_elements":
+            if tool_call.function.name == "read_page":
                 result.output_text = "Visible buttons:\n- Save"
             return result
 
@@ -1383,7 +1382,7 @@ async def test_claim_verifier_clears_stale_read_only_proof_text_after_mutating_a
                 tool_calls=[
                     FakeToolCall(
                         id="tool-1",
-                        function=FakeFunction(name="extract_elements", arguments=json.dumps({"filter": "Save"})),
+                        function=FakeFunction(name="read_page", arguments=json.dumps({"filter": "Save"})),
                     )
                 ]
             ),
@@ -1421,7 +1420,7 @@ async def test_claim_verifier_clears_stale_read_only_proof_text_after_mutating_a
 
     assert action_executor.calls[: len(BOOTSTRAP_CALLS)] == BOOTSTRAP_CALLS
     assert action_executor.calls[len(BOOTSTRAP_CALLS):] == [
-        ("extract_elements", {"filter": "Save"}),
+        ("read_page", {"filter": "Save"}),
         ("goto_url", {"url": "http://fixture.local/modal"}),
     ]
     assert _field(result, "proof").after_action == "goto_url({'url': 'http://fixture.local/modal'})"

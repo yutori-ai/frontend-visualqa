@@ -48,7 +48,7 @@ logger = logging.getLogger(__name__)
 MAX_NON_ACTION_REPROMPTS = 2
 MAX_INLINE_PROOF_TEXT_CHARS = 280
 MAX_INLINE_PROOF_TEXT_LINES = 6
-BOOTSTRAP_TOOL_NAME = "extract_elements"
+BOOTSTRAP_TOOL_NAME = "read_page"
 
 
 @dataclass(frozen=True)
