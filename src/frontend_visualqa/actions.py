@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import json
 import re
-from dataclasses import dataclass
 from typing import Any, TYPE_CHECKING
 
 from frontend_visualqa.browser import BrowserSession, DEFAULT_NAVIGATION_TIMEOUT_MS as BROWSER_NAVIGATION_TIMEOUT_MS
@@ -33,14 +32,9 @@ ACTION_DELAY_SECONDS: dict[str, float] = {
     "go_back": 0.8,
     "go_forward": 0.8,
     "refresh": 0.8,
-    "read_page": 0.0,
-    "find": 0.0,
     "screenshot": 0.0,
     "wait": 0.0,
 }
-
-READ_ONLY_ACTIONS = {"read_page", "find"}
-READ_ONLY_POST_ACTION_DELAY_SECONDS = 0.3
 
 _OVERLAY_LEAD_TIME_FALLBACK_SECONDS = 0.45
 
@@ -293,34 +287,6 @@ BROWSER_ACTION_TOOLS: list[dict[str, Any]] = [
             "parameters": {"type": "object", "properties": {}},
         },
     },
-    {
-        "type": "function",
-        "function": {
-            "name": "read_page",
-            "description": "Read visible page elements and text content without interacting.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "filter": {"type": "string", "description": "Optional text filter for matching elements."},
-                },
-                "required": [],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "find",
-            "description": "Find visible text matches on the current page.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "text": {"type": "string", "description": "Text to search for on the page."},
-                },
-                "required": ["text"],
-            },
-        },
-    },
 ]
 
 KEY_MAP: dict[str, str] = {
@@ -514,13 +480,6 @@ def render_action_trace(
     return f"{canonical_name}({ordered_parts})"
 
 
-@dataclass
-class ActionExecutionResult:
-    trace: str
-    output_text: str | None = None
-    current_url: str | None = None
-
-
 class ActionExecutor:
     """Execute n1 browser action tool calls against a Playwright page."""
 
@@ -542,18 +501,11 @@ class ActionExecutor:
     def overlay(self, value: OverlayController | None) -> None:
         self._overlay = value
 
-    async def execute_tool_call(self, session: BrowserSession, tool_call: Any) -> ActionExecutionResult | str:
+    async def execute_tool_call(self, session: BrowserSession, tool_call: Any) -> str:
         """Execute a tool call object with ``function.name`` and JSON arguments."""
 
         arguments = parse_tool_arguments(tool_call)
         action_name = getattr(getattr(tool_call, "function", tool_call), "name", "")
-        canonical_name = ACTION_NAME_ALIASES.get(action_name, action_name)
-        if canonical_name in READ_ONLY_ACTIONS:
-            result = await self._execute_read_only_tool(session, canonical_name, arguments)
-            if self._overlay is not None:
-                await self._best_effort_overlay_ensure_persistent_ui()
-                await asyncio.sleep(self._post_action_delay(canonical_name))
-            return result
         return await self.execute_action(session=session, action_name=action_name, arguments=arguments)
 
     async def execute_action(
@@ -732,174 +684,6 @@ class ActionExecutor:
         await self._best_effort_overlay_ensure_persistent_ui()
         return trace
 
-    async def _execute_read_only_tool(
-        self,
-        session: BrowserSession,
-        action_name: str,
-        arguments: dict[str, Any],
-    ) -> ActionExecutionResult:
-        trace = render_action_trace(
-            action_name,
-            arguments,
-            width=session.viewport.width,
-            height=session.viewport.height,
-        )
-
-        if action_name == "read_page":
-            output_text = await self._read_page(session.page, filter_text=str(arguments.get("filter") or "").strip())
-        elif action_name == "find":
-            needle = str(arguments.get("text") or "").strip()
-            if not needle:
-                raise BrowserActionError("find requires text")
-            output_text = await self._find_text(session.page, needle)
-        else:  # pragma: no cover - caller constrains the action_name
-            raise BrowserActionError(f"unsupported read-only action: {action_name}")
-
-        return ActionExecutionResult(trace=trace, output_text=output_text, current_url=session.page.url)
-
-    async def _read_page(self, page: Any, filter_text: str) -> str:
-        payload = await page.evaluate(
-            """(filterText) => {
-                const limit = (items, max = 12) => items.slice(0, max);
-                const normalize = (value) => (value || "").replace(/\\s+/g, " ").trim();
-                const isVisible = (element) => {
-                    if (!element) return false;
-                    const style = window.getComputedStyle(element);
-                    if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0) {
-                        return false;
-                    }
-                    const rect = element.getBoundingClientRect();
-                    return rect.width > 0 && rect.height > 0;
-                };
-                const elementText = (element) => {
-                    if (!element) return "";
-                    return normalize(
-                        element.innerText ||
-                        element.textContent ||
-                        element.getAttribute("aria-label") ||
-                        element.getAttribute("placeholder") ||
-                        element.value
-                    );
-                };
-                const loweredFilter = normalize(filterText).toLowerCase();
-                const matchesFilter = (...values) => {
-                    if (!loweredFilter) return true;
-                    return values.some((value) => normalize(value).toLowerCase().includes(loweredFilter));
-                };
-                const headings = limit(
-                    Array.from(document.querySelectorAll("h1, h2, h3, h4, [role='heading']"))
-                        .filter(isVisible)
-                        .map(elementText)
-                        .filter((text) => text && matchesFilter(text))
-                );
-                const buttons = limit(
-                    Array.from(document.querySelectorAll("button, [role='button'], input[type='button'], input[type='submit']"))
-                        .filter(isVisible)
-                        .map(elementText)
-                        .filter((text) => text && matchesFilter(text))
-                );
-                const links = limit(
-                    Array.from(document.querySelectorAll("a[href]"))
-                        .filter(isVisible)
-                        .map((element) => ({ text: elementText(element), href: element.href || "" }))
-                        .filter((item) => item.text || item.href)
-                        .filter((item) => matchesFilter(item.text, item.href))
-                );
-                const inputs = limit(
-                    Array.from(document.querySelectorAll("input, textarea, select"))
-                        .filter(isVisible)
-                        .map((element) => ({
-                            type: element.getAttribute("type") || element.tagName.toLowerCase(),
-                            label: elementText(element),
-                            placeholder: normalize(element.getAttribute("placeholder")),
-                        }))
-                        .filter((item) => item.label || item.placeholder)
-                        .filter((item) => matchesFilter(item.label, item.placeholder, item.type))
-                );
-                const visibleText = [];
-                const seen = new Set();
-                for (const el of document.querySelectorAll("body *")) {
-                    if (visibleText.length >= 24) break;
-                    if (!isVisible(el)) continue;
-                    const text = elementText(el);
-                    if (!text || seen.has(text) || !matchesFilter(text)) continue;
-                    seen.add(text);
-                    visibleText.push(text);
-                }
-                const rawText = (document.body?.innerText || "").replace(/\\s+/g, " ").trim().slice(0, 4000);
-                return { headings, buttons, links, inputs, visibleText, rawText };
-            }""",
-            filter_text,
-        )
-        elements_section = self._format_extract_elements_output(payload, filter_text=filter_text)
-        raw_text = (payload.get("rawText") or "") if isinstance(payload, dict) else ""
-        if raw_text:
-            clipped = raw_text[:4000]
-            suffix = "..." if len(raw_text) > 4000 else ""
-            content_section = f"Page text:\n{clipped}{suffix}"
-        else:
-            content_section = "Page text: <none>"
-        return f"{elements_section}\n\n---\n\n{content_section}"
-
-    async def _find_text(self, page: Any, needle: str) -> str:
-        payload = await page.evaluate(
-            """(needle) => {
-                const normalize = (value) => (value || "").replace(/\\s+/g, " ").trim();
-                const loweredNeedle = normalize(needle).toLowerCase();
-                const bodyText = normalize(document.body?.innerText || "");
-                const lines = bodyText.split(/\\n+/).map(normalize).filter(Boolean);
-                const matches = lines.filter((line) => line.toLowerCase().includes(loweredNeedle)).slice(0, 12);
-                return { count: matches.length, matches };
-            }""",
-            needle,
-        )
-        matches = payload.get("matches", []) if isinstance(payload, dict) else []
-        if not matches:
-            return f"No visible text matched {needle!r}."
-        return f"Found {len(matches)} visible text match(es) for {needle!r}:\n" + "\n".join(f"- {match}" for match in matches)
-
-    @staticmethod
-    def _format_extract_elements_output(payload: Any, *, filter_text: str) -> str:
-        if not isinstance(payload, dict):
-            return "No visible elements found."
-
-        sections: list[str] = []
-        if filter_text:
-            sections.append(f"Filter: {filter_text!r}")
-
-        headings = [item for item in payload.get("headings", []) if item]
-        buttons = [item for item in payload.get("buttons", []) if item]
-        links = payload.get("links", []) or []
-        inputs = payload.get("inputs", []) or []
-        visible_text = [item for item in payload.get("visibleText", []) if item]
-
-        if headings:
-            sections.append("Visible headings:\n" + "\n".join(f"- {item}" for item in headings))
-        if buttons:
-            sections.append("Visible buttons:\n" + "\n".join(f"- {item}" for item in buttons))
-        if links:
-            formatted_links = [
-                f"- {item.get('text') or '<no text>'}: {item.get('href') or '<no href>'}"
-                for item in links
-                if isinstance(item, dict)
-            ]
-            if formatted_links:
-                sections.append("Visible links:\n" + "\n".join(formatted_links))
-        if inputs:
-            formatted_inputs = []
-            for item in inputs:
-                if not isinstance(item, dict):
-                    continue
-                descriptor = item.get("label") or item.get("placeholder") or "<unnamed input>"
-                input_type = item.get("type") or "input"
-                formatted_inputs.append(f"- {descriptor} [{input_type}]")
-            if formatted_inputs:
-                sections.append("Visible inputs:\n" + "\n".join(formatted_inputs))
-        if visible_text:
-            sections.append("Visible text snippets:\n" + "\n".join(f"- {item}" for item in visible_text))
-
-        return "\n\n".join(sections) if sections else "No visible elements found."
-
     async def _best_effort_wait_for_domcontentloaded(self, page: Any) -> None:
         try:
             await page.wait_for_load_state("domcontentloaded", timeout=self.navigation_timeout_ms)
@@ -929,10 +713,6 @@ class ActionExecutor:
         except Exception:
             return
 
-    @staticmethod
-    def is_read_only_action(tool_name: str) -> bool:
-        return ACTION_NAME_ALIASES.get(tool_name, tool_name) in READ_ONLY_ACTIONS
-
     async def _best_effort_overlay_set_status(self, label: str) -> None:
         overlay = self._overlay
         if overlay is None:
@@ -960,9 +740,5 @@ class ActionExecutor:
 
     def _post_action_delay(self, action_name: str) -> float:
         if self.settle_delay_seconds is not None:
-            if action_name in READ_ONLY_ACTIONS:
-                return max(self.settle_delay_seconds, READ_ONLY_POST_ACTION_DELAY_SECONDS)
             return self.settle_delay_seconds
-        if action_name in READ_ONLY_ACTIONS:
-            return READ_ONLY_POST_ACTION_DELAY_SECONDS
         return ACTION_DELAY_SECONDS.get(action_name, 0.3)

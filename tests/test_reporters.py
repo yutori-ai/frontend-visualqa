@@ -52,7 +52,7 @@ def _sample_run_result(artifacts_dir: str) -> RunResult:
                 proof={
                     "screenshot_path": "artifacts/run-001/claim-02/step-01.webp",
                     "step": 1,
-                    "after_action": "read_page()",
+                    "after_action": "goto_url(\"http://localhost:3000/dashboard/quota\")",
                     "text": "Visible text included '65%'.",
                     "text_path": "artifacts/run-001/claim-02/step-01.txt",
                 },
@@ -64,7 +64,7 @@ def _sample_run_result(artifacts_dir: str) -> RunResult:
                         "artifacts/run-001/claim-02/step-00.webp",
                         "artifacts/run-001/claim-02/step-01.webp",
                     ],
-                    "actions": ["read_page()"],
+                    "actions": ["goto_url(\"http://localhost:3000/dashboard/quota\")"],
                     "trace_path": "artifacts/run-001/claim-02/trace.json",
                 },
             ),
@@ -114,7 +114,7 @@ def test_native_reporter_writes_run_result_json(tmp_path: Path) -> None:
     assert second_result["proof"]["text_path"] == "artifacts/run-001/claim-02/step-01.txt"
     assert first_result["page"]["url"] == "http://localhost:3000/dashboard"
     assert first_result["trace"]["wrong_page_recovered"] is False
-    assert second_result["trace"]["actions"] == ["read_page()"]
+    assert second_result["trace"]["actions"] == ["goto_url(\"http://localhost:3000/dashboard/quota\")"]
 
 
 def test_native_reporter_name() -> None:
@@ -265,7 +265,7 @@ def test_ctrf_reporter_includes_extra_fields(tmp_path: Path) -> None:
     assert extra["claimResult"]["trace"]["wrong_page_recovered"] is False
     assert extra["claimResult"]["trace"]["steps_taken"] == 1
     assert extra["claimResult"]["page"]["viewport"] == {"width": 1280, "height": 800, "device_scale_factor": 1.0}
-    assert extra["claimResult"]["trace"]["actions"] == ["read_page()"]
+    assert extra["claimResult"]["trace"]["actions"] == ["goto_url(\"http://localhost:3000/dashboard/quota\")"]
 
 
 def test_ctrf_reporter_includes_screenshots_as_attachments(tmp_path: Path) -> None:

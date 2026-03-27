@@ -369,7 +369,6 @@ frontend-visualqa verify http://localhost:3000/dashboard \
 When running in headed mode (`--headed`), the browser shows visual effects illustrating what n1 is doing:
 - cursor-led click, scroll, drag, and typing effects
 - a compact thought card when a tool-using model turn includes reasoning text
-- read-only feedback for `extract_elements`, `extract_content`, and `find`, with a scan effect and short preview panel
 
 To disable it, use `--no-visualize`:
 
@@ -434,9 +433,9 @@ Each claim result contains:
   "proof": {
     "screenshot_path": "artifacts/run-.../claim-02/step-04.webp",
     "step": 4,
-    "after_action": "extract_elements()",
-    "text": "Monthly Quota\n12,500 / 12,500 requests used  100%\n...",
-    "text_path": "artifacts/run-.../claim-02/step-04.txt"
+    "after_action": "scroll([640, 720], direction=down, amount=1)",
+    "text": null,
+    "text_path": null
   },
   "page": {
     "url": "http://localhost:8000/analytics_dashboard.html",
@@ -453,7 +452,7 @@ Each claim result contains:
 ```
 
 `proof.screenshot_path` points to the screenshot n1 was examining when it rendered the verdict.
-`proof.text` is intentionally compact for token efficiency; if `proof.text_path` is present, open that file for the full extracted DOM/content readout.
+`proof.text` and `proof.text_path` are optional and are usually `null` unless a tool returns saved text output.
 `trace.trace_path` points to `trace.json`, which contains the full machine-readable event trace with reasoning and verdict metadata. Events are excluded from the JSON output by default to keep it compact; access them programmatically via `result.trace.events` or read `trace.json` directly.
 
 </details>
