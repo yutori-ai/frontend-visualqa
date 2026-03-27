@@ -1081,6 +1081,50 @@ async def test_claim_verifier_preserves_pass_for_negative_claims_with_negative_f
 
 
 @pytest.mark.asyncio
+async def test_claim_verifier_preserves_pass_for_incorrect_claims_with_confirming_findings(tmp_path: Path) -> None:
+    module = _import_claim_verifier_module()
+    verifier, _, _ = _build_claim_verifier(
+        module,
+        tmp_path,
+        responses=[
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-1",
+                        function=FakeFunction(
+                            name="record_claim_result",
+                            arguments=json.dumps(
+                                {"status": "passed", "finding": "The price is incorrect — it shows $279.98 instead of $229.98."}
+                            ),
+                        ),
+                    )
+                ]
+            )
+        ],
+    )
+
+    result = await _call_verify(
+        verifier,
+        page=EvaluatingPage(
+            url="http://fixture.local/cart",
+            visual_state={
+                "visibleHeadings": [],
+                "visibleButtons": [],
+                "buttonStates": [],
+                "dialogTitles": [],
+            },
+        ),
+        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+        claim="The price is incorrect",
+        url="http://fixture.local/cart",
+        navigation_hint=None,
+    )
+
+    assert _field(result, "status") == "passed"
+    assert "incorrect" in _field(result, "finding")
+
+
+@pytest.mark.asyncio
 async def test_claim_verifier_still_downgrades_positive_error_state_claims_when_finding_contradicts_verdict(
     tmp_path: Path,
 ) -> None:

@@ -35,7 +35,7 @@ FALLBACK_VERDICT_PATTERN = re.compile(
     re.IGNORECASE,
 )
 NEGATIVE_CLAIM_PATTERN = re.compile(
-    r"""\bnot\b|\bno\s+\w+|\bhidden\b|\bdisabled\b|\bmissing\b|\babsent\b""",
+    r"""\bnot\b|\bno\s+\w+|\bhidden\b|\bdisabled\b|\bmissing\b|\babsent\b|\bincorrect\b|\bwrong\b""",
     re.IGNORECASE,
 )
 FAILED_FINDING_PATTERNS = (
@@ -238,7 +238,7 @@ class ClaimVerifier:
                                 if non_action_reprompts < MAX_NON_ACTION_REPROMPTS:
                                     non_action_reprompts += 1
                                     messages.append(_user_text_message(reprompt_text))
-                                    continue
+                                    break
                                 result = await self._finalize_result(
                                     progress=progress,
                                     verdict=("inconclusive", force_stop_finding or ""),
