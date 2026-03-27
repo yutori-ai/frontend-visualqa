@@ -9,7 +9,7 @@ import unicodedata
 from dataclasses import dataclass
 from typing import Any, TYPE_CHECKING
 
-from frontend_visualqa.actions import BROWSER_ACTION_TOOLS, ActionExecutor
+from frontend_visualqa.actions import ActionExecutor
 from frontend_visualqa.artifacts import ArtifactManager, RunArtifacts
 from frontend_visualqa.browser import BrowserManager, BrowserSession, image_bytes_to_data_url
 from frontend_visualqa.errors import BrowserActionError, N1ClientError
@@ -588,7 +588,9 @@ class ClaimVerifier:
 
     @staticmethod
     def _model_tools() -> list[dict[str, Any]]:
-        return [*BROWSER_ACTION_TOOLS, RECORD_CLAIM_RESULT_TOOL]
+        # n1's built-in browser actions are injected server-side by the Yutori
+        # chat completions endpoint. We only need to send truly custom tools.
+        return [RECORD_CLAIM_RESULT_TOOL]
 
     @staticmethod
     def _build_tool_result_text(trace: str, current_url: str, output_text: str | None = None) -> str:
