@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from fakes import instantiate_with_supported_kwargs
 from frontend_visualqa.schemas import ViewportConfig
 
 
@@ -20,17 +21,6 @@ def _import_actions_module():
         if exc.name and exc.name.startswith("frontend_visualqa"):
             pytest.skip("frontend_visualqa.actions is not implemented in this worktree yet")
         raise
-
-
-def _instantiate_with_supported_kwargs(factory: Any, **candidates: Any) -> Any:
-    signature = inspect.signature(factory)
-    kwargs = {
-        name: value
-        for name, value in candidates.items()
-        if name in signature.parameters
-        and signature.parameters[name].kind in {inspect.Parameter.KEYWORD_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD}
-    }
-    return factory(**kwargs)
 
 
 async def _call_execute_action(
@@ -189,7 +179,7 @@ def _make_overlay_enabled_page(call_order: list[tuple[Any, ...]]) -> FakePage:
 
 def test_scale_coordinates_maps_n1_grid_to_viewport_pixels() -> None:
     module = _import_actions_module()
-    executor = _instantiate_with_supported_kwargs(
+    executor = instantiate_with_supported_kwargs(
         module.ActionExecutor,
         navigation_timeout_ms=1_000,
         settle_delay_seconds=0,
@@ -209,7 +199,7 @@ def test_scale_coordinates_maps_n1_grid_to_viewport_pixels() -> None:
 @pytest.mark.asyncio
 async def test_execute_action_left_click_scales_coordinates_before_dispatch() -> None:
     module = _import_actions_module()
-    executor = _instantiate_with_supported_kwargs(
+    executor = instantiate_with_supported_kwargs(
         module.ActionExecutor,
         navigation_timeout_ms=1_000,
         settle_delay_seconds=0,
@@ -237,7 +227,7 @@ async def test_navigation_actions_wait_for_domcontentloaded(
     expected_url_attr: str,
 ) -> None:
     module = _import_actions_module()
-    executor = _instantiate_with_supported_kwargs(
+    executor = instantiate_with_supported_kwargs(
         module.ActionExecutor,
         navigation_timeout_ms=1_000,
         settle_delay_seconds=0,
@@ -255,7 +245,7 @@ async def test_navigation_actions_wait_for_domcontentloaded(
 @pytest.mark.asyncio
 async def test_execute_action_type_and_scroll_use_keyboard_and_mouse_inputs() -> None:
     module = _import_actions_module()
-    executor = _instantiate_with_supported_kwargs(
+    executor = instantiate_with_supported_kwargs(
         module.ActionExecutor,
         navigation_timeout_ms=1_000,
         settle_delay_seconds=0,
@@ -287,7 +277,7 @@ async def test_execute_action_type_and_scroll_use_keyboard_and_mouse_inputs() ->
 @pytest.mark.asyncio
 async def test_execute_action_supports_hover_drag_and_multi_click_variants() -> None:
     module = _import_actions_module()
-    executor = _instantiate_with_supported_kwargs(
+    executor = instantiate_with_supported_kwargs(
         module.ActionExecutor,
         navigation_timeout_ms=1_000,
         settle_delay_seconds=0,
@@ -331,7 +321,7 @@ async def test_execute_action_left_click_triggers_overlay_before_dispatch_and_re
     overlay.show_action = AsyncMock(side_effect=_show_action)
     overlay.ensure_persistent_ui = AsyncMock(side_effect=_ensure_persistent_ui)
 
-    executor = _instantiate_with_supported_kwargs(
+    executor = instantiate_with_supported_kwargs(
         module.ActionExecutor,
         navigation_timeout_ms=1_000,
         settle_delay_seconds=0,
@@ -372,7 +362,7 @@ async def test_execute_action_navigation_updates_overlay_status_before_navigatio
     overlay.set_status = AsyncMock(side_effect=_set_status)
     overlay.ensure_persistent_ui = AsyncMock(side_effect=_ensure_persistent_ui)
 
-    executor = _instantiate_with_supported_kwargs(
+    executor = instantiate_with_supported_kwargs(
         module.ActionExecutor,
         navigation_timeout_ms=1_000,
         settle_delay_seconds=0,
@@ -418,7 +408,7 @@ async def test_execute_action_semantic_key_shortcut_uses_single_overlay_footer(
     overlay.set_status = AsyncMock(side_effect=_set_status)
     overlay.ensure_persistent_ui = AsyncMock(side_effect=_ensure_persistent_ui)
 
-    executor = _instantiate_with_supported_kwargs(
+    executor = instantiate_with_supported_kwargs(
         module.ActionExecutor,
         navigation_timeout_ms=1_000,
         settle_delay_seconds=0,
@@ -458,7 +448,7 @@ async def test_execute_action_hover_triggers_overlay_before_dispatch(
     overlay.show_action = AsyncMock(side_effect=_show_action)
     overlay.ensure_persistent_ui = AsyncMock(side_effect=_ensure_persistent_ui)
 
-    executor = _instantiate_with_supported_kwargs(
+    executor = instantiate_with_supported_kwargs(
         module.ActionExecutor,
         navigation_timeout_ms=1_000,
         settle_delay_seconds=0,
@@ -512,7 +502,7 @@ async def test_execute_action_drag_triggers_overlay_before_dispatch(
     overlay.show_action = AsyncMock(side_effect=_show_action)
     overlay.ensure_persistent_ui = AsyncMock(side_effect=_ensure_persistent_ui)
 
-    executor = _instantiate_with_supported_kwargs(
+    executor = instantiate_with_supported_kwargs(
         module.ActionExecutor,
         navigation_timeout_ms=1_000,
         settle_delay_seconds=0,
@@ -555,7 +545,7 @@ async def test_execute_action_drag_triggers_overlay_before_dispatch(
 @pytest.mark.asyncio
 async def test_execute_action_key_press_supports_shortcuts_and_semantic_navigation() -> None:
     module = _import_actions_module()
-    executor = _instantiate_with_supported_kwargs(
+    executor = instantiate_with_supported_kwargs(
         module.ActionExecutor,
         navigation_timeout_ms=1_000,
         settle_delay_seconds=0,
@@ -576,7 +566,7 @@ async def test_execute_action_key_press_supports_shortcuts_and_semantic_navigati
 @pytest.mark.asyncio
 async def test_execute_action_key_press_supports_repeated_key_sequences() -> None:
     module = _import_actions_module()
-    executor = _instantiate_with_supported_kwargs(
+    executor = instantiate_with_supported_kwargs(
         module.ActionExecutor,
         navigation_timeout_ms=1_000,
         settle_delay_seconds=0,
@@ -593,7 +583,7 @@ async def test_execute_action_key_press_supports_repeated_key_sequences() -> Non
 @pytest.mark.asyncio
 async def test_execute_action_key_press_ignores_zoom_shortcuts() -> None:
     module = _import_actions_module()
-    executor = _instantiate_with_supported_kwargs(
+    executor = instantiate_with_supported_kwargs(
         module.ActionExecutor,
         navigation_timeout_ms=1_000,
         settle_delay_seconds=0,
@@ -610,7 +600,7 @@ async def test_execute_action_key_press_ignores_zoom_shortcuts() -> None:
 @pytest.mark.asyncio
 async def test_execute_action_screenshot_is_a_no_op_for_n1_default_tool_calls() -> None:
     module = _import_actions_module()
-    executor = _instantiate_with_supported_kwargs(
+    executor = instantiate_with_supported_kwargs(
         module.ActionExecutor,
         navigation_timeout_ms=1_000,
         settle_delay_seconds=0,
@@ -628,7 +618,7 @@ async def test_execute_action_screenshot_is_a_no_op_for_n1_default_tool_calls() 
 @pytest.mark.asyncio
 async def test_execute_action_rejects_invalid_scroll_direction() -> None:
     module = _import_actions_module()
-    executor = _instantiate_with_supported_kwargs(
+    executor = instantiate_with_supported_kwargs(
         module.ActionExecutor,
         navigation_timeout_ms=1_000,
         settle_delay_seconds=0,
@@ -649,7 +639,7 @@ async def test_execute_action_rejects_invalid_scroll_direction() -> None:
 @pytest.mark.asyncio
 async def test_execute_tool_call_extract_elements_returns_output_text() -> None:
     module = _import_actions_module()
-    executor = _instantiate_with_supported_kwargs(
+    executor = instantiate_with_supported_kwargs(
         module.ActionExecutor,
         navigation_timeout_ms=1_000,
         settle_delay_seconds=0,
@@ -685,7 +675,7 @@ async def test_execute_tool_call_extract_elements_returns_output_text() -> None:
 @pytest.mark.asyncio
 async def test_execute_tool_call_extract_content_and_find_return_read_only_text() -> None:
     module = _import_actions_module()
-    executor = _instantiate_with_supported_kwargs(
+    executor = instantiate_with_supported_kwargs(
         module.ActionExecutor,
         navigation_timeout_ms=1_000,
         settle_delay_seconds=0,
@@ -715,7 +705,7 @@ async def test_execute_tool_call_extract_content_and_find_return_read_only_text(
 @pytest.mark.asyncio
 async def test_execute_tool_call_read_only_sleeps_post_action_without_overlay() -> None:
     module = _import_actions_module()
-    executor = _instantiate_with_supported_kwargs(
+    executor = instantiate_with_supported_kwargs(
         module.ActionExecutor,
         navigation_timeout_ms=1_000,
         settle_delay_seconds=0,

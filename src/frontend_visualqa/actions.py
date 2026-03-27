@@ -827,15 +827,16 @@ class ActionExecutor:
                         .filter((item) => item.label || item.placeholder)
                         .filter((item) => matchesFilter(item.label, item.placeholder, item.type))
                 );
-                const visibleText = limit(
-                    Array.from(document.querySelectorAll("body *"))
-                        .filter(isVisible)
-                        .map(elementText)
-                        .filter(Boolean)
-                        .filter((text, index, items) => items.indexOf(text) === index)
-                        .filter((text) => matchesFilter(text)),
-                    24
-                );
+                const visibleText = [];
+                const seen = new Set();
+                for (const el of document.querySelectorAll("body *")) {
+                    if (visibleText.length >= 24) break;
+                    if (!isVisible(el)) continue;
+                    const text = elementText(el);
+                    if (!text || seen.has(text) || !matchesFilter(text)) continue;
+                    seen.add(text);
+                    visibleText.push(text);
+                }
                 return { headings, buttons, links, inputs, visibleText };
             }""",
             filter_text,

@@ -9,6 +9,8 @@ from typing import Any
 import pytest
 
 from frontend_visualqa.artifacts import RunArtifacts
+from fakes import FakeArtifactManager, instantiate_with_supported_kwargs, is_bootstrap_step_artifact
+
 from frontend_visualqa.schemas import (
     BrowserConfig,
     BrowserMode,
@@ -29,17 +31,6 @@ def _import_runner_module():
         if exc.name and exc.name.startswith("frontend_visualqa"):
             pytest.skip("frontend_visualqa.runner is not implemented in this worktree yet")
         raise
-
-
-def _instantiate_with_supported_kwargs(factory: Any, **candidates: Any) -> Any:
-    signature = inspect.signature(factory)
-    kwargs = {
-        name: value
-        for name, value in candidates.items()
-        if name in signature.parameters
-        and signature.parameters[name].kind in {inspect.Parameter.KEYWORD_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD}
-    }
-    return factory(**kwargs)
 
 
 @dataclass
@@ -144,37 +135,6 @@ class FakeClaimVerifier:
         return self.results.pop(0)
 
 
-class FakeArtifactManager:
-    def __init__(self, base_dir: Path) -> None:
-        self.base_dir = base_dir
-        self.run = RunArtifacts(run_id="run-001", run_dir=base_dir / "run-001")
-        self.run.run_dir.mkdir(parents=True, exist_ok=True)
-
-    def create_run(self, prefix: str = "run", run_id: str | None = None) -> RunArtifacts:
-        del prefix, run_id
-        return self.run
-
-    def save_screenshot(self, run: RunArtifacts, claim_index: int, label: str, image_bytes: bytes) -> str:
-        claim_dir = run.run_dir / f"claim-{claim_index:02d}"
-        claim_dir.mkdir(parents=True, exist_ok=True)
-        path = claim_dir / f"{label}.webp"
-        path.write_bytes(image_bytes)
-        return str(path)
-
-    def save_rich_trace(self, run: RunArtifacts, claim_index: int, events: list[dict[str, Any]]) -> str:
-        claim_dir = run.run_dir / f"claim-{claim_index:02d}"
-        claim_dir.mkdir(parents=True, exist_ok=True)
-        path = claim_dir / "trace.json"
-        path.write_text(json.dumps(events))
-        return str(path)
-
-    def save_json(self, run: RunArtifacts, relative_path: str, payload: dict[str, Any]) -> str:
-        path = run.run_dir / relative_path
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(payload))
-        return str(path)
-
-
 def _build_runner(
     module: Any,
     tmp_path: Path,
@@ -187,14 +147,14 @@ def _build_runner(
     viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
     browser = browser_manager or FakeBrowserManager(viewport)
     verifier = claim_verifier or FakeClaimVerifier(verifier_results)
-    artifacts = FakeArtifactManager(tmp_path)
+    artifacts = FakeArtifactManager(tmp_path, run_id="run-001")
 
     monkeypatch.setattr(module, "BrowserManager", lambda *args, **kwargs: browser, raising=False)
     monkeypatch.setattr(module, "ClaimVerifier", lambda *args, **kwargs: verifier, raising=False)
     monkeypatch.setattr(module, "ArtifactManager", lambda *args, **kwargs: artifacts, raising=False)
     monkeypatch.setattr(module, "N1Client", lambda *args, **kwargs: object(), raising=False)
 
-    runner = _instantiate_with_supported_kwargs(
+    runner = instantiate_with_supported_kwargs(
         module.VisualQARunner,
         browser_manager=browser,
         browser=browser,
@@ -279,7 +239,7 @@ def _result(name: str, status: str, viewport: ViewportConfig) -> ClaimResult:
             "steps_taken": 1,
             "wrong_page_recovered": False,
             "screenshot_paths": [
-                "artifacts/run-001/claim-01/step-00-initial.webp",
+                "artifacts/run-001/claim-01/step-00.webp",
                 "artifacts/run-001/claim-01/step-01.webp",
             ],
             "actions": ["extract_elements()"],
@@ -709,7 +669,7 @@ async def test_runner_uses_partial_claim_result_when_timeout_interrupts_verifier
         status="inconclusive",
         finding="Claim verification timed out after 1s before a verdict was recorded.",
         proof={
-            "screenshot_path": "artifacts/run-001/claim-01/step-00-initial.webp",
+            "screenshot_path": "artifacts/run-001/claim-01/step-00.webp",
             "step": 0,
             "after_action": None,
             "text": None,
@@ -719,7 +679,7 @@ async def test_runner_uses_partial_claim_result_when_timeout_interrupts_verifier
         trace={
             "steps_taken": 1,
             "wrong_page_recovered": False,
-            "screenshot_paths": ["artifacts/run-001/claim-01/step-00-initial.webp"],
+            "screenshot_paths": ["artifacts/run-001/claim-01/step-00.webp"],
             "actions": ["scroll(direction='down', amount=300)"],
             "trace_path": "artifacts/run-001/claim-01/trace.json",
         },
@@ -747,7 +707,7 @@ async def test_runner_uses_partial_claim_result_when_timeout_interrupts_verifier
 
     assert [item.status for item in result.results] == ["inconclusive"]
     assert result.results[0].proof is not None
-    assert result.results[0].proof.screenshot_path.endswith("step-00-initial.webp")
+    assert is_bootstrap_step_artifact(result.results[0].proof.screenshot_path)
     assert result.results[0].trace.steps_taken == 1
     assert result.results[0].trace.actions == ["scroll(direction='down', amount=300)"]
 
@@ -775,7 +735,7 @@ async def test_runner_uses_partial_claim_result_when_verifier_crashes(
             "steps_taken": 1,
             "wrong_page_recovered": False,
             "screenshot_paths": [
-                "artifacts/run-001/claim-01/step-00-initial.webp",
+                "artifacts/run-001/claim-01/step-00.webp",
                 "artifacts/run-001/claim-01/step-01.webp",
             ],
             "actions": ["extract_elements()"],
@@ -864,7 +824,7 @@ async def test_runner_preserves_partial_claim_result_when_run_timeout_interrupts
             "steps_taken": 1,
             "wrong_page_recovered": False,
             "screenshot_paths": [
-                "artifacts/run-001/claim-01/step-00-initial.webp",
+                "artifacts/run-001/claim-01/step-00.webp",
                 "artifacts/run-001/claim-01/step-01.webp",
             ],
             "actions": ["extract_elements()"],
@@ -935,7 +895,7 @@ def test_runner_passes_browser_config_to_browser_manager(monkeypatch: pytest.Mon
             super().__init__(ViewportConfig(width=1280, height=800, device_scale_factor=1))
             captured["config"] = config
 
-    artifacts = FakeArtifactManager(tmp_path)
+    artifacts = FakeArtifactManager(tmp_path, run_id="run-001")
     monkeypatch.setattr(module, "BrowserManager", CapturingBrowserManager, raising=False)
     monkeypatch.setattr(module, "ClaimVerifier", lambda *args, **kwargs: object(), raising=False)
     monkeypatch.setattr(module, "ArtifactManager", lambda *args, **kwargs: artifacts, raising=False)
@@ -981,7 +941,7 @@ def test_runner_passes_browser_config_visualize_to_default_claim_verifier(
             del args, kwargs
             raise AssertionError("not expected to be called")
 
-    artifacts = FakeArtifactManager(tmp_path)
+    artifacts = FakeArtifactManager(tmp_path, run_id="run-001")
     monkeypatch.setattr(module, "BrowserManager", CapturingBrowserManager, raising=False)
     monkeypatch.setattr(module, "ClaimVerifier", CapturingClaimVerifier, raising=False)
     monkeypatch.setattr(module, "ArtifactManager", lambda *args, **kwargs: artifacts, raising=False)
@@ -1009,9 +969,9 @@ async def test_runner_preserves_injected_claim_verifier_visualize_default(
     browser = FakeBrowserManager(viewport)
     verifier = FakeClaimVerifier([_result("Claim one", "passed", viewport)])
     verifier._visualize = True
-    artifacts = FakeArtifactManager(tmp_path)
+    artifacts = FakeArtifactManager(tmp_path, run_id="run-001")
 
-    runner = _instantiate_with_supported_kwargs(
+    runner = instantiate_with_supported_kwargs(
         module.VisualQARunner,
         browser_manager=browser,
         browser=browser,
@@ -1059,9 +1019,9 @@ async def test_per_call_visualize_override_does_not_leak_across_requests(
         _result("Claim two", "passed", viewport),
     ])
     verifier._visualize = False
-    artifacts = FakeArtifactManager(tmp_path)
+    artifacts = FakeArtifactManager(tmp_path, run_id="run-001")
 
-    runner = _instantiate_with_supported_kwargs(
+    runner = instantiate_with_supported_kwargs(
         module.VisualQARunner,
         browser_manager=browser,
         browser=browser,

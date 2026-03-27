@@ -36,7 +36,7 @@ def _sample_claim_result(*, url: str, viewport: ViewportConfig) -> ClaimResult:
             "steps_taken": 1,
             "wrong_page_recovered": False,
             "screenshot_paths": [
-                "artifacts/run-fake/claim-01/step-00-initial.webp",
+                "artifacts/run-fake/claim-01/step-00.webp",
                 "artifacts/run-fake/claim-01/step-01.webp",
             ],
             "actions": ["left_click([419, 348])"],
