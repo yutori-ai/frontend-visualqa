@@ -205,7 +205,7 @@ lsof -ti:8000 | xargs kill 2>/dev/null; python3 -m http.server 8000 -d examples 
 
 ```bash
 # n1 lands on the product catalog, clicks through to find the product detail page
-# The Yutori cursor leads each action with visual feedback
+# After each evidence screenshot, the Yutori overlay replays the last action
 frontend-visualqa verify http://localhost:8000/ecommerce_store.html \
   --headed \
   --claims 'The product detail page shows Wireless Headphones Pro priced at $149.99'
@@ -370,7 +370,7 @@ frontend-visualqa verify http://localhost:3000/dashboard \
 <summary><strong>Action visualization</strong></summary>
 
 When running in headed mode (`--headed`), the browser shows visual effects illustrating what n1 is doing:
-- cursor-led click, scroll, drag, and typing effects
+- post-capture cursor replays for click, scroll, drag, and typing actions
 - a compact thought card when a tool-using model turn includes reasoning text
 
 To disable it, use `--no-visualize`:
@@ -383,7 +383,7 @@ frontend-visualqa verify http://localhost:3000 \
 
 The MCP tool `verify_visual_claims` accepts a per-call `visualize` parameter to control this independently of the server's default.
 
-Overlay elements are automatically hidden during screenshot capture so they never appear in evidence sent to n1 or saved artifacts.
+Overlay elements are hidden for every evidence screenshot, and action replays are injected only after capture so no visualization appears before the screenshot sent to n1 or saved to artifacts.
 
 </details>
 

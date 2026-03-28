@@ -78,6 +78,7 @@ class FakeActionExecutor:
     def __init__(self) -> None:
         self.calls: list[tuple[str, dict[str, Any]]] = []
         self.overlays_seen: list[Any] = []
+        self._deferred_overlay: tuple[str, dict[str, Any]] | None = None
 
     async def execute_tool_call(self, session: FakeSession, tool_call: Any) -> Any:
         resolved_name = tool_call.function.name
@@ -86,12 +87,31 @@ class FakeActionExecutor:
         self.overlays_seen.append(getattr(self, "overlay", None))
         if resolved_name == "goto_url":
             session.page.url = resolved_args["url"]
+            self._deferred_overlay = ("set_status", {"label": "Navigating"})
+        elif resolved_name in {"left_click", "double_click", "triple_click", "right_click", "hover", "drag", "scroll", "type"}:
+            self._deferred_overlay = ("show_action", {"action_type": resolved_name})
+        else:
+            self._deferred_overlay = None
         return SimpleNamespace(
             trace=f"{resolved_name}({resolved_args})",
             output_text=None,
             current_url=session.page.url,
             success=True,
         )
+
+    async def show_deferred_overlay(self) -> None:
+        deferred = self._deferred_overlay
+        self._deferred_overlay = None
+        overlay = getattr(self, "overlay", None)
+        if deferred is None or overlay is None:
+            return
+
+        kind, kwargs = deferred
+        if kind == "show_action":
+            await overlay.show_action(kwargs["action_type"])
+            return
+        if kind == "set_status":
+            await overlay.set_status(kwargs["label"])
 
 
 class BlockingN1Client(FakeN1Client):
@@ -673,6 +693,86 @@ async def test_claim_verifier_records_reasoning_events_and_shows_thought_for_too
     assert [item["type"] for item in trace_payload] == ["action", "verdict"]
     assert trace_payload[0]["reasoning"] == reasoning
     assert trace_payload[1]["finding"] == verdict_event.finding
+
+
+@pytest.mark.asyncio
+async def test_claim_verifier_replays_deferred_action_after_screenshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _import_claim_verifier_module()
+    overlay_events: list[Any] = []
+
+    class FakeOverlay:
+        async def claim_started(self) -> None:
+            overlay_events.append("claim_started")
+
+        async def set_status(self, label: str) -> None:
+            overlay_events.append(("set_status", label))
+
+        async def show_action(self, action_type: str, **_: Any) -> None:
+            overlay_events.append(("show_action", action_type))
+
+        async def show_thought(self, text: str) -> None:
+            overlay_events.append(("show_thought", text))
+
+        async def before_screenshot(self) -> None:
+            overlay_events.append("before_screenshot")
+
+        async def after_screenshot(self) -> None:
+            overlay_events.append("after_screenshot")
+
+        async def claim_ended(self) -> None:
+            overlay_events.append("claim_ended")
+
+    monkeypatch.setattr(module, "_create_overlay_controller", lambda page: FakeOverlay())
+    reasoning = "Click into the form before deciding."
+    verifier, _, _ = _build_claim_verifier(
+        module,
+        tmp_path,
+        responses=[
+            FakeMessage(
+                content=reasoning,
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-1",
+                        function=FakeFunction(
+                            name="left_click",
+                            arguments=json.dumps({"coordinates": [500, 250]}),
+                        ),
+                    )
+                ],
+            ),
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-2",
+                        function=FakeFunction(
+                            name="record_claim_result",
+                            arguments=json.dumps({"status": "passed", "finding": "The field is focused."}),
+                        ),
+                    )
+                ]
+            ),
+        ],
+        visualize=True,
+    )
+
+    result = await _call_verify(
+        verifier,
+        page=FakePage(url="http://fixture.local/form"),
+        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+        claim="The first field is focused",
+        url="http://fixture.local/form",
+        navigation_hint=None,
+        visualize=True,
+    )
+
+    assert _field(result, "status") == "passed"
+    after_index = overlay_events.index("after_screenshot")
+    action_index = overlay_events.index(("show_action", "left_click"))
+    thought_index = overlay_events.index(("show_thought", reasoning))
+    assert action_index > after_index
+    assert thought_index > action_index
 
 
 @pytest.mark.asyncio

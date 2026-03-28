@@ -15,7 +15,6 @@ logger = logging.getLogger(__name__)
 
 Z_INDEX = 2_147_483_646
 YUTORI_GREEN = "#1DCD98"
-LEAD_TIME_MS = 450
 EFFECT_DURATION_MS = 600
 BORDER_CYCLE_MS = 4000
 
@@ -115,12 +114,6 @@ _PERSISTENT_ROOT_JS = f"""() => {{
     chip.textContent = 'Analyzing';
     root.appendChild(chip);
 
-    const cursor = document.createElement('img');
-    cursor.id = '{CURSOR_ID}';
-    cursor.src = '{_CURSOR_DATA_URI}';
-    cursor.style.cssText = 'position:fixed;left:-200px;top:-200px;width:75px;height:101px;pointer-events:none;z-index:{Z_INDEX + 2};transition:left {CURSOR_TRANSITION_MS}ms ease-in-out,top {CURSOR_TRANSITION_MS}ms ease-in-out;transform:translate(-17px,-4px);filter:drop-shadow(0 2px 5px rgba(0,0,0,0.18));';
-    root.appendChild(cursor);
-
     document.documentElement.appendChild(root);
 
     const duration = {BORDER_CYCLE_MS};
@@ -187,15 +180,21 @@ _THOUGHT_CARD_JS = f"""(text) => {{
 
 _TRANSIENT_ROOT_JS = f"""() => {{
     let root = document.getElementById('{TRANSIENT_ROOT_ID}');
-    if (root) {{
-        {_set_visibility_opacity_js("root", visibility="visible", opacity="1")}
-        return;
+    if (!root) {{
+        root = document.createElement('div');
+        root.id = '{TRANSIENT_ROOT_ID}';
+        root.style.cssText = '{_ROOT_STYLE}';
+        document.documentElement.appendChild(root);
     }}
+    {_set_visibility_opacity_js("root", visibility="visible", opacity="1")}
 
-    root = document.createElement('div');
-    root.id = '{TRANSIENT_ROOT_ID}';
-    root.style.cssText = '{_ROOT_STYLE}';
-    document.documentElement.appendChild(root);
+    if (!document.getElementById('{CURSOR_ID}')) {{
+        const cursor = document.createElement('img');
+        cursor.id = '{CURSOR_ID}';
+        cursor.src = '{_CURSOR_DATA_URI}';
+        cursor.style.cssText = 'position:fixed;left:-200px;top:-200px;width:75px;height:101px;pointer-events:none;z-index:{Z_INDEX + 2};transition:left {CURSOR_TRANSITION_MS}ms ease-in-out,top {CURSOR_TRANSITION_MS}ms ease-in-out;transform:translate(-17px,-4px);filter:drop-shadow(0 2px 5px rgba(0,0,0,0.18));';
+        root.appendChild(cursor);
+    }}
 }}"""
 
 _REMOVE_ALL_JS = f"""() => {{
@@ -231,7 +230,12 @@ def _toggle_both_roots_js(*, visibility: str, opacity: str) -> str:
 # In headed Chromium, toggling display on these layers can trigger
 # a visible compositor snap even though the page viewport is unchanged.
 _HIDE_BOTH_JS = _toggle_both_roots_js(visibility="hidden", opacity="0")
-_RESTORE_BOTH_JS = _toggle_both_roots_js(visibility="visible", opacity="1")
+_RESTORE_PERSISTENT_JS = f"""() => {{
+    const persistent = document.getElementById('{PERSISTENT_ROOT_ID}');
+    if (persistent) {{
+        {_set_visibility_opacity_js("persistent", visibility="visible", opacity="1")}
+    }}
+}}"""
 
 _CHECK_PERSISTENT_JS = f"!!document.getElementById('{PERSISTENT_ROOT_ID}')"
 
@@ -270,6 +274,9 @@ class OverlayController:
         if not self._active:
             return
 
+        await self._inject_persistent_root()
+        await self._ensure_transient_root()
+
         # Cursor-first choreography: move cursor to target, then trigger effect
         center: dict[str, int] | None = None
         if action_type == "type":
@@ -302,12 +309,7 @@ class OverlayController:
         self._current_status = label
         if not self._active:
             return
-        await self._eval(
-            f"""() => {{
-                const chip = document.getElementById('{STATUS_CHIP_ID}');
-                if (chip) chip.textContent = {label!r};
-            }}"""
-        )
+        await self._inject_persistent_root()
 
     async def show_thought(self, text: str) -> None:
         if not self._active:
@@ -324,7 +326,7 @@ class OverlayController:
     async def after_screenshot(self) -> None:
         if not self._active:
             return
-        await self._eval(_RESTORE_BOTH_JS)
+        await self._eval(_RESTORE_PERSISTENT_JS)
 
     async def ensure_persistent_ui(self) -> None:
         if not self._active:
@@ -338,8 +340,12 @@ class OverlayController:
 
     async def _inject_persistent_root(self) -> None:
         await self._eval(_PERSISTENT_ROOT_JS)
-        if self._current_status != "Analyzing":
-            await self.set_status(self._current_status)
+        await self._eval(
+            f"""() => {{
+                const chip = document.getElementById('{STATUS_CHIP_ID}');
+                if (chip) chip.textContent = {self._current_status!r};
+            }}"""
+        )
 
     async def _move_cursor(self, x: int, y: int) -> None:
         """Move the branded cursor to the given viewport coordinates."""

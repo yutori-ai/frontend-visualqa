@@ -92,7 +92,7 @@ class TestOverlayControllerLifecycle:
 
 class TestOverlayCursor:
     @pytest.mark.asyncio
-    async def test_persistent_root_creates_cursor_img(self) -> None:
+    async def test_transient_root_creates_cursor_img(self) -> None:
         from frontend_visualqa.overlay import OverlayController
 
         page = _make_mock_page()
@@ -101,7 +101,7 @@ class TestOverlayCursor:
         await controller.claim_started()
 
         scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
-        assert any("__n1Cursor" in script and "createElement('img')" in script for script in scripts)
+        assert any("__n1TransientRoot" in script and "__n1Cursor" in script and "createElement('img')" in script for script in scripts)
 
     @pytest.mark.asyncio
     async def test_move_cursor_updates_position(self) -> None:
@@ -333,7 +333,7 @@ class TestOverlayScreenshotBoundary:
         assert "opacity = '0'" in script
 
     @pytest.mark.asyncio
-    async def test_after_screenshot_restores_both_roots(self) -> None:
+    async def test_after_screenshot_restores_persistent_root_only(self) -> None:
         from frontend_visualqa.overlay import OverlayController
 
         page = _make_mock_page()
@@ -346,14 +346,14 @@ class TestOverlayScreenshotBoundary:
 
         script = str(page.evaluate.call_args.args[0])
         assert "__n1PersistentRoot" in script
-        assert "__n1TransientRoot" in script
+        assert "__n1TransientRoot" not in script
         assert "visibility = 'visible'" in script
         assert "opacity = '1'" in script
 
     @pytest.mark.asyncio
-    async def test_follow_up_effect_reuses_visible_transient_root_after_screenshot(self) -> None:
-        """Transient root stays visible across the screenshot boundary so
-        a follow-up effect doesn't need to re-create it."""
+    async def test_follow_up_effect_restores_transient_root_visibility_after_screenshot(self) -> None:
+        """Transient root stays hidden after capture and is re-shown when
+        the next replay effect starts."""
         from frontend_visualqa.overlay import OverlayController
 
         page = _make_mock_page()
@@ -371,7 +371,7 @@ class TestOverlayScreenshotBoundary:
         assert any(
             "__n1TransientRoot" in script and "visibility = 'visible'" in script
             for script in scripts
-        ), "Transient root visibility must be restored before injecting new effects"
+        ), "Transient root visibility must be restored when replaying the next effect"
 
     @pytest.mark.asyncio
     async def test_after_screenshot_is_noop_when_inactive(self) -> None:
