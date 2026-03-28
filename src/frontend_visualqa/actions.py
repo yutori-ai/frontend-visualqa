@@ -36,8 +36,6 @@ ACTION_DELAY_SECONDS: dict[str, float] = {
     "wait": 0.0,
 }
 
-_OVERLAY_LEAD_TIME_FALLBACK_SECONDS = 0.45
-
 ACTION_NAME_ALIASES: dict[str, str] = {
     "back": "go_back",
     "goto": "goto_url",
@@ -162,14 +160,6 @@ def scale_coordinates(coordinates: list[int] | tuple[int, int], width: int, heig
     return clamped_x, clamped_y
 
 
-def _overlay_lead_time_seconds() -> float:
-    try:
-        from frontend_visualqa.overlay import LEAD_TIME_MS
-    except Exception:
-        return _OVERLAY_LEAD_TIME_FALLBACK_SECONDS
-    return float(LEAD_TIME_MS) / 1000.0
-
-
 def render_action_trace(
     action_name: str,
     arguments: dict[str, Any],
@@ -247,6 +237,7 @@ class ActionExecutor:
         self.navigation_timeout_ms = navigation_timeout_ms
         self.settle_delay_seconds = settle_delay_seconds
         self._overlay: OverlayController | None = None
+        self._deferred_overlay: tuple[str, dict[str, Any]] | None = None
 
     @property
     def overlay(self) -> OverlayController | None:
@@ -269,6 +260,7 @@ class ActionExecutor:
         action_name: str,
         arguments: dict[str, Any] | None,
     ) -> str:
+        self._deferred_overlay = None
         raw_arguments = arguments or {}
         canonical_name = ACTION_NAME_ALIASES.get(action_name, action_name)
         trace = render_action_trace(
@@ -288,7 +280,7 @@ class ActionExecutor:
                 if coords is None:
                     raise BrowserActionError("hover requires coordinates")
                 x, y = scale_coordinates(coords, width, height)
-                await self._best_effort_overlay_show_action(action_type="hover", x=x, y=y)
+                self._deferred_overlay = ("show_action", {"action_type": "hover", "x": x, "y": y})
                 await page.mouse.move(x, y)
 
             elif canonical_name in {
@@ -301,12 +293,12 @@ class ActionExecutor:
                 if coords is None:
                     raise BrowserActionError(f"{canonical_name} requires coordinates")
                 x, y = scale_coordinates(coords, width, height)
-                await self._best_effort_overlay_show_action(
-                    action_type=canonical_name,
-                    x=x,
-                    y=y,
-                    num_clicks=3 if canonical_name == "triple_click" else 2 if canonical_name == "double_click" else 1,
-                )
+                self._deferred_overlay = ("show_action", {
+                    "action_type": canonical_name,
+                    "x": x,
+                    "y": y,
+                    "num_clicks": 3 if canonical_name == "triple_click" else 2 if canonical_name == "double_click" else 1,
+                })
                 if canonical_name == "double_click":
                     await page.mouse.dblclick(x, y)
                 else:
@@ -321,18 +313,14 @@ class ActionExecutor:
                     raise BrowserActionError("drag requires start_coordinates and coordinates")
                 start_x, start_y = scale_coordinates(start, width, height)
                 end_x, end_y = scale_coordinates(end, width, height)
-                # Move cursor to start before drag begins (hover-like)
-                await self._best_effort_overlay_show_action(
-                    action_type="hover", x=start_x, y=start_y,
-                )
                 await page.mouse.move(start_x, start_y)
                 await page.mouse.down()
                 await page.mouse.move(end_x, end_y, steps=10)
                 await page.mouse.up()
-                # Show trail after real drag completes so visual matches reality
-                await self._best_effort_overlay_show_action(
-                    action_type="drag", x=end_x, y=end_y, start_x=start_x, start_y=start_y,
-                )
+                self._deferred_overlay = ("show_action", {
+                    "action_type": "drag", "x": end_x, "y": end_y,
+                    "start_x": start_x, "start_y": start_y,
+                })
 
             elif canonical_name == "scroll":
                 coords = raw_arguments.get("coordinates", [500, 500])
@@ -341,12 +329,9 @@ class ActionExecutor:
                 if direction not in {"up", "down", "left", "right"}:
                     raise BrowserActionError(f"unsupported scroll direction: {direction}")
                 x, y = scale_coordinates(coords, width, height)
-                await self._best_effort_overlay_show_action(
-                    action_type="scroll",
-                    x=x,
-                    y=y,
-                    direction=direction,
-                )
+                self._deferred_overlay = ("show_action", {
+                    "action_type": "scroll", "x": x, "y": y, "direction": direction,
+                })
                 await page.mouse.move(x, y)
                 delta_x = (
                     width * 0.1 * amount
@@ -372,7 +357,7 @@ class ActionExecutor:
                     or raw_arguments.get("clear_before_type")
                 )
                 press_enter = bool(raw_arguments.get("press_enter_after"))
-                await self._best_effort_overlay_show_action(action_type="type")
+                self._deferred_overlay = ("show_action", {"action_type": "type"})
                 if clear_before:
                     await page.keyboard.press("ControlOrMeta+A")
                     await page.keyboard.press("Backspace")
@@ -393,7 +378,7 @@ class ActionExecutor:
                     if semantic_action is not None:
                         await self.execute_action(session, semantic_action, {})
                         return trace
-                await self._best_effort_overlay_set_status("Pressing keys")
+                self._deferred_overlay = ("set_status", {"label": "Pressing keys"})
                 for key_name in key_sequence:
                     if is_disallowed_zoom_shortcut(key_name):
                         continue
@@ -403,41 +388,54 @@ class ActionExecutor:
                 url = raw_arguments.get("url") or raw_arguments.get("href")
                 if not url:
                     raise BrowserActionError("goto_url requires url")
-                await self._best_effort_overlay_set_status("Navigating")
+                self._deferred_overlay = ("set_status", {"label": "Navigating"})
                 await page.goto(url, wait_until="domcontentloaded")
 
             elif canonical_name == "go_back":
-                await self._best_effort_overlay_set_status("Navigating")
+                self._deferred_overlay = ("set_status", {"label": "Navigating"})
                 await page.go_back(wait_until="domcontentloaded")
 
             elif canonical_name == "go_forward":
-                await self._best_effort_overlay_set_status("Navigating")
+                self._deferred_overlay = ("set_status", {"label": "Navigating"})
                 await page.go_forward(wait_until="domcontentloaded")
 
             elif canonical_name == "refresh":
-                await self._best_effort_overlay_set_status("Refreshing")
+                self._deferred_overlay = ("set_status", {"label": "Refreshing"})
                 await page.reload(wait_until="domcontentloaded")
 
             elif canonical_name == "screenshot":
                 pass
 
             elif canonical_name == "wait":
-                await self._best_effort_overlay_set_status("Waiting")
+                self._deferred_overlay = ("set_status", {"label": "Waiting"})
                 await asyncio.sleep(float(raw_arguments.get("seconds", DEFAULT_WAIT_SECONDS)))
 
             else:
                 raise BrowserActionError(f"unsupported action: {canonical_name}")
 
         except BrowserActionError:
+            self._deferred_overlay = None
             raise
         except Exception as exc:  # pragma: no cover - exercised through integration tests
+            self._deferred_overlay = None
             raise BrowserActionError(f"failed to execute {trace}: {exc}") from exc
 
         if needs_domcontentloaded_wait:
             await self._best_effort_wait_for_domcontentloaded(page)
             await asyncio.sleep(self._post_action_delay(canonical_name))
-        await self._best_effort_overlay_ensure_persistent_ui()
         return trace
+
+    async def show_deferred_overlay(self) -> None:
+        """Replay the deferred overlay action (called after screenshot capture)."""
+        deferred = self._deferred_overlay
+        self._deferred_overlay = None
+        if deferred is None:
+            return
+        kind, kwargs = deferred
+        if kind == "show_action":
+            await self._best_effort_overlay_show_action(**kwargs)
+        elif kind == "set_status":
+            await self._best_effort_overlay_set_status(**kwargs)
 
     async def _best_effort_wait_for_domcontentloaded(self, page: Any) -> None:
         try:
@@ -464,7 +462,6 @@ class ActionExecutor:
             return
         try:
             await show_action(action_type, x=x, y=y, start_x=start_x, start_y=start_y, num_clicks=num_clicks, direction=direction)
-            await asyncio.sleep(_overlay_lead_time_seconds())
         except Exception:
             return
 
@@ -477,19 +474,6 @@ class ActionExecutor:
             return
         try:
             await set_status(label)
-            await asyncio.sleep(_overlay_lead_time_seconds())
-        except Exception:
-            return
-
-    async def _best_effort_overlay_ensure_persistent_ui(self) -> None:
-        overlay = self._overlay
-        if overlay is None:
-            return
-        ensure_persistent_ui = getattr(overlay, "ensure_persistent_ui", None)
-        if not callable(ensure_persistent_ui):
-            return
-        try:
-            await ensure_persistent_ui()
         except Exception:
             return
 
