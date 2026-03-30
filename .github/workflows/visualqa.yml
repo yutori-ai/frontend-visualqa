@@ -46,7 +46,7 @@ jobs:
             --with-executables-from playwright
           playwright install chromium --with-deps
 
-      - name: Start example server
+      - name: Start example server and wait for readiness
         run: |
           python3 -m http.server 8000 -d examples &
           for i in $(seq 1 15); do
@@ -149,6 +149,7 @@ jobs:
             visualqa-*.json
           retention-days: 7
 
+      # Separate artifact for CI tools that only consume CTRF format
       - name: Upload CTRF reports
         if: always()
         uses: actions/upload-artifact@v6

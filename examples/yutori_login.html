@@ -785,7 +785,7 @@
 
         <div class="stat-card">
           <div class="stat-label">Monthly Quota</div>
-          <!-- BUG: Label says "100% used" but progress bar shows ~65% fill -->
+          <!-- BUG: "100% used" label disagrees with both the progress bar (~65% fill) and the request count (8,125 / 12,500 = 65%) -->
           <div class="stat-value">100% used</div>
           <div class="progress-bar">
             <div class="progress-fill" style="width: 65%"></div>
@@ -797,7 +797,7 @@
         </div>
 
         <div class="stat-card">
-          <!-- BUG: Shows "3" active keys but table only has entries from 2 keys -->
+          <!-- BUG (subtle): Card says "3" active keys but the table below shows calls from only 2 distinct keys -->
           <div class="stat-label">Active Keys</div>
           <div class="stat-value">3</div>
           <div class="stat-subtext">Last rotated 5 days ago</div>

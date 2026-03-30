@@ -485,11 +485,11 @@ frontend-visualqa verify http://localhost:3000 \
 
 ## CI / GitHub Actions
 
-The repo includes a GitHub Actions workflow (`.github/workflows/visualqa.yml`) that runs visual QA checks on every pull request. Use it as a template for adding frontend-visualqa to your own CI pipeline.
+The repo includes a GitHub Actions workflow (`.github/workflows/visualqa.yml`) that runs visual QA checks on pull requests targeting `main` (and supports manual dispatch via `workflow_dispatch`). Use it as a template for adding frontend-visualqa to your own CI pipeline.
 
 ### What the workflow does
 
-1. Installs `frontend-visualqa` and Playwright's Chromium via `uv tool install`
+1. Installs `frontend-visualqa` via `uv tool install` and downloads Playwright's Chromium via `playwright install chromium --with-deps`
 2. Serves the example pages with Python's built-in HTTP server
 3. Runs visual claims against the login page — element checks, form validation, post-login dashboard
 4. Verifies that known visual bugs are caught (progress bar mismatch)
