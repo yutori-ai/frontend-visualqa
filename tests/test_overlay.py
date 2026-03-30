@@ -137,7 +137,9 @@ class TestOverlayInformationalCards:
         assert "width:min(720px,calc(100vw - 48px))" in script
         assert "backdrop-filter:blur(12px)" in script
         assert "font-size:17px" in script
-        assert len(call.args[1]) <= 150
+        arg = call.args[1]
+        assert isinstance(arg, dict)
+        assert len(arg["text"]) <= 150
 
     @pytest.mark.asyncio
     async def test_preview_action_clears_existing_thought_card_before_animating(self) -> None:
