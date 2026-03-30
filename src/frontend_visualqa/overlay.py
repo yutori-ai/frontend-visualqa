@@ -141,7 +141,9 @@ _PERSISTENT_ROOT_JS = f"""() => {{
     root.__n1AnimationFrame = requestAnimationFrame(animate);
 }}"""
 
-_THOUGHT_CARD_JS = f"""(text) => {{
+_THOUGHT_CARD_JS = f"""(args) => {{
+    const text = args.text;
+    const timeoutMs = args.timeout_ms;
     const root = document.getElementById('{PERSISTENT_ROOT_ID}');
     if (!root) return;
     const existing = document.getElementById('{THOUGHT_CARD_ID}');
@@ -172,10 +174,13 @@ _THOUGHT_CARD_JS = f"""(text) => {{
 
     const previousTimer = root.__n1ThoughtTimer;
     if (previousTimer) clearTimeout(previousTimer);
-    root.__n1ThoughtTimer = setTimeout(() => {{
-        const current = document.getElementById('{THOUGHT_CARD_ID}');
-        if (current) current.remove();
-    }}, {THOUGHT_DURATION_MS});
+    root.__n1ThoughtTimer = null;
+    if (timeoutMs > 0) {{
+        root.__n1ThoughtTimer = setTimeout(() => {{
+            const current = document.getElementById('{THOUGHT_CARD_ID}');
+            if (current) current.remove();
+        }}, timeoutMs);
+    }}
 }}"""
 
 _TRANSIENT_ROOT_JS = f"""() => {{
@@ -331,7 +336,11 @@ class OverlayController:
             return
         await self._inject_persistent_root()
         clipped = self._clip_text(text, 520)
-        await self._eval(_THOUGHT_CARD_JS, clipped)
+        # During "Analyzing" the card stays until clear_thought() is called
+        # (by preview_action or a non-Analyzing status transition).
+        # Otherwise use the fallback timeout as a safety net.
+        timeout_ms = 0 if self._current_status == "Analyzing" else THOUGHT_DURATION_MS
+        await self._eval(_THOUGHT_CARD_JS, {"text": clipped, "timeout_ms": timeout_ms})
 
     async def clear_thought(self) -> None:
         if not self._active:
