@@ -378,7 +378,7 @@ class OverlayController:
 
                 const style = document.createElement('style');
                 style.id = '{SCROLL_STYLE_ID}';
-                style.textContent = '@keyframes n1scroll{{0%{{opacity:0.7;transform:translate(-50%,-50%) rotate({rotation}deg) translateY(0)}}100%{{opacity:0;transform:translate(-50%,-50%) rotate({rotation}deg) translateY({ty}px) translateX({tx}px)}}}}';
+                style.textContent = '@keyframes n1scroll{{0%{{opacity:0.7;transform:translate(-50%,-50%) rotate({rotation}deg)}}100%{{opacity:0;transform:translate(calc(-50% + {tx}px),calc(-50% + {ty}px)) rotate({rotation}deg)}}}}';
                 document.head.appendChild(style);
 
                 const container = document.createElement('div');
