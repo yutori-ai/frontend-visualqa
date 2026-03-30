@@ -9,7 +9,6 @@ import pytest
 
 def _make_mock_page(
     *,
-    persistent_root_exists: bool = True,
     focused_center: dict[str, int] | None = None,
     evaluate_side_effect: Exception | None = None,
 ) -> MagicMock:
@@ -20,8 +19,6 @@ def _make_mock_page(
         if evaluate_side_effect is not None:
             raise evaluate_side_effect
         script_text = str(script)
-        if "!!document.getElementById('__n1PersistentRoot')" in script_text:
-            return persistent_root_exists
         if "document.activeElement" in script_text:
             return focused_center
         return None
@@ -92,7 +89,7 @@ class TestOverlayControllerLifecycle:
 
 class TestOverlayCursor:
     @pytest.mark.asyncio
-    async def test_persistent_root_creates_cursor_img(self) -> None:
+    async def test_transient_root_creates_cursor_img(self) -> None:
         from frontend_visualqa.overlay import OverlayController
 
         page = _make_mock_page()
@@ -101,7 +98,7 @@ class TestOverlayCursor:
         await controller.claim_started()
 
         scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
-        assert any("__n1Cursor" in script and "createElement('img')" in script for script in scripts)
+        assert any("__n1TransientRoot" in script and "__n1Cursor" in script and "createElement('img')" in script for script in scripts)
 
     @pytest.mark.asyncio
     async def test_move_cursor_updates_position(self) -> None:
@@ -333,7 +330,7 @@ class TestOverlayScreenshotBoundary:
         assert "opacity = '0'" in script
 
     @pytest.mark.asyncio
-    async def test_after_screenshot_restores_both_roots(self) -> None:
+    async def test_after_screenshot_restores_persistent_root_only(self) -> None:
         from frontend_visualqa.overlay import OverlayController
 
         page = _make_mock_page()
@@ -346,14 +343,14 @@ class TestOverlayScreenshotBoundary:
 
         script = str(page.evaluate.call_args.args[0])
         assert "__n1PersistentRoot" in script
-        assert "__n1TransientRoot" in script
+        assert "__n1TransientRoot" not in script
         assert "visibility = 'visible'" in script
         assert "opacity = '1'" in script
 
     @pytest.mark.asyncio
-    async def test_follow_up_effect_reuses_visible_transient_root_after_screenshot(self) -> None:
-        """Transient root stays visible across the screenshot boundary so
-        a follow-up effect doesn't need to re-create it."""
+    async def test_follow_up_effect_restores_transient_root_visibility_after_screenshot(self) -> None:
+        """Transient root stays hidden after capture and is re-shown when
+        the next replay effect starts."""
         from frontend_visualqa.overlay import OverlayController
 
         page = _make_mock_page()
@@ -371,7 +368,7 @@ class TestOverlayScreenshotBoundary:
         assert any(
             "__n1TransientRoot" in script and "visibility = 'visible'" in script
             for script in scripts
-        ), "Transient root visibility must be restored before injecting new effects"
+        ), "Transient root visibility must be restored when replaying the next effect"
 
     @pytest.mark.asyncio
     async def test_after_screenshot_is_noop_when_inactive(self) -> None:
@@ -381,47 +378,6 @@ class TestOverlayScreenshotBoundary:
         controller = OverlayController(page)
 
         await controller.after_screenshot()
-
-        page.evaluate.assert_not_called()
-
-
-class TestOverlayNavigationSafety:
-    @pytest.mark.asyncio
-    async def test_ensure_persistent_ui_reinjects_when_missing(self) -> None:
-        from frontend_visualqa.overlay import OverlayController
-
-        page = _make_mock_page(persistent_root_exists=False)
-        controller = OverlayController(page)
-        controller._active = True
-        controller._current_status = "Navigating"
-
-        await controller.ensure_persistent_ui()
-
-        scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
-        assert scripts[0] == "!!document.getElementById('__n1PersistentRoot')"
-        assert any("__n1PersistentRoot" in script for script in scripts[1:])
-        assert any("__n1StatusChip" in script and "Navigating" in script for script in scripts[1:])
-
-    @pytest.mark.asyncio
-    async def test_ensure_persistent_ui_is_noop_when_present(self) -> None:
-        from frontend_visualqa.overlay import OverlayController
-
-        page = _make_mock_page(persistent_root_exists=True)
-        controller = OverlayController(page)
-        controller._active = True
-
-        await controller.ensure_persistent_ui()
-
-        page.evaluate.assert_awaited_once()
-
-    @pytest.mark.asyncio
-    async def test_ensure_persistent_ui_is_noop_when_inactive(self) -> None:
-        from frontend_visualqa.overlay import OverlayController
-
-        page = _make_mock_page(persistent_root_exists=False)
-        controller = OverlayController(page)
-
-        await controller.ensure_persistent_ui()
 
         page.evaluate.assert_not_called()
 
@@ -444,5 +400,4 @@ class TestOverlayBestEffort:
             await controller.show_action("drag", x=200, y=200, start_x=100, start_y=100)
         await controller.before_screenshot()
         await controller.after_screenshot()
-        await controller.ensure_persistent_ui()
         await controller.claim_ended()

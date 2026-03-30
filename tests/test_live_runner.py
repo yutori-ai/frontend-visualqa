@@ -339,8 +339,8 @@ async def test_live_runner_headed_overlay_hides_restores_and_cleans_up(
             assert state["persistent"]["opacity"] == "1"
             assert state["transient"]["present"] is True
             assert state["transient"]["display"] != "none"
-            assert state["transient"]["visibility"] == "visible"
-            assert state["transient"]["opacity"] == "1"
+            assert state["transient"]["visibility"] == "hidden"
+            assert state["transient"]["opacity"] == "0"
 
         started_state = started_samples[0]["state"]
         assert started_samples[0]["error"] is None

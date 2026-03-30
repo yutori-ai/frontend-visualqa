@@ -217,6 +217,7 @@ class ClaimVerifier:
                         continue
                     break
 
+                executed_tool_names: list[str] = []
                 for tool_call in tool_calls:
                     tool_name = getattr(tool_call.function, "name", "")
                     if tool_name == "record_claim_result":
@@ -250,10 +251,12 @@ class ClaimVerifier:
                                     verdict=("inconclusive", force_stop_finding or ""),
                                     verdict_source=VERDICT_SOURCE_FORCE_STOP,
                                 )
+                                await self._flush_turn_overlays(had_actions=bool(executed_tool_names))
                                 return await self._complete_result(result)
                             result = await self._finalize_result(
                                 progress=progress, verdict=verdict, verdict_source=VERDICT_SOURCE_RECORD,
                             )
+                            await self._flush_turn_overlays(had_actions=bool(executed_tool_names))
                             return await self._complete_result(result)
                         continue
                     if tool_name == "stop":
@@ -262,6 +265,7 @@ class ClaimVerifier:
                             result = await self._finalize_result(
                                 progress=progress, verdict=stop_verdict, verdict_source=VERDICT_SOURCE_LEGACY_STOP,
                             )
+                            await self._flush_turn_overlays(had_actions=bool(executed_tool_names))
                             return await self._complete_result(result)
                         continue
                     if progress.step_count >= max_steps:
@@ -290,6 +294,7 @@ class ClaimVerifier:
                         label=f"step-{progress.step_count:02d}",
                     )
                     progress.screenshot_paths.append(screenshot_path)
+                    executed_tool_names.append(tool_name)
                     self._record_action_event(
                         step=progress.step_count,
                         action=tool_name,
@@ -325,13 +330,7 @@ class ClaimVerifier:
                         }
                     )
 
-                # Show thought card and scan bar once per turn, after all
-                # evidence is captured — they play while the next LLM call
-                # is in flight.  Placed outside the tool loop so multi-tool
-                # turns show the overlays exactly once.
-                reasoning = self._hook.current_turn_reasoning if self._hook else None
-                if reasoning and self._overlay:
-                    await self._best_effort_overlay_call("show_thought", reasoning)
+                await self._flush_turn_overlays(had_actions=bool(executed_tool_names))
             result = await self._force_stop(progress=progress, messages=messages)
             return await self._complete_result(result)
         except asyncio.CancelledError:
@@ -415,6 +414,21 @@ class ClaimVerifier:
             verdict = ("inconclusive", "The model did not provide a structured verdict before the step limit.")
 
         return await self._finalize_result(progress=progress, verdict=verdict, verdict_source=verdict_source)
+
+    async def _show_deferred_overlay(self) -> None:
+        try:
+            await self.action_executor.show_deferred_overlay()
+        except Exception:
+            logger.debug("show_deferred_overlay failed", exc_info=True)
+
+    async def _flush_turn_overlays(self, *, had_actions: bool) -> None:
+        if not had_actions:
+            return
+
+        await self._show_deferred_overlay()
+        reasoning = self._hook.current_turn_reasoning if self._hook else None
+        if reasoning and self._overlay:
+            await self._best_effort_overlay_call("show_thought", reasoning)
 
     async def _best_effort_overlay_call(self, method_name: str, *args: Any, **kwargs: Any) -> None:
         overlay = self._overlay
