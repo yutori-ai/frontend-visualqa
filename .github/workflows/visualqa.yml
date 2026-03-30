@@ -16,7 +16,7 @@ jobs:
 
     steps:
       - name: Check out code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -33,7 +33,7 @@ jobs:
           printf '{"api_key": "%s"}\n' "$YUTORI_TESTING_API_KEY" > ~/.yutori/config.json
 
       - name: Cache Playwright browsers
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-chromium-v1
@@ -141,7 +141,7 @@ jobs:
 
       - name: Upload visual QA artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: visualqa-results
           path: |
@@ -151,7 +151,7 @@ jobs:
 
       - name: Upload CTRF reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: visualqa-ctrf-reports
           path: artifacts/**/ctrf-report.json
