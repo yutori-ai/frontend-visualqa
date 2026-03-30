@@ -140,6 +140,62 @@ class TestOverlayInformationalCards:
         assert len(call.args[1]) <= 150
 
     @pytest.mark.asyncio
+    async def test_preview_action_clears_existing_thought_card_before_animating(self) -> None:
+        from frontend_visualqa.overlay import OverlayController
+
+        page = _make_mock_page()
+        controller = OverlayController(page)
+
+        await controller.claim_started()
+        await controller.show_thought("Inspect the form before deciding.")
+        page.evaluate.reset_mock()
+
+        with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
+            await controller.preview_action("left_click", x=100, y=200)
+
+        scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
+        clear_index = next(
+            index for index, script in enumerate(scripts) if "__n1ThoughtCard" in script and "current.remove()" in script
+        )
+        cursor_index = next(
+            index for index, script in enumerate(scripts) if "__n1Cursor" in script and "100px" in script and "200px" in script
+        )
+        assert clear_index < cursor_index
+
+    @pytest.mark.asyncio
+    async def test_set_status_non_analyzing_clears_existing_thought_card(self) -> None:
+        from frontend_visualqa.overlay import OverlayController
+
+        page = _make_mock_page()
+        controller = OverlayController(page)
+
+        await controller.claim_started()
+        await controller.show_thought("Inspect the form before deciding.")
+        page.evaluate.reset_mock()
+
+        await controller.set_status("Navigating")
+
+        scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
+        assert any("__n1ThoughtCard" in script and "current.remove()" in script for script in scripts)
+        assert any("__n1StatusChip" in script and "Navigating" in script for script in scripts)
+
+    @pytest.mark.asyncio
+    async def test_set_status_analyzing_preserves_existing_thought_card(self) -> None:
+        from frontend_visualqa.overlay import OverlayController
+
+        page = _make_mock_page()
+        controller = OverlayController(page)
+
+        await controller.claim_started()
+        await controller.show_thought("Inspect the form before deciding.")
+        page.evaluate.reset_mock()
+
+        await controller.set_status("Analyzing")
+
+        scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
+        assert not any("__n1ThoughtCard" in script and "current.remove()" in script for script in scripts)
+
+    @pytest.mark.asyncio
     async def test_preview_action_uses_transient_layer_without_touching_status_chip(self) -> None:
         from frontend_visualqa.overlay import OverlayController
 
@@ -440,6 +496,17 @@ class TestOverlayScreenshotBoundary:
         ), "Transient root visibility must be restored when starting the next preview"
 
     @pytest.mark.asyncio
+    async def test_clear_thought_is_noop_when_inactive(self) -> None:
+        from frontend_visualqa.overlay import OverlayController
+
+        page = _make_mock_page()
+        controller = OverlayController(page)
+
+        await controller.clear_thought()
+
+        page.evaluate.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_after_screenshot_is_noop_when_inactive(self) -> None:
         from frontend_visualqa.overlay import OverlayController
 
@@ -461,6 +528,8 @@ class TestOverlayBestEffort:
 
         await controller.claim_started()
         await controller.set_status("Analyzing")
+        await controller.show_thought("test thought")
+        await controller.clear_thought()
         with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
             await controller.preview_action("left_click", x=100, y=100)
             await controller.preview_action("scroll", x=100, y=100, direction="down")
