@@ -33,7 +33,7 @@ DRAG_STYLE_ID = "__n1DragStyle"
 CLICK_DURATION_MS = 250
 SCROLL_DURATION_MS = 1000
 DRAG_DURATION_MS = 200
-CURSOR_TRANSITION_MS = 80
+CURSOR_TRANSITION_MS = 350
 THOUGHT_DURATION_MS = 6000
 
 _CURSOR_SVG = (
@@ -275,17 +275,25 @@ class OverlayController:
         await self._ensure_transient_root()
 
         # Cursor-first choreography: move cursor to target, then trigger effect.
+        # _move_cursor detects whether the cursor is at its off-screen initial
+        # position (first move or after a full-page navigation destroyed the DOM)
+        # and teleports instead of transitioning.
         center: dict[str, int] | None = None
         if action_type == "type":
             center = await self._get_focused_element_center()
             if center:
-                await self._move_cursor(center["x"], center["y"])
+                teleported = await self._move_cursor(center["x"], center["y"])
+            else:
+                teleported = True
         elif action_type == "drag":
-            await self._move_cursor(start_x, start_y)
+            teleported = await self._move_cursor(start_x, start_y)
         else:
-            await self._move_cursor(x, y)
+            teleported = await self._move_cursor(x, y)
 
-        await asyncio.sleep(CURSOR_TRANSITION_MS / 1000)
+        if teleported:
+            await asyncio.sleep(0.05)
+        else:
+            await asyncio.sleep(CURSOR_TRANSITION_MS / 1000)
 
         if action_type in {"left_click", "double_click", "triple_click", "right_click"}:
             await self._show_click_effect(x, y, num_clicks)
@@ -333,14 +341,36 @@ class OverlayController:
             }}"""
         )
 
-    async def _move_cursor(self, x: int, y: int) -> None:
-        """Move the branded cursor to the given viewport coordinates."""
-        await self._eval(
-            f"""() => {{
-                const cursor = document.getElementById('{CURSOR_ID}');
-                if (cursor) {{ cursor.style.left = '{x}px'; cursor.style.top = '{y}px'; }}
-            }}"""
-        )
+    async def _move_cursor(self, x: int, y: int) -> bool:
+        """Move the branded cursor to the given viewport coordinates.
+
+        Returns True if the cursor was teleported (off-screen → target),
+        False if it used the CSS transition.  Teleporting happens on the
+        first move of a claim and after full-page navigations that destroy
+        and recreate the cursor element.
+        """
+        try:
+            return bool(await self._page.evaluate(
+                f"""() => {{
+                    const cursor = document.getElementById('{CURSOR_ID}');
+                    if (!cursor) return true;
+                    const offScreen = cursor.style.left === '-200px';
+                    if (offScreen) {{
+                        cursor.style.transition = 'none';
+                        cursor.style.left = '{x}px';
+                        cursor.style.top = '{y}px';
+                        cursor.offsetHeight;
+                        cursor.style.transition = 'left {CURSOR_TRANSITION_MS}ms ease-in-out,top {CURSOR_TRANSITION_MS}ms ease-in-out';
+                        return true;
+                    }}
+                    cursor.style.left = '{x}px';
+                    cursor.style.top = '{y}px';
+                    return false;
+                }}"""
+            ))
+        except Exception:
+            logger.debug("Overlay _move_cursor failed", exc_info=True)
+            return True
 
     async def _show_click_effect(self, x: int, y: int, num_clicks: int) -> None:
         gap = int(CLICK_DURATION_MS * 0.5)

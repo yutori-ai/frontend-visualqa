@@ -333,19 +333,43 @@ class TestOverlayPreviewAction:
         assert len(cursor_moves) >= 1
 
     @pytest.mark.asyncio
-    async def test_preview_action_sleeps_for_cursor_transition(self) -> None:
+    async def test_teleport_when_offscreen_transition_when_onscreen(self) -> None:
+        """Teleport (short sleep) when cursor is off-screen, full transition otherwise."""
         from frontend_visualqa.overlay import CURSOR_TRANSITION_MS, OverlayController
 
         page = _make_mock_page()
         controller = OverlayController(page)
+        await controller.claim_started()
 
+        # _move_cursor returns True (off-screen → teleported) → short sleep
+        with patch.object(controller, "_move_cursor", new_callable=AsyncMock, return_value=True):
+            with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+                await controller.preview_action("left_click", x=50, y=60)
+        mock_sleep.assert_awaited_once_with(0.05)
+
+        # _move_cursor returns False (on-screen → transitioned) → full sleep
+        with patch.object(controller, "_move_cursor", new_callable=AsyncMock, return_value=False):
+            with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+                await controller.preview_action("left_click", x=100, y=120)
+        mock_sleep.assert_awaited_once_with(CURSOR_TRANSITION_MS / 1000)
+
+    @pytest.mark.asyncio
+    async def test_move_cursor_js_contains_teleport_logic(self) -> None:
+        """_move_cursor JS checks offScreen position and handles both paths."""
+        from frontend_visualqa.overlay import OverlayController
+
+        page = _make_mock_page()
+        controller = OverlayController(page)
         await controller.claim_started()
         page.evaluate.reset_mock()
 
-        with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
-            await controller.preview_action("left_click", x=50, y=60)
+        await controller._move_cursor(50, 60)
 
-        mock_sleep.assert_awaited_once_with(CURSOR_TRANSITION_MS / 1000)
+        scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
+        cursor_scripts = [s for s in scripts if "offScreen" in s]
+        assert len(cursor_scripts) == 1
+        assert "transition" in cursor_scripts[0]
+        assert "none" in cursor_scripts[0]
 
 
 class TestOverlayScreenshotBoundary:
