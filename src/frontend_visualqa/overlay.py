@@ -154,16 +154,16 @@ _THOUGHT_CARD_JS = f"""(text) => {{
 
     const card = document.createElement('div');
     card.id = '{THOUGHT_CARD_ID}';
-    card.style.cssText = 'position:fixed;top:46px;right:12px;max-width:560px;min-width:360px;pointer-events:none;z-index:{Z_INDEX + 1};padding:18px 20px;border-radius:18px;background:rgba(8,16,20,0.92);border:1px solid rgba(29,205,152,0.25);box-shadow:0 10px 24px rgba(0,0,0,0.18),0 0 0 1px rgba(29,205,152,0.08) inset;color:#eef6f3;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;';
+    card.style.cssText = 'position:fixed;top:76px;left:50%;transform:translateX(-50%);width:min(720px,calc(100vw - 48px));pointer-events:none;z-index:{Z_INDEX + 1};padding:22px 24px;border-radius:22px;background:linear-gradient(180deg,rgba(8,16,20,0.96),rgba(6,12,16,0.92));border:1px solid rgba(29,205,152,0.28);box-shadow:0 18px 50px rgba(0,0,0,0.28),0 0 0 1px rgba(29,205,152,0.08) inset;backdrop-filter:blur(12px);color:#eef6f3;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;';
     const header = document.createElement('div');
-    header.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:10px;';
+    header.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:12px;';
     const badge = document.createElement('span');
-    badge.style.cssText = 'display:inline-block;padding:5px 10px;border-radius:999px;background:linear-gradient(90deg, rgba(29,205,152,0.22), rgba(90,232,189,0.45), rgba(29,205,152,0.22));background-size:200% 200%;animation:n1thoughtShimmer 1.6s linear infinite;color:#d9fff1;font-size:10px;font-weight:800;letter-spacing:0.9px;text-transform:uppercase;';
+    badge.style.cssText = 'display:inline-block;padding:5px 10px;border-radius:999px;background:linear-gradient(90deg,rgba(29,205,152,0.22),rgba(90,232,189,0.45),rgba(29,205,152,0.22));background-size:200% 200%;animation:n1thoughtShimmer 1.6s linear infinite;color:#d9fff1;font-size:11px;font-weight:800;letter-spacing:0.9px;text-transform:uppercase;';
     badge.textContent = 'Thinking';
     header.appendChild(badge);
 
     const body = document.createElement('div');
-    body.style.cssText = 'font-size:16px;line-height:1.5;color:rgba(238,246,243,0.92);display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word;';
+    body.style.cssText = 'font-size:17px;line-height:1.55;color:rgba(238,246,243,0.95);display:-webkit-box;-webkit-line-clamp:6;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word;';
     body.textContent = text;
 
     card.appendChild(header);
@@ -258,7 +258,7 @@ class OverlayController:
         self._active = False
         await self._eval(_REMOVE_ALL_JS)
 
-    async def show_action(
+    async def preview_action(
         self,
         action_type: str,
         *,
@@ -272,10 +272,9 @@ class OverlayController:
         if not self._active:
             return
 
-        await self._inject_persistent_root()
         await self._ensure_transient_root()
 
-        # Cursor-first choreography: move cursor to target, then trigger effect
+        # Cursor-first choreography: move cursor to target, then trigger effect.
         center: dict[str, int] | None = None
         if action_type == "type":
             center = await self._get_focused_element_center()
@@ -290,23 +289,12 @@ class OverlayController:
 
         if action_type in {"left_click", "double_click", "triple_click", "right_click"}:
             await self._show_click_effect(x, y, num_clicks)
-            label = "Clicking"
         elif action_type == "scroll":
-            await self._show_scroll_effect(x, y)
-            label = "Scrolling"
+            await self._show_scroll_effect(x, y, direction)
         elif action_type == "type":
             await self._show_type_effect(center)
-            label = "Typing"
-        elif action_type == "hover":
-            label = "Hovering"
         elif action_type == "drag":
             await self._show_drag_effect(start_x, start_y, x, y)
-            label = "Dragging"
-        else:
-            return
-
-        self._current_status = label
-        await self._set_chip_text(label)
 
     async def set_status(self, label: str) -> None:
         self._current_status = label
@@ -318,7 +306,7 @@ class OverlayController:
         if not self._active:
             return
         await self._inject_persistent_root()
-        clipped = self._clip_text(text, 400)
+        clipped = self._clip_text(text, 520)
         await self._eval(_THOUGHT_CARD_JS, clipped)
 
     async def before_screenshot(self) -> None:
@@ -330,6 +318,7 @@ class OverlayController:
         if not self._active:
             return
         await self._eval(_RESTORE_PERSISTENT_JS)
+        # Leave the transient root hidden; the next preview_action call re-shows it.
 
 
     async def _inject_persistent_root(self) -> None:
@@ -375,7 +364,11 @@ class OverlayController:
             }}"""
         )
 
-    async def _show_scroll_effect(self, x: int, y: int) -> None:
+    async def _show_scroll_effect(self, x: int, y: int, direction: str = "down") -> None:
+        rotation = {"down": 0, "up": 180, "right": 270, "left": 90}.get(direction, 0)
+        # Translate in the scroll direction as the chevron fades out.
+        tx = {"right": 18, "left": -18}.get(direction, 0)
+        ty = {"down": 18, "up": -18}.get(direction, 0)
         await self._eval(
             f"""() => {{
                 const root = document.getElementById('{TRANSIENT_ROOT_ID}');
@@ -385,16 +378,14 @@ class OverlayController:
 
                 const style = document.createElement('style');
                 style.id = '{SCROLL_STYLE_ID}';
-                style.textContent = '@keyframes n1scroll{{0%{{opacity:0.7;transform:translate(-50%,-50%) rotate(0deg)}}100%{{opacity:0;transform:translate(-50%,-50%) rotate(360deg)}}}}';
+                style.textContent = '@keyframes n1scroll{{0%{{opacity:0.7;transform:translate(-50%,-50%) rotate({rotation}deg)}}100%{{opacity:0;transform:translate(calc(-50% + {tx}px),calc(-50% + {ty}px)) rotate({rotation}deg)}}}}';
                 document.head.appendChild(style);
 
                 const container = document.createElement('div');
                 container.style.cssText = 'position:fixed;left:{x}px;top:{y}px;width:20px;height:20px;pointer-events:none;z-index:{Z_INDEX};animation:n1scroll {SCROLL_DURATION_MS}ms ease-out forwards;';
-                for (let i = 0; i < 2; i++) {{
-                    const dot = document.createElement('div');
-                    dot.style.cssText = 'position:absolute;width:4px;height:4px;background:{YUTORI_GREEN};border-radius:50%;left:50%;top:50%;transform-origin:0 0;transform:translate(-50%,-50%) rotate(' + (i * 180) + 'deg) translateY(-8px);';
-                    container.appendChild(dot);
-                }}
+                const chevron = document.createElement('div');
+                chevron.style.cssText = 'position:absolute;left:50%;top:50%;width:10px;height:10px;border-right:2px solid {YUTORI_GREEN};border-bottom:2px solid {YUTORI_GREEN};transform:translate(-50%,-70%) rotate(45deg);';
+                container.appendChild(chevron);
                 root.appendChild(container);
                 setTimeout(() => {{ container.remove(); style.remove(); }}, {SCROLL_DURATION_MS} + 100);
             }}"""
@@ -470,8 +461,6 @@ class OverlayController:
                 setTimeout(() => {{ pressed.remove(); trail.remove(); style.remove(); }}, {DRAG_DURATION_MS + 300});
             }}"""
         )
-        # Move cursor to end point
-        await self._move_cursor(end_x, end_y)
 
     async def _get_focused_element_center(self) -> dict[str, int] | None:
         try:

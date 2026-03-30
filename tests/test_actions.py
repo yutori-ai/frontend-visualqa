@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import inspect
 import json
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -304,16 +305,22 @@ async def test_execute_action_supports_hover_drag_and_multi_click_variants() -> 
 
 
 @pytest.mark.asyncio
-async def test_execute_action_left_click_defers_overlay_and_restores_ui() -> None:
+async def test_execute_action_left_click_previews_before_dispatch_and_waits_for_cursor_transition() -> None:
     module = _import_actions_module()
     call_order: list[tuple[Any, ...]] = []
     page = _make_overlay_enabled_page(call_order)
     overlay = MagicMock()
 
-    async def _show_action(action_type: str, **kwargs: Any) -> None:
-        call_order.append(("show_action", action_type, kwargs))
+    preview_started = asyncio.Event()
+    release_preview = asyncio.Event()
 
-    overlay.show_action = AsyncMock(side_effect=_show_action)
+    async def _preview_action(action_type: str, **kwargs: Any) -> None:
+        call_order.append(("preview_action", action_type, kwargs, "start"))
+        preview_started.set()
+        await release_preview.wait()
+        call_order.append(("preview_action", action_type, kwargs, "end"))
+
+    overlay.preview_action = AsyncMock(side_effect=_preview_action)
 
     executor = instantiate_with_supported_kwargs(
         module.ActionExecutor,
@@ -323,26 +330,31 @@ async def test_execute_action_left_click_defers_overlay_and_restores_ui() -> Non
     executor.overlay = overlay
 
     viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
-    trace = await _call_execute_action(executor, page, "left_click", {"coordinates": [500, 250]}, viewport)
+    task = asyncio.create_task(_call_execute_action(executor, page, "left_click", {"coordinates": [500, 250]}, viewport))
+
+    await asyncio.wait_for(preview_started.wait(), timeout=1)
+    assert call_order == [
+        (
+            "preview_action",
+            "left_click",
+            {"x": 640, "y": 200, "num_clicks": 1},
+            "start",
+        )
+    ]
+    assert not page.mouse.clicks
+
+    release_preview.set()
+    trace = await task
 
     assert trace == "left_click([640, 200])"
-    # Overlay effects are deferred — click happens first, no show_action during execute
-    assert call_order[0][0] == "click"
-    overlay.show_action.assert_not_awaited()
-    assert executor.overlay is overlay
-
-    # Deferred overlay is replayed on demand
-    assert executor._deferred_overlay is not None
-    await executor.show_deferred_overlay()
-    overlay.show_action.assert_awaited_once()
-    assert call_order[-1][0] == "show_action"
-    assert call_order[-1][1] == "left_click"
-    assert call_order[-1][2]["x"] == 640
-    assert call_order[-1][2]["y"] == 200
+    assert call_order[1] == ("preview_action", "left_click", {"x": 640, "y": 200, "num_clicks": 1}, "end")
+    assert call_order[2] == ("click", 640, 200, "left", 1)
+    assert any(entry[0] == "wait_for_load_state" for entry in call_order)
+    overlay.preview_action.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_execute_action_navigation_defers_overlay_status() -> None:
+async def test_execute_action_navigation_shows_status_before_dispatch() -> None:
     module = _import_actions_module()
     call_order: list[tuple[Any, ...]] = []
     page = _make_overlay_enabled_page(call_order)
@@ -370,14 +382,9 @@ async def test_execute_action_navigation_defers_overlay_status() -> None:
     )
 
     assert trace == "goto_url(\"http://fixture.local/modal\")"
-    # Status is deferred — navigation happens first
-    assert call_order[0][0] == "goto"
-    overlay.set_status.assert_not_awaited()
-
-    # Deferred status is replayed on demand
-    assert executor._deferred_overlay == ("set_status", {"label": "Navigating"})
-    await executor.show_deferred_overlay()
-    overlay.set_status.assert_awaited_once_with("Navigating")
+    assert call_order[0] == ("set_status", "Navigating")
+    assert call_order[1][0] == "goto"
+    assert overlay.set_status.await_count == 1
 
 
 @pytest.mark.asyncio
@@ -406,15 +413,13 @@ async def test_execute_action_semantic_key_shortcut_uses_single_overlay_footer()
     trace = await _call_execute_action(executor, page, "key_press", {"key_comb": "F5"}, viewport)
 
     assert trace == "key_press(F5)"
-    # F5 maps to refresh — status is deferred, not called during execute
-    overlay.set_status.assert_not_awaited()
-    assert executor._deferred_overlay == ("set_status", {"label": "Refreshing"})
-    await executor.show_deferred_overlay()
     assert status_calls == ["Refreshing"]
+    assert call_order[0] == ("set_status", "Refreshing")
+    assert page.reload_calls
 
 
 @pytest.mark.asyncio
-async def test_execute_action_hover_defers_overlay() -> None:
+async def test_execute_action_hover_previews_before_mouse_move() -> None:
     module = _import_actions_module()
     call_order: list[tuple[Any, ...]] = []
     page = _make_overlay_enabled_page(call_order)
@@ -426,10 +431,10 @@ async def test_execute_action_hover_defers_overlay() -> None:
 
     overlay = MagicMock()
 
-    async def _show_action(action_type: str, **kwargs: Any) -> None:
-        call_order.append(("show_action", action_type, kwargs))
+    async def _preview_action(action_type: str, **kwargs: Any) -> None:
+        call_order.append(("preview_action", action_type, kwargs))
 
-    overlay.show_action = AsyncMock(side_effect=_show_action)
+    overlay.preview_action = AsyncMock(side_effect=_preview_action)
 
     executor = instantiate_with_supported_kwargs(
         module.ActionExecutor,
@@ -442,21 +447,13 @@ async def test_execute_action_hover_defers_overlay() -> None:
     trace = await _call_execute_action(executor, page, "hover", {"coordinates": [250, 500]}, viewport)
 
     assert trace == "hover([320, 400])"
-    # Overlay deferred — mouse move happens first
-    assert call_order[0][0] == "move"
-    overlay.show_action.assert_not_awaited()
-
-    # Deferred overlay replayed on demand
-    await executor.show_deferred_overlay()
-    overlay.show_action.assert_awaited_once()
-    assert call_order[-1][0] == "show_action"
-    assert call_order[-1][1] == "hover"
-    assert call_order[-1][2]["x"] == 320
-    assert call_order[-1][2]["y"] == 400
+    assert call_order[0] == ("preview_action", "hover", {"x": 320, "y": 400})
+    assert call_order[1] == ("move", 320, 400)
+    overlay.preview_action.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_execute_action_drag_defers_overlay() -> None:
+async def test_execute_action_drag_previews_before_drag_motion() -> None:
     module = _import_actions_module()
     call_order: list[tuple[Any, ...]] = []
     page = _make_overlay_enabled_page(call_order)
@@ -476,10 +473,10 @@ async def test_execute_action_drag_defers_overlay() -> None:
 
     overlay = MagicMock()
 
-    async def _show_action(action_type: str, **kwargs: Any) -> None:
-        call_order.append(("show_action", action_type, kwargs))
+    async def _preview_action(action_type: str, **kwargs: Any) -> None:
+        call_order.append(("preview_action", action_type, kwargs))
 
-    overlay.show_action = AsyncMock(side_effect=_show_action)
+    overlay.preview_action = AsyncMock(side_effect=_preview_action)
 
     executor = instantiate_with_supported_kwargs(
         module.ActionExecutor,
@@ -498,22 +495,12 @@ async def test_execute_action_drag_defers_overlay() -> None:
     )
 
     assert trace == "drag([128, 80], [896, 480])"
-    # Overlay deferred — real drag happens first with no overlay calls
-    assert call_order[0][0] == "move"
-    assert call_order[1][0] == "down"
-    assert call_order[2][0] == "move"
-    assert call_order[3][0] == "up"
-    overlay.show_action.assert_not_awaited()
-
-    # Deferred overlay captures the drag trail
-    assert executor._deferred_overlay is not None
-    assert executor._deferred_overlay[1]["action_type"] == "drag"
-    assert executor._deferred_overlay[1]["start_x"] == 128
-    assert executor._deferred_overlay[1]["start_y"] == 80
-    assert executor._deferred_overlay[1]["x"] == 896
-    assert executor._deferred_overlay[1]["y"] == 480
-    await executor.show_deferred_overlay()
-    overlay.show_action.assert_awaited_once()
+    assert call_order[0] == ("preview_action", "drag", {"x": 896, "y": 480, "start_x": 128, "start_y": 80})
+    assert call_order[1][0] == "move"
+    assert call_order[2][0] == "down"
+    assert call_order[3][0] == "move"
+    assert call_order[4][0] == "up"
+    overlay.preview_action.assert_awaited_once()
 
 
 @pytest.mark.asyncio
