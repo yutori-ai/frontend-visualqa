@@ -150,9 +150,8 @@ class TestOverlayInformationalCards:
         page.evaluate.reset_mock()
 
         with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
-            label = await controller.preview_action("double_click", x=100, y=200, num_clicks=2)
+            await controller.preview_action("double_click", x=100, y=200, num_clicks=2)
 
-        assert label == "Clicking"
         assert controller._current_status == "Analyzing"
         scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
         assert any("__n1TransientRoot" in script and "visibility = 'visible'" in script for script in scripts)
@@ -173,9 +172,8 @@ class TestOverlayPreviewAction:
         page.evaluate.reset_mock()
 
         with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
-            label = await controller.preview_action("double_click", x=100, y=200, num_clicks=2)
+            await controller.preview_action("double_click", x=100, y=200, num_clicks=2)
 
-        assert label == "Clicking"
         # preview_action does not update persistent status
         assert controller._current_status == "Analyzing"
         scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
@@ -206,9 +204,8 @@ class TestOverlayPreviewAction:
         page.evaluate.reset_mock()
 
         with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
-            label = await controller.preview_action("scroll", x=640, y=400, direction="down")
+            await controller.preview_action("scroll", x=640, y=400, direction="down")
 
-        assert label == "Scrolling"
         scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
         assert any("__n1ScrollStyle" in script for script in scripts)
         # Chevron element with directional rotation (down = 0deg)
@@ -228,9 +225,8 @@ class TestOverlayPreviewAction:
         page.evaluate.reset_mock()
 
         with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
-            label = await controller.preview_action("scroll", x=100, y=200, direction="up")
+            await controller.preview_action("scroll", x=100, y=200, direction="up")
 
-        assert label == "Scrolling"
         scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
         # Up direction uses 180deg rotation
         assert any("n1scroll" in script and "rotate(180deg)" in script for script in scripts)
@@ -246,9 +242,8 @@ class TestOverlayPreviewAction:
         page.evaluate.reset_mock()
 
         with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
-            label = await controller.preview_action("type")
+            await controller.preview_action("type")
 
-        assert label == "Typing"
         scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
         assert any("document.activeElement" in script for script in scripts)
         assert any("__n1TypeStyle" in script for script in scripts)
@@ -268,9 +263,8 @@ class TestOverlayPreviewAction:
         page.evaluate.reset_mock()
 
         with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
-            label = await controller.preview_action("type")
+            await controller.preview_action("type")
 
-        assert label == "Typing"
         scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
         assert not any("__n1TypeStyle" in script for script in scripts)
 
@@ -285,9 +279,8 @@ class TestOverlayPreviewAction:
         page.evaluate.reset_mock()
 
         with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
-            label = await controller.preview_action("hover", x=300, y=400)
+            await controller.preview_action("hover", x=300, y=400)
 
-        assert label == "Hovering"
         # preview_action does not update persistent status
         assert controller._current_status == "Analyzing"
         scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
@@ -307,9 +300,8 @@ class TestOverlayPreviewAction:
         page.evaluate.reset_mock()
 
         with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
-            label = await controller.preview_action("drag", x=500, y=600, start_x=100, start_y=200)
+            await controller.preview_action("drag", x=500, y=600, start_x=100, start_y=200)
 
-        assert label == "Dragging"
         scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
         # Cursor moved to start point first
         assert any("__n1Cursor" in script and "100px" in script and "200px" in script for script in scripts)
@@ -333,9 +325,8 @@ class TestOverlayPreviewAction:
         page.evaluate.reset_mock()
 
         with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
-            label = await controller.preview_action("unknown_action_xyz", x=10, y=20)
+            await controller.preview_action("unknown_action_xyz", x=10, y=20)
 
-        assert label is None
         # Cursor still moves for unknown actions (since x/y are provided)
         scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
         cursor_moves = [s for s in scripts if "__n1Cursor" in s]

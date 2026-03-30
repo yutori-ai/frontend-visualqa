@@ -268,9 +268,9 @@ class OverlayController:
         start_y: int = 0,
         num_clicks: int = 1,
         direction: str = "down",
-    ) -> str | None:
+    ) -> None:
         if not self._active:
-            return None
+            return
 
         await self._ensure_transient_root()
 
@@ -289,20 +289,12 @@ class OverlayController:
 
         if action_type in {"left_click", "double_click", "triple_click", "right_click"}:
             await self._show_click_effect(x, y, num_clicks)
-            return "Clicking"
         elif action_type == "scroll":
             await self._show_scroll_effect(x, y, direction)
-            return "Scrolling"
         elif action_type == "type":
             await self._show_type_effect(center)
-            return "Typing"
-        elif action_type == "hover":
-            return "Hovering"
         elif action_type == "drag":
             await self._show_drag_effect(start_x, start_y, x, y)
-            return "Dragging"
-        else:
-            return None
 
     async def set_status(self, label: str) -> None:
         self._current_status = label
