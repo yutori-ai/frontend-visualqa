@@ -9,7 +9,6 @@ import pytest
 
 def _make_mock_page(
     *,
-    persistent_root_exists: bool = True,
     focused_center: dict[str, int] | None = None,
     evaluate_side_effect: Exception | None = None,
 ) -> MagicMock:
@@ -20,8 +19,6 @@ def _make_mock_page(
         if evaluate_side_effect is not None:
             raise evaluate_side_effect
         script_text = str(script)
-        if "!!document.getElementById('__n1PersistentRoot')" in script_text:
-            return persistent_root_exists
         if "document.activeElement" in script_text:
             return focused_center
         return None
