@@ -1,0 +1,948 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Log in — Yutori Platform</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Spectral:wght@200;300;400;600&display=swap" rel="stylesheet">
+  <style>
+    /* ── Reset ── */
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    /* ── Design Tokens ── */
+    :root {
+      --bg-dark: #09090B;
+      --bg-light: #F8FAFC;
+      --surface-dark: #1A1B1F;
+      --accent: #1DCD98;
+      --accent-hover: #17B888;
+      --accent-glow: rgba(29, 205, 152, 0.18);
+      --accent-gradient: linear-gradient(350deg, #18AA7E 13.61%, #148F6A 43.85%, #148F6A 64.01%, #159871 80.81%);
+      --text-primary: #0F172A;
+      --text-secondary: #475569;
+      --text-muted: #94A3B8;
+      --text-light: #F8FAFC;
+      --text-light-secondary: #CBD5E1;
+      --error: #EF4444;
+      --error-bg: rgba(239, 68, 68, 0.08);
+      --card-shadow: 0 12px 13px rgba(0,0,0,0.01), 0 18px 11px rgba(0,0,0,0.04), 0 8px 8px rgba(0,0,0,0.06), 0 2px 4px rgba(0,0,0,0.07);
+      --border: #E2E8F0;
+      --font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-brand: 'Spectral', Georgia, serif;
+      --radius: 12px;
+      --radius-lg: 16px;
+      --transition: 0.2s ease;
+    }
+
+    html { font-size: 16px; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+    body { font-family: var(--font-body); color: var(--text-primary); background: var(--bg-light); min-height: 100vh; }
+
+    /* ── Login Layout ── */
+    .login-layout {
+      display: flex;
+      min-height: 100vh;
+    }
+
+    /* ── Left Panel: Marketing ── */
+    .panel-left {
+      flex: 1;
+      background: var(--bg-dark);
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 40px;
+      overflow: hidden;
+    }
+
+    .panel-left::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 80% 60% at 20% 80%, rgba(29, 205, 152, 0.08) 0%, transparent 70%),
+        radial-gradient(ellipse 60% 50% at 80% 20%, rgba(53, 164, 185, 0.06) 0%, transparent 60%);
+      pointer-events: none;
+    }
+
+    .panel-left-top { position: relative; z-index: 1; }
+
+    .brand-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 80px;
+    }
+
+    .brand-mark {
+      width: 32px;
+      height: 32px;
+      background: var(--accent-gradient);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .brand-mark svg { width: 18px; height: 18px; }
+
+    .brand-name {
+      font-family: var(--font-brand);
+      font-weight: 300;
+      font-size: 22px;
+      color: var(--text-light);
+      letter-spacing: -0.5px;
+    }
+
+    .panel-heading {
+      font-family: var(--font-brand);
+      font-weight: 200;
+      font-size: clamp(32px, 4vw, 48px);
+      color: var(--text-light);
+      line-height: 1.1;
+      letter-spacing: -1.2px;
+      max-width: 420px;
+      margin-bottom: 48px;
+    }
+
+    .feature-cards {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .feature-card {
+      display: flex;
+      align-items: flex-start;
+      gap: 16px;
+      padding: 16px;
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      transition: border-color var(--transition), background var(--transition);
+    }
+
+    .feature-card:hover {
+      border-color: rgba(29, 205, 152, 0.2);
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .feature-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: rgba(29, 205, 152, 0.1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .feature-icon svg { width: 20px; height: 20px; color: var(--accent); }
+
+    .feature-title {
+      font-weight: 600;
+      font-size: 14px;
+      color: var(--text-light);
+      margin-bottom: 4px;
+    }
+
+    .feature-desc {
+      font-size: 13px;
+      color: var(--text-light-secondary);
+      line-height: 1.5;
+      opacity: 0.7;
+    }
+
+    .panel-left-bottom {
+      position: relative;
+      z-index: 1;
+      margin-top: 48px;
+    }
+
+    .learn-more {
+      font-size: 13px;
+      color: var(--text-muted);
+      text-decoration: none;
+      transition: color var(--transition);
+    }
+
+    .learn-more:hover { color: var(--accent); }
+
+    /* ── Right Panel: Form ── */
+    .panel-right {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 40px;
+      background: var(--bg-light);
+    }
+
+    .form-container {
+      width: 100%;
+      max-width: 400px;
+    }
+
+    .form-card {
+      background: #fff;
+      border-radius: 20px;
+      padding: 40px;
+      box-shadow: var(--card-shadow);
+    }
+
+    .form-title {
+      font-family: var(--font-brand);
+      font-weight: 300;
+      font-size: 26px;
+      color: var(--text-primary);
+      letter-spacing: -0.96px;
+      line-height: 1.1;
+      margin-bottom: 6px;
+    }
+
+    .form-subtitle {
+      font-size: 14px;
+      color: var(--text-muted);
+      margin-bottom: 32px;
+    }
+
+    .form-group { margin-bottom: 20px; }
+
+    .form-label {
+      display: block;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      margin-bottom: 6px;
+    }
+
+    .form-input {
+      width: 100%;
+      height: 44px;
+      padding: 0 14px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      font-family: var(--font-body);
+      font-size: 14px;
+      color: var(--text-primary);
+      background: #fff;
+      outline: none;
+      transition: border-color var(--transition), box-shadow var(--transition);
+      caret-color: var(--accent);
+    }
+
+    .form-input::placeholder { color: var(--text-muted); }
+
+    .form-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+
+    .form-input.input-error {
+      border-color: var(--error);
+      box-shadow: 0 0 0 3px var(--error-bg);
+    }
+
+    .error-message {
+      display: none;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      color: var(--error);
+      margin-top: 6px;
+    }
+
+    .error-message.visible { display: flex; }
+
+    .error-message svg { width: 14px; height: 14px; flex-shrink: 0; }
+
+    .form-actions { margin-top: 28px; }
+
+    .btn-primary {
+      width: 100%;
+      height: 44px;
+      border: none;
+      border-radius: 10px;
+      background: var(--accent-gradient);
+      color: #fff;
+      font-family: var(--font-body);
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity var(--transition), transform var(--transition);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .btn-primary:hover { opacity: 0.92; }
+    .btn-primary:active { transform: scale(0.985); }
+
+    .btn-primary:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .btn-text { transition: opacity var(--transition); }
+    .btn-primary.loading .btn-text { opacity: 0; }
+
+    .btn-spinner {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transition: opacity var(--transition);
+    }
+
+    .btn-primary.loading .btn-spinner { opacity: 1; }
+
+    .btn-spinner::after {
+      content: '';
+      width: 20px;
+      height: 20px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .forgot-link {
+      display: block;
+      text-align: right;
+      font-size: 13px;
+      color: var(--text-muted);
+      text-decoration: none;
+      margin-top: -12px;
+      margin-bottom: 28px;
+      transition: color var(--transition);
+    }
+
+    .forgot-link:hover { color: var(--accent); }
+
+    .signup-prompt {
+      text-align: center;
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-top: 24px;
+    }
+
+    .signup-prompt a {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    .signup-prompt a:hover { text-decoration: underline; }
+
+    /* ── Loading Overlay ── */
+    .loading-overlay {
+      position: fixed;
+      inset: 0;
+      background: var(--bg-light);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+
+    .loading-overlay.active { opacity: 1; pointer-events: all; }
+
+    .loading-logo {
+      width: 48px;
+      height: 48px;
+      background: var(--accent-gradient);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 24px;
+      animation: pulse-logo 1.5s ease-in-out infinite;
+    }
+
+    .loading-logo svg { width: 28px; height: 28px; }
+
+    @keyframes pulse-logo {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.05); opacity: 0.8; }
+    }
+
+    .loading-text { font-size: 14px; color: var(--text-muted); }
+
+    /* ── Dashboard ── */
+    .dashboard {
+      display: none;
+      min-height: 100vh;
+      background: var(--bg-light);
+    }
+
+    .dashboard.active { display: block; }
+
+    .dash-nav {
+      height: 64px;
+      background: #fff;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 32px;
+    }
+
+    .dash-nav-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .dash-nav-logo {
+      width: 28px;
+      height: 28px;
+      background: var(--accent-gradient);
+      border-radius: 7px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .dash-nav-logo svg { width: 16px; height: 16px; }
+
+    .dash-nav-title {
+      font-weight: 600;
+      font-size: 15px;
+      color: var(--text-primary);
+    }
+
+    .dash-nav-sep {
+      width: 1px;
+      height: 24px;
+      background: var(--border);
+      margin: 0 4px;
+    }
+
+    .dash-nav-section {
+      font-size: 14px;
+      color: var(--text-muted);
+    }
+
+    .dash-avatar {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent) 0%, #35A4B9 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-weight: 600;
+      font-size: 14px;
+    }
+
+    .dash-content {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 40px 32px;
+    }
+
+    .dash-welcome {
+      font-family: var(--font-brand);
+      font-weight: 300;
+      font-size: 28px;
+      color: var(--text-primary);
+      letter-spacing: -0.8px;
+      margin-bottom: 32px;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+      margin-bottom: 40px;
+    }
+
+    .stat-card {
+      background: #fff;
+      border-radius: var(--radius);
+      padding: 24px;
+      box-shadow: var(--card-shadow);
+      border: 1px solid rgba(0,0,0,0.04);
+    }
+
+    .stat-label {
+      font-size: 13px;
+      color: var(--text-muted);
+      font-weight: 500;
+      margin-bottom: 8px;
+    }
+
+    .stat-value {
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--text-primary);
+      letter-spacing: -0.5px;
+    }
+
+    .stat-subtext {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    /* Progress bar */
+    .progress-bar {
+      height: 8px;
+      background: #E2E8F0;
+      border-radius: 4px;
+      margin-top: 12px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: var(--accent-gradient);
+      border-radius: 4px;
+      transition: width 0.8s ease;
+    }
+
+    .progress-meta {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 6px;
+    }
+
+    .progress-label {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    /* ── Table ── */
+    .table-section { margin-top: 8px; }
+
+    .table-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+
+    .table-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .table-badge {
+      font-size: 12px;
+      color: var(--text-muted);
+      background: #F1F5F9;
+      padding: 4px 10px;
+      border-radius: 6px;
+    }
+
+    .data-table {
+      width: 100%;
+      background: #fff;
+      border-radius: var(--radius);
+      box-shadow: var(--card-shadow);
+      border: 1px solid rgba(0,0,0,0.04);
+      border-collapse: separate;
+      border-spacing: 0;
+      overflow: hidden;
+    }
+
+    .data-table th {
+      text-align: left;
+      padding: 14px 20px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      background: #FAFBFC;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .data-table td {
+      padding: 14px 20px;
+      font-size: 14px;
+      color: var(--text-primary);
+      border-bottom: 1px solid #F1F5F9;
+    }
+
+    .data-table tr:last-child td { border-bottom: none; }
+
+    .data-table .mono {
+      font-family: 'IBM Plex Mono', 'SF Mono', monospace;
+      font-size: 13px;
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 12px;
+      font-weight: 500;
+      padding: 3px 10px;
+      border-radius: 6px;
+    }
+
+    .status-badge.success { background: rgba(29,205,152,0.1); color: #18AA7E; }
+    .status-badge.error { background: rgba(239,68,68,0.08); color: #DC2626; }
+    .status-badge.warning { background: rgba(245,158,11,0.1); color: #D97706; }
+
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 900px) {
+      .login-layout { flex-direction: column; }
+      .panel-left { min-height: 40vh; padding: 32px; }
+      .panel-heading { font-size: 28px; margin-bottom: 32px; }
+      .brand-logo { margin-bottom: 40px; }
+      .feature-cards { display: none; }
+      .panel-left-bottom { display: none; }
+      .panel-right { padding: 32px 24px; }
+      .stats-grid { grid-template-columns: 1fr; }
+      .dash-content { padding: 24px 16px; }
+      .data-table { font-size: 13px; }
+      .data-table th, .data-table td { padding: 10px 14px; }
+    }
+
+    /* ── Animations ── */
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .form-card { animation: fadeIn 0.5s ease both; }
+    .stat-card:nth-child(1) { animation: fadeIn 0.4s ease 0.1s both; }
+    .stat-card:nth-child(2) { animation: fadeIn 0.4s ease 0.2s both; }
+    .stat-card:nth-child(3) { animation: fadeIn 0.4s ease 0.3s both; }
+    .data-table { animation: fadeIn 0.4s ease 0.4s both; }
+  </style>
+</head>
+<body>
+
+  <!-- ════ LOGIN VIEW ════ -->
+  <div class="login-layout" id="loginView">
+
+    <!-- Left: Marketing panel -->
+    <div class="panel-left">
+      <div class="panel-left-top">
+        <div class="brand-logo">
+          <div class="brand-mark">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+              <path d="M2 17l10 5 10-5"/>
+              <path d="M2 12l10 5 10-5"/>
+            </svg>
+          </div>
+          <span class="brand-name">Yutori</span>
+        </div>
+
+        <h1 class="panel-heading">Stay ahead on what matters most</h1>
+
+        <div class="feature-cards">
+          <div class="feature-card">
+            <div class="feature-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+              </svg>
+            </div>
+            <div>
+              <div class="feature-title">Visual QA at Scale</div>
+              <div class="feature-desc">Verify frontend claims with pixel-level precision across every deployment.</div>
+            </div>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+              </svg>
+            </div>
+            <div>
+              <div class="feature-title">Real-time Monitoring</div>
+              <div class="feature-desc">Track API usage, latency, and error rates with live dashboards.</div>
+            </div>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+              </svg>
+            </div>
+            <div>
+              <div class="feature-title">Secure by Default</div>
+              <div class="feature-desc">API keys with scoped permissions and automatic rotation policies.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel-left-bottom">
+        <a href="#" class="learn-more">Learn more about Yutori &rarr;</a>
+      </div>
+    </div>
+
+    <!-- Right: Login form -->
+    <div class="panel-right">
+      <div class="form-container">
+        <div class="form-card">
+          <h2 class="form-title">Log in to Yutori Platform</h2>
+          <p class="form-subtitle">API Dashboard</p>
+
+          <form id="loginForm" novalidate>
+            <div class="form-group">
+              <label class="form-label" for="email">Email address</label>
+              <input class="form-input" type="email" id="email" name="email" placeholder="you@example.com" autocomplete="email" aria-describedby="emailError">
+              <div class="error-message" id="emailError" role="alert">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                <span>Please enter a valid email address</span>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="password">Password</label>
+              <input class="form-input" type="password" id="password" name="password" placeholder="Enter your password" autocomplete="current-password" aria-describedby="passwordError">
+              <div class="error-message" id="passwordError" role="alert">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                <span>Password is required</span>
+              </div>
+            </div>
+
+            <a href="#" class="forgot-link">Forgot password?</a>
+
+            <div class="form-actions">
+              <button type="submit" class="btn-primary" id="submitBtn">
+                <span class="btn-text">Continue</span>
+                <span class="btn-spinner"></span>
+              </button>
+            </div>
+          </form>
+
+          <p class="signup-prompt">Don't have an account? <a href="#">Sign up</a></p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════ LOADING OVERLAY ════ -->
+  <div class="loading-overlay" id="loadingOverlay">
+    <div class="loading-logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+        <path d="M2 17l10 5 10-5"/>
+        <path d="M2 12l10 5 10-5"/>
+      </svg>
+    </div>
+    <div class="loading-text">Signing in&hellip;</div>
+  </div>
+
+  <!-- ════ DASHBOARD VIEW ════ -->
+  <div class="dashboard" id="dashboardView">
+    <nav class="dash-nav">
+      <div class="dash-nav-left">
+        <div class="dash-nav-logo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+            <path d="M2 17l10 5 10-5"/>
+            <path d="M2 12l10 5 10-5"/>
+          </svg>
+        </div>
+        <span class="dash-nav-title">Yutori</span>
+        <div class="dash-nav-sep"></div>
+        <span class="dash-nav-section">API Dashboard</span>
+      </div>
+      <div class="dash-avatar" title="Developer">D</div>
+    </nav>
+
+    <div class="dash-content">
+      <h1 class="dash-welcome">Welcome back, Developer</h1>
+
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-label">API Calls Today</div>
+          <div class="stat-value">1,247</div>
+          <div class="stat-subtext">+12% from yesterday</div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-label">Monthly Quota</div>
+          <!-- BUG: Label says "100% used" but progress bar shows ~65% fill -->
+          <div class="stat-value">100% used</div>
+          <div class="progress-bar">
+            <div class="progress-fill" style="width: 65%"></div>
+          </div>
+          <div class="progress-meta">
+            <span class="progress-label">8,125 / 12,500 requests</span>
+            <span class="progress-label">Resets Apr 1</span>
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <!-- BUG: Shows "3" active keys but table only has entries from 2 keys -->
+          <div class="stat-label">Active Keys</div>
+          <div class="stat-value">3</div>
+          <div class="stat-subtext">Last rotated 5 days ago</div>
+        </div>
+      </div>
+
+      <div class="table-section">
+        <div class="table-header">
+          <h2 class="table-title">Recent API Calls</h2>
+          <span class="table-badge">Last 24 hours</span>
+        </div>
+
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Endpoint</th>
+              <th>API Key</th>
+              <th>Status</th>
+              <th>Latency</th>
+              <th>Time</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="mono">/v1/verify</td>
+              <td class="mono">yt-prod-****7f2a</td>
+              <td><span class="status-badge success"><span class="status-dot"></span>200 OK</span></td>
+              <td>142ms</td>
+              <td>2 min ago</td>
+            </tr>
+            <tr>
+              <td class="mono">/v1/screenshot</td>
+              <td class="mono">yt-prod-****7f2a</td>
+              <td><span class="status-badge success"><span class="status-dot"></span>200 OK</span></td>
+              <td>89ms</td>
+              <td>15 min ago</td>
+            </tr>
+            <tr>
+              <td class="mono">/v1/verify</td>
+              <td class="mono">yt-staging-****3e1b</td>
+              <td><span class="status-badge error"><span class="status-dot"></span>500 Error</span></td>
+              <td>2,104ms</td>
+              <td>1 hr ago</td>
+            </tr>
+            <tr>
+              <td class="mono">/v1/actions</td>
+              <td class="mono">yt-prod-****7f2a</td>
+              <td><span class="status-badge success"><span class="status-dot"></span>200 OK</span></td>
+              <td>67ms</td>
+              <td>2 hr ago</td>
+            </tr>
+            <tr>
+              <td class="mono">/v1/verify</td>
+              <td class="mono">yt-staging-****3e1b</td>
+              <td><span class="status-badge warning"><span class="status-dot"></span>429 Rate Limited</span></td>
+              <td>12ms</td>
+              <td>3 hr ago</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const loginView = document.getElementById('loginView');
+    const dashboardView = document.getElementById('dashboardView');
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    const loginForm = document.getElementById('loginForm');
+    const emailInput = document.getElementById('email');
+    const passwordInput = document.getElementById('password');
+    const emailError = document.getElementById('emailError');
+    const passwordError = document.getElementById('passwordError');
+    const submitBtn = document.getElementById('submitBtn');
+
+    function validateEmail(email) {
+      return email.length > 0 && email.includes('@') && email.indexOf('@') < email.length - 1;
+    }
+
+    function clearErrors() {
+      emailError.classList.remove('visible');
+      passwordError.classList.remove('visible');
+      emailInput.classList.remove('input-error');
+      passwordInput.classList.remove('input-error');
+      emailInput.removeAttribute('aria-invalid');
+      passwordInput.removeAttribute('aria-invalid');
+    }
+
+    emailInput.addEventListener('input', () => {
+      if (emailInput.classList.contains('input-error')) {
+        emailError.classList.remove('visible');
+        emailInput.classList.remove('input-error');
+      }
+    });
+
+    passwordInput.addEventListener('input', () => {
+      if (passwordInput.classList.contains('input-error')) {
+        passwordError.classList.remove('visible');
+        passwordInput.classList.remove('input-error');
+      }
+    });
+
+    loginForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      clearErrors();
+
+      const email = emailInput.value.trim();
+      const password = passwordInput.value;
+      let valid = true;
+
+      if (!validateEmail(email)) {
+        emailError.classList.add('visible');
+        emailInput.classList.add('input-error');
+        emailInput.setAttribute('aria-invalid', 'true');
+        valid = false;
+      }
+
+      if (!password) {
+        passwordError.classList.add('visible');
+        passwordInput.classList.add('input-error');
+        passwordInput.setAttribute('aria-invalid', 'true');
+        valid = false;
+      }
+
+      if (!valid) return;
+
+      // Show loading state
+      submitBtn.classList.add('loading');
+      submitBtn.disabled = true;
+
+      // Show loading overlay after a brief delay
+      setTimeout(() => {
+        loadingOverlay.classList.add('active');
+      }, 300);
+
+      // Transition to dashboard
+      setTimeout(() => {
+        loginView.style.display = 'none';
+        loadingOverlay.classList.remove('active');
+        dashboardView.classList.add('active');
+        submitBtn.classList.remove('loading');
+        submitBtn.disabled = false;
+      }, 1800);
+    });
+  </script>
+
+</body>
+</html>

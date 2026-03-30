@@ -1,0 +1,158 @@
+name: Visual QA — Example Tests
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  visualqa-tests:
+    name: Visual QA (frontend-visualqa)
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    env:
+      YUTORI_TESTING_API_KEY: ${{ secrets.YUTORI_TESTING_API_KEY }}
+      PYTHONUNBUFFERED: "1"
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Configure Yutori API key
+        run: |
+          if [ -z "$YUTORI_TESTING_API_KEY" ]; then
+            echo "::error::YUTORI_TESTING_API_KEY secret is not set. Add it in Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+          mkdir -p ~/.yutori
+          printf '{"api_key": "%s"}\n' "$YUTORI_TESTING_API_KEY" > ~/.yutori/config.json
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-chromium-v1
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+
+      - name: Install frontend-visualqa
+        run: |
+          uv tool install 'frontend-visualqa>=0.3.21' \
+            --with-executables-from playwright
+          playwright install chromium --with-deps
+
+      - name: Start example server
+        run: |
+          python3 -m http.server 8000 -d examples &
+          for i in $(seq 1 15); do
+            if curl -sf http://localhost:8000/yutori_login.html > /dev/null 2>&1; then
+              echo "Server ready on :8000 (attempt $i)"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::Example server failed to start on port 8000"
+          exit 1
+
+      # ── Login page — unauthenticated claims ──
+
+      - name: Visual QA — Login page elements
+        run: |
+          set -o pipefail
+          frontend-visualqa verify http://localhost:8000/yutori_login.html \
+            --claims \
+            'The page shows a "Log in to Yutori Platform" heading' \
+            'There is an email input field with placeholder text' \
+            'A "Continue" button is visible below the password field' \
+            'The left panel shows "Stay ahead on what matters most" heading' \
+            --run-timeout-seconds 180 \
+            --reporter native --reporter ctrf | tee visualqa-login-elements.json
+
+      - name: Visual QA — Login form validation
+        run: |
+          set -o pipefail
+          frontend-visualqa verify http://localhost:8000/yutori_login.html \
+            --claims \
+            'An error message is visible after submitting the form with an empty email field' \
+            --navigation-hint 'Click the Continue button without entering anything in the email or password fields.' \
+            --max-steps-per-claim 15 \
+            --run-timeout-seconds 120 \
+            --reporter native --reporter ctrf | tee visualqa-login-validation.json
+
+      # ── Dashboard — post-login claims ──
+
+      - name: Visual QA — Dashboard after login
+        run: |
+          set -o pipefail
+          frontend-visualqa verify http://localhost:8000/yutori_login.html \
+            --claims \
+            'After logging in, the dashboard shows "Welcome back, Developer"' \
+            'The API Calls Today stat card shows the value 1,247' \
+            --navigation-hint 'Type "test@yutori.com" in the email field, type "password123" in the password field, then click Continue. Wait for the dashboard to load.' \
+            --max-steps-per-claim 20 \
+            --run-timeout-seconds 240 \
+            --reporter native --reporter ctrf | tee visualqa-dashboard.json
+
+      # ── Dashboard — visual bug detection ──
+
+      - name: Visual QA — Catch quota progress bar bug
+        run: |
+          set -o pipefail
+          exit_code=0
+          frontend-visualqa verify http://localhost:8000/yutori_login.html \
+            --claims \
+            'The Monthly Quota progress bar fill matches the percentage shown in the label' \
+            --navigation-hint 'Type "test@yutori.com" in the email field, type "password123" in the password field, then click Continue. Wait for the dashboard to load.' \
+            --max-steps-per-claim 20 \
+            --run-timeout-seconds 240 \
+            --reporter native --reporter ctrf | tee visualqa-quota-bug.json \
+            || exit_code=$?
+
+          if [ "$exit_code" -eq 0 ]; then
+            echo "::error::Claim unexpectedly passed — the visual bug may have been fixed or the check is broken"
+            exit 1
+          fi
+
+          # Verify the tool produced a real result, not just a crash
+          if [ ! -s visualqa-quota-bug.json ]; then
+            echo "::error::No output produced — frontend-visualqa may have crashed"
+            exit 1
+          fi
+
+          if ! python3 -c "
+          import json, sys
+          d = json.load(open('visualqa-quota-bug.json'))
+          results = d.get('results', [])
+          if not results or not any(r.get('status') == 'failed' for r in results):
+              print('::error::Output has no failed claim — tool may have errored instead of evaluating')
+              sys.exit(1)
+          " 2>&1; then
+            exit 1
+          fi
+
+          echo "OK: progress bar bug correctly detected (exit code $exit_code)"
+
+      # ── Upload artifacts ──
+
+      - name: Upload visual QA artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visualqa-results
+          path: |
+            artifacts/
+            visualqa-*.json
+          retention-days: 7
+
+      - name: Upload CTRF reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visualqa-ctrf-reports
+          path: artifacts/**/ctrf-report.json
+          retention-days: 7

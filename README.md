@@ -244,6 +244,17 @@ frontend-visualqa verify 'http://localhost:8000/booking_form.html' \
 
 `--navigation-hint` gives n1 context it can't infer from pixels alone. Here, the booking form shows placeholder text like "John Doe" and "555-0123" — n1 can mistake these for already-filled values and skip the form. The hint tells it that grayed text is placeholder format, not real data, so it fills every field correctly.
 
+**Login flow with visual bug detection** — n1 fills a login form, enters the dashboard, and catches a progress bar mismatch:
+
+```bash
+frontend-visualqa verify http://localhost:8000/yutori_login.html \
+  --headed \
+  --max-steps-per-claim 20 \
+  --claims 'The Monthly Quota progress bar fill matches the percentage shown in the label' \
+  --navigation-hint 'Type "test@yutori.com" in the email field, type "password123" in the password field, then click Continue. Wait for the dashboard to load.'
+# → fails: label says "100% used" but the progress bar is visually only ~65% filled
+```
+
 Use against your own frontend the same way — just swap the URL:
 
 ```bash
@@ -470,6 +481,83 @@ Each claim result contains:
 frontend-visualqa verify http://localhost:3000 \
   --claims 'The checkout total matches the sum of line items' \
   --reporter native --reporter ctrf
+```
+
+## CI / GitHub Actions
+
+The repo includes a GitHub Actions workflow (`.github/workflows/visualqa.yml`) that runs visual QA checks on every pull request. Use it as a template for adding frontend-visualqa to your own CI pipeline.
+
+### What the workflow does
+
+1. Installs `frontend-visualqa` and Playwright's Chromium via `uv tool install`
+2. Serves the example pages with Python's built-in HTTP server
+3. Runs visual claims against the login page — element checks, form validation, post-login dashboard
+4. Verifies that known visual bugs are caught (progress bar mismatch)
+5. Uploads screenshot artifacts and CTRF reports for inspection
+
+### Setting up in your own repo
+
+1. **Add your Yutori API key as a secret.** Go to your repo's Settings > Secrets and variables > Actions and add `YUTORI_TESTING_API_KEY` with your Yutori API key.
+
+2. **Copy the workflow.** Adapt `.github/workflows/visualqa.yml` to your project — replace `python3 -m http.server` with your dev server start command and `wait-on` or a sleep until it's ready:
+
+    ```yaml
+    - name: Start dev server
+      run: |
+        npm start &
+        npx wait-on http://localhost:3000 --timeout 60000
+    ```
+
+3. **Write claims for your pages.** Each `frontend-visualqa verify` step tests a set of visual claims against a URL:
+
+    ```yaml
+    - name: Visual QA — Dashboard
+      run: |
+        set -o pipefail
+        frontend-visualqa verify http://localhost:3000/dashboard \
+          --claims \
+          'The revenue chart is visible without scrolling' \
+          'The sidebar shows 5 navigation items' \
+          --reporter native --reporter ctrf | tee visualqa-dashboard.json
+    ```
+
+4. **Upload artifacts** so screenshots and reports are available even when tests fail:
+
+    ```yaml
+    - name: Upload visual QA artifacts
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: visualqa-results
+        path: |
+          artifacts/
+          visualqa-*.json
+    ```
+
+### Testing claims that should fail
+
+To verify that frontend-visualqa catches known bugs, capture the exit code and validate the output contains a real failure (not a crash):
+
+```yaml
+- name: Visual QA — Catch known bug
+  run: |
+    set -o pipefail
+    exit_code=0
+    frontend-visualqa verify http://localhost:3000 \
+      --claims 'The progress bar matches the displayed percentage' \
+      --reporter native --reporter ctrf | tee visualqa-bug.json \
+      || exit_code=$?
+
+    if [ "$exit_code" -eq 0 ]; then
+      echo "UNEXPECTED: claim passed" && exit 1
+    fi
+
+    # Verify tool produced a real failed claim, not just a crash
+    if [ ! -s visualqa-bug.json ]; then
+      echo "ERROR: no output — tool may have crashed" && exit 1
+    fi
+
+    echo "Expected failure: visual bug detected"
 ```
 
 ## Development
