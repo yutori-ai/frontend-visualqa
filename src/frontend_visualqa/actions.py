@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import re
 from typing import Any, TYPE_CHECKING
 
@@ -14,6 +15,7 @@ from frontend_visualqa.tool_arguments import parse_tool_arguments
 if TYPE_CHECKING:
     from frontend_visualqa.overlay import OverlayController
 
+logger = logging.getLogger(__name__)
 
 MODEL_COORDINATE_SCALE = 1000
 DEFAULT_WAIT_SECONDS = 1.0
@@ -443,17 +445,7 @@ class ActionExecutor:
         except Exception:
             return
 
-    async def _best_effort_overlay_show_action(
-        self,
-        *,
-        action_type: str,
-        x: int = 0,
-        y: int = 0,
-        start_x: int = 0,
-        start_y: int = 0,
-        num_clicks: int = 1,
-        direction: str = "down",
-    ) -> None:
+    async def _best_effort_overlay_show_action(self, **kwargs: Any) -> None:
         overlay = self._overlay
         if overlay is None:
             return
@@ -461,9 +453,9 @@ class ActionExecutor:
         if not callable(show_action):
             return
         try:
-            await show_action(action_type, x=x, y=y, start_x=start_x, start_y=start_y, num_clicks=num_clicks, direction=direction)
+            await show_action(**kwargs)
         except Exception:
-            return
+            logger.debug("Overlay show_action failed", exc_info=True)
 
     async def _best_effort_overlay_set_status(self, label: str) -> None:
         overlay = self._overlay
@@ -475,7 +467,7 @@ class ActionExecutor:
         try:
             await set_status(label)
         except Exception:
-            return
+            logger.debug("Overlay set_status failed", exc_info=True)
 
     def _post_action_delay(self, action_name: str) -> float:
         if self.settle_delay_seconds is not None:

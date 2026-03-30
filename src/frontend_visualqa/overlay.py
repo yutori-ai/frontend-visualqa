@@ -292,18 +292,23 @@ class OverlayController:
 
         if action_type in {"left_click", "double_click", "triple_click", "right_click"}:
             await self._show_click_effect(x, y, num_clicks)
-            await self.set_status("Clicking")
+            label = "Clicking"
         elif action_type == "scroll":
             await self._show_scroll_effect(x, y)
-            await self.set_status("Scrolling")
+            label = "Scrolling"
         elif action_type == "type":
             await self._show_type_effect(center)
-            await self.set_status("Typing")
+            label = "Typing"
         elif action_type == "hover":
-            await self.set_status("Hovering")
+            label = "Hovering"
         elif action_type == "drag":
             await self._show_drag_effect(start_x, start_y, x, y)
-            await self.set_status("Dragging")
+            label = "Dragging"
+        else:
+            return
+
+        self._current_status = label
+        await self._set_chip_text(label)
 
     async def set_status(self, label: str) -> None:
         self._current_status = label
@@ -340,10 +345,13 @@ class OverlayController:
 
     async def _inject_persistent_root(self) -> None:
         await self._eval(_PERSISTENT_ROOT_JS)
+        await self._set_chip_text(self._current_status)
+
+    async def _set_chip_text(self, label: str) -> None:
         await self._eval(
             f"""() => {{
                 const chip = document.getElementById('{STATUS_CHIP_ID}');
-                if (chip) chip.textContent = {self._current_status!r};
+                if (chip) chip.textContent = {label!r};
             }}"""
         )
 
@@ -357,7 +365,6 @@ class OverlayController:
         )
 
     async def _show_click_effect(self, x: int, y: int, num_clicks: int) -> None:
-        await self._ensure_transient_root()
         gap = int(CLICK_DURATION_MS * 0.5)
         await self._eval(
             f"""() => {{
@@ -380,7 +387,6 @@ class OverlayController:
         )
 
     async def _show_scroll_effect(self, x: int, y: int) -> None:
-        await self._ensure_transient_root()
         await self._eval(
             f"""() => {{
                 const root = document.getElementById('{TRANSIENT_ROOT_ID}');
@@ -414,7 +420,6 @@ class OverlayController:
         show_below = cy_raw < 50
         cy = cy_raw + 30 if show_below else cy_raw - 7
 
-        await self._ensure_transient_root()
         await self._eval(
             f"""() => {{
                 const root = document.getElementById('{TRANSIENT_ROOT_ID}');
@@ -449,7 +454,6 @@ class OverlayController:
         )
 
     async def _show_drag_effect(self, start_x: int, start_y: int, end_x: int, end_y: int) -> None:
-        await self._ensure_transient_root()
         await self._eval(
             f"""() => {{
                 const root = document.getElementById('{TRANSIENT_ROOT_ID}');

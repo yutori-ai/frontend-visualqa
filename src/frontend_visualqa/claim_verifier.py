@@ -330,9 +330,6 @@ class ClaimVerifier:
                         }
                     )
 
-                # Replay visual effects only after every screenshot for the
-                # current model turn is already captured. This keeps multi-tool
-                # turns clean and avoids showing any overlay before evidence.
                 await self._flush_turn_overlays(had_actions=bool(executed_tool_names))
             result = await self._force_stop(progress=progress, messages=messages)
             return await self._complete_result(result)
