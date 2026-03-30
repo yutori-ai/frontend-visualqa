@@ -217,7 +217,7 @@ class ClaimVerifier:
                         continue
                     break
 
-                executed_tool_names: list[str] = []
+                had_action_in_turn = False
                 for tool_call in tool_calls:
                     tool_name = getattr(tool_call.function, "name", "")
                     if tool_name == "record_claim_result":
@@ -251,12 +251,12 @@ class ClaimVerifier:
                                     verdict=("inconclusive", force_stop_finding or ""),
                                     verdict_source=VERDICT_SOURCE_FORCE_STOP,
                                 )
-                                await self._flush_turn_overlays(had_actions=bool(executed_tool_names))
+                                await self._show_post_capture_analysis(had_actions=had_action_in_turn)
                                 return await self._complete_result(result)
                             result = await self._finalize_result(
                                 progress=progress, verdict=verdict, verdict_source=VERDICT_SOURCE_RECORD,
                             )
-                            await self._flush_turn_overlays(had_actions=bool(executed_tool_names))
+                            await self._show_post_capture_analysis(had_actions=had_action_in_turn)
                             return await self._complete_result(result)
                         continue
                     if tool_name == "stop":
@@ -265,7 +265,7 @@ class ClaimVerifier:
                             result = await self._finalize_result(
                                 progress=progress, verdict=stop_verdict, verdict_source=VERDICT_SOURCE_LEGACY_STOP,
                             )
-                            await self._flush_turn_overlays(had_actions=bool(executed_tool_names))
+                            await self._show_post_capture_analysis(had_actions=had_action_in_turn)
                             return await self._complete_result(result)
                         continue
                     if progress.step_count >= max_steps:
@@ -287,6 +287,7 @@ class ClaimVerifier:
                     progress.url_history.append(current_url)
                     progress.step_count += 1
                     non_action_reprompts = 0
+                    had_action_in_turn = True
                     screenshot_bytes, screenshot_path = await self._capture_evidence_screenshot(
                         session=session,
                         run_artifacts=run_artifacts,
@@ -294,7 +295,6 @@ class ClaimVerifier:
                         label=f"step-{progress.step_count:02d}",
                     )
                     progress.screenshot_paths.append(screenshot_path)
-                    executed_tool_names.append(tool_name)
                     self._record_action_event(
                         step=progress.step_count,
                         action=tool_name,
@@ -330,7 +330,7 @@ class ClaimVerifier:
                         }
                     )
 
-                await self._flush_turn_overlays(had_actions=bool(executed_tool_names))
+                await self._show_post_capture_analysis(had_actions=had_action_in_turn)
             result = await self._force_stop(progress=progress, messages=messages)
             return await self._complete_result(result)
         except asyncio.CancelledError:
@@ -415,17 +415,13 @@ class ClaimVerifier:
 
         return await self._finalize_result(progress=progress, verdict=verdict, verdict_source=verdict_source)
 
-    async def _show_deferred_overlay(self) -> None:
-        try:
-            await self.action_executor.show_deferred_overlay()
-        except Exception:
-            logger.debug("show_deferred_overlay failed", exc_info=True)
-
-    async def _flush_turn_overlays(self, *, had_actions: bool) -> None:
+    async def _show_post_capture_analysis(self, *, had_actions: bool) -> None:
         if not had_actions:
             return
 
-        await self._show_deferred_overlay()
+        # The screenshot is already clean at this point. Restore only the
+        # persistent analysis affordances that should cover the next turn.
+        await self._best_effort_overlay_call("set_status", "Analyzing")
         reasoning = self._hook.current_turn_reasoning if self._hook else None
         if reasoning and self._overlay:
             await self._best_effort_overlay_call("show_thought", reasoning)

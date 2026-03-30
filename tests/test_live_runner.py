@@ -77,6 +77,8 @@ async def instrumented_overlay_lifecycle(runner, OverlayController, run_kwargs):
         "claim_ended": OverlayController.claim_ended,
         "before_screenshot": OverlayController.before_screenshot,
         "after_screenshot": OverlayController.after_screenshot,
+        "set_status": OverlayController.set_status,
+        "show_thought": OverlayController.show_thought,
     }
 
     async def _record_state(controller):
@@ -85,10 +87,10 @@ async def instrumented_overlay_lifecycle(runner, OverlayController, run_kwargs):
         return await _overlay_dom_state(page)
 
     def _make_instrumented(phase_name, original):
-        async def instrumented(self):
+        async def instrumented(self, *args, **kwargs):
             error = None
             try:
-                await original(self)
+                await original(self, *args, **kwargs)
             except Exception as exc:  # pragma: no cover
                 error = exc
             finally:
@@ -101,6 +103,8 @@ async def instrumented_overlay_lifecycle(runner, OverlayController, run_kwargs):
     OverlayController.claim_ended = _make_instrumented("after_claim_ended", originals["claim_ended"])
     OverlayController.before_screenshot = _make_instrumented("before_screenshot", originals["before_screenshot"])
     OverlayController.after_screenshot = _make_instrumented("after_screenshot", originals["after_screenshot"])
+    OverlayController.set_status = _make_instrumented("set_status", originals["set_status"])
+    OverlayController.show_thought = _make_instrumented("show_thought", originals["show_thought"])
 
     try:
         result = await runner.run(**run_kwargs)
@@ -341,6 +345,19 @@ async def test_live_runner_headed_overlay_hides_restores_and_cleans_up(
             assert state["transient"]["display"] != "none"
             assert state["transient"]["visibility"] == "hidden"
             assert state["transient"]["opacity"] == "0"
+            assert state["chip"]["present"] is True
+            assert state["chip"]["text"].upper() == "ANALYZING"
+
+        after_screenshot_index = max(
+            index for index, sample in enumerate(lifecycle_samples) if sample["phase"] == "after_screenshot"
+        )
+        post_capture_status_sample = next(
+            sample
+            for index, sample in enumerate(lifecycle_samples)
+            if index > after_screenshot_index and sample["phase"] == "set_status"
+        )
+        assert post_capture_status_sample["state"]["chip"]["present"] is True
+        assert post_capture_status_sample["state"]["chip"]["text"].upper() == "ANALYZING"
 
         started_state = started_samples[0]["state"]
         assert started_samples[0]["error"] is None

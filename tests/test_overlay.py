@@ -131,12 +131,16 @@ class TestOverlayInformationalCards:
         await controller.show_thought(text)
 
         call = page.evaluate.call_args_list[-1]
-        assert "__n1ThoughtCard" in str(call.args[0])
+        script = str(call.args[0])
+        assert "__n1ThoughtCard" in script
+        assert "left:50%" in script
+        assert "width:min(720px,calc(100vw - 48px))" in script
+        assert "backdrop-filter:blur(12px)" in script
+        assert "font-size:17px" in script
         assert len(call.args[1]) <= 150
 
-class TestOverlayShowAction:
     @pytest.mark.asyncio
-    async def test_click_effect_uses_coordinates_and_updates_status(self) -> None:
+    async def test_preview_action_uses_transient_layer_without_touching_status_chip(self) -> None:
         from frontend_visualqa.overlay import OverlayController
 
         page = _make_mock_page()
@@ -146,9 +150,34 @@ class TestOverlayShowAction:
         page.evaluate.reset_mock()
 
         with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
-            await controller.show_action("double_click", x=100, y=200, num_clicks=2)
+            label = await controller.preview_action("double_click", x=100, y=200, num_clicks=2)
 
-        assert controller._current_status == "Clicking"
+        assert label == "Clicking"
+        assert controller._current_status == "Analyzing"
+        scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
+        assert any("__n1TransientRoot" in script and "visibility = 'visible'" in script for script in scripts)
+        assert any("__n1Cursor" in script and "100px" in script and "200px" in script for script in scripts)
+        assert any("n1click" in script for script in scripts)
+        assert not any("__n1StatusChip" in script and "Clicking" in script for script in scripts)
+
+
+class TestOverlayPreviewAction:
+    @pytest.mark.asyncio
+    async def test_click_effect_uses_coordinates(self) -> None:
+        from frontend_visualqa.overlay import OverlayController
+
+        page = _make_mock_page()
+        controller = OverlayController(page)
+
+        await controller.claim_started()
+        page.evaluate.reset_mock()
+
+        with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
+            label = await controller.preview_action("double_click", x=100, y=200, num_clicks=2)
+
+        assert label == "Clicking"
+        # preview_action does not update persistent status
+        assert controller._current_status == "Analyzing"
         scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
         # Cursor moved first
         assert any("__n1Cursor" in script and "100px" in script and "200px" in script for script in scripts)
@@ -177,9 +206,9 @@ class TestOverlayShowAction:
         page.evaluate.reset_mock()
 
         with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
-            await controller.show_action("scroll", x=640, y=400, direction="down")
+            label = await controller.preview_action("scroll", x=640, y=400, direction="down")
 
-        assert controller._current_status == "Scrolling"
+        assert label == "Scrolling"
         scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
         assert any("__n1ScrollStyle" in script for script in scripts)
         # Scroll uses n1scroll keyframe with spinning dots
@@ -203,9 +232,9 @@ class TestOverlayShowAction:
         page.evaluate.reset_mock()
 
         with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
-            await controller.show_action("type")
+            label = await controller.preview_action("type")
 
-        assert controller._current_status == "Typing"
+        assert label == "Typing"
         scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
         assert any("document.activeElement" in script for script in scripts)
         assert any("__n1TypeStyle" in script for script in scripts)
@@ -225,14 +254,14 @@ class TestOverlayShowAction:
         page.evaluate.reset_mock()
 
         with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
-            await controller.show_action("type")
+            label = await controller.preview_action("type")
 
-        assert controller._current_status == "Typing"
+        assert label == "Typing"
         scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
         assert not any("__n1TypeStyle" in script for script in scripts)
 
     @pytest.mark.asyncio
-    async def test_hover_action_moves_cursor_and_sets_status(self) -> None:
+    async def test_hover_action_moves_cursor(self) -> None:
         from frontend_visualqa.overlay import OverlayController
 
         page = _make_mock_page()
@@ -242,14 +271,16 @@ class TestOverlayShowAction:
         page.evaluate.reset_mock()
 
         with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
-            await controller.show_action("hover", x=300, y=400)
+            label = await controller.preview_action("hover", x=300, y=400)
 
-        assert controller._current_status == "Hovering"
+        assert label == "Hovering"
+        # preview_action does not update persistent status
+        assert controller._current_status == "Analyzing"
         scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
         # Cursor moved to hover target
         assert any("__n1Cursor" in script and "300px" in script and "400px" in script for script in scripts)
-        # Status chip updated
-        assert any("__n1StatusChip" in script and "Hovering" in script for script in scripts)
+        # No chip update from preview_action
+        assert not any("__n1StatusChip" in script and "Hovering" in script for script in scripts)
 
     @pytest.mark.asyncio
     async def test_drag_action_shows_trail_and_moves_cursor(self) -> None:
@@ -262,9 +293,9 @@ class TestOverlayShowAction:
         page.evaluate.reset_mock()
 
         with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
-            await controller.show_action("drag", x=500, y=600, start_x=100, start_y=200)
+            label = await controller.preview_action("drag", x=500, y=600, start_x=100, start_y=200)
 
-        assert controller._current_status == "Dragging"
+        assert label == "Dragging"
         scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
         # Cursor moved to start point first
         assert any("__n1Cursor" in script and "100px" in script and "200px" in script for script in scripts)
@@ -277,7 +308,7 @@ class TestOverlayShowAction:
         assert any("__n1Cursor" in script and "500px" in script and "600px" in script for script in scripts)
 
     @pytest.mark.asyncio
-    async def test_unknown_action_is_noop(self) -> None:
+    async def test_unknown_action_returns_none(self) -> None:
         from frontend_visualqa.overlay import OverlayController
 
         page = _make_mock_page()
@@ -287,15 +318,16 @@ class TestOverlayShowAction:
         page.evaluate.reset_mock()
 
         with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
-            await controller.show_action("unknown_action_xyz", x=10, y=20)
+            label = await controller.preview_action("unknown_action_xyz", x=10, y=20)
 
+        assert label is None
         # Cursor still moves for unknown actions (since x/y are provided)
         scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
         cursor_moves = [s for s in scripts if "__n1Cursor" in s]
         assert len(cursor_moves) >= 1
 
     @pytest.mark.asyncio
-    async def test_show_action_sleeps_for_cursor_transition(self) -> None:
+    async def test_preview_action_sleeps_for_cursor_transition(self) -> None:
         from frontend_visualqa.overlay import CURSOR_TRANSITION_MS, OverlayController
 
         page = _make_mock_page()
@@ -305,7 +337,7 @@ class TestOverlayShowAction:
         page.evaluate.reset_mock()
 
         with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
-            await controller.show_action("left_click", x=50, y=60)
+            await controller.preview_action("left_click", x=50, y=60)
 
         mock_sleep.assert_awaited_once_with(CURSOR_TRANSITION_MS / 1000)
 
@@ -349,8 +381,7 @@ class TestOverlayScreenshotBoundary:
 
     @pytest.mark.asyncio
     async def test_follow_up_effect_restores_transient_root_visibility_after_screenshot(self) -> None:
-        """Transient root stays hidden after capture and is re-shown when
-        the next replay effect starts."""
+        """Transient root stays hidden after capture and is re-shown when the next preview starts."""
         from frontend_visualqa.overlay import OverlayController
 
         page = _make_mock_page()
@@ -362,13 +393,13 @@ class TestOverlayScreenshotBoundary:
         page.evaluate.reset_mock()
 
         with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
-            await controller.show_action("left_click", x=100, y=200)
+            await controller.preview_action("left_click", x=100, y=200)
 
         scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
         assert any(
             "__n1TransientRoot" in script and "visibility = 'visible'" in script
             for script in scripts
-        ), "Transient root visibility must be restored when replaying the next effect"
+        ), "Transient root visibility must be restored when starting the next preview"
 
     @pytest.mark.asyncio
     async def test_after_screenshot_is_noop_when_inactive(self) -> None:
@@ -393,11 +424,11 @@ class TestOverlayBestEffort:
         await controller.claim_started()
         await controller.set_status("Analyzing")
         with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
-            await controller.show_action("left_click", x=100, y=100)
-            await controller.show_action("scroll", x=100, y=100, direction="down")
-            await controller.show_action("type")
-            await controller.show_action("hover", x=10, y=20)
-            await controller.show_action("drag", x=200, y=200, start_x=100, start_y=100)
+            await controller.preview_action("left_click", x=100, y=100)
+            await controller.preview_action("scroll", x=100, y=100, direction="down")
+            await controller.preview_action("type")
+            await controller.preview_action("hover", x=10, y=20)
+            await controller.preview_action("drag", x=200, y=200, start_x=100, start_y=100)
         await controller.before_screenshot()
         await controller.after_screenshot()
         await controller.claim_ended()

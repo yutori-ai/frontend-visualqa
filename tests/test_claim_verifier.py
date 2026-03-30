@@ -78,7 +78,6 @@ class FakeActionExecutor:
     def __init__(self) -> None:
         self.calls: list[tuple[str, dict[str, Any]]] = []
         self.overlays_seen: list[Any] = []
-        self._deferred_overlay: tuple[str, dict[str, Any]] | None = None
 
     async def execute_tool_call(self, session: FakeSession, tool_call: Any) -> Any:
         resolved_name = tool_call.function.name
@@ -87,31 +86,12 @@ class FakeActionExecutor:
         self.overlays_seen.append(getattr(self, "overlay", None))
         if resolved_name == "goto_url":
             session.page.url = resolved_args["url"]
-            self._deferred_overlay = ("set_status", {"label": "Navigating"})
-        elif resolved_name in {"left_click", "double_click", "triple_click", "right_click", "hover", "drag", "scroll", "type"}:
-            self._deferred_overlay = ("show_action", {"action_type": resolved_name})
-        else:
-            self._deferred_overlay = None
         return SimpleNamespace(
             trace=f"{resolved_name}({resolved_args})",
             output_text=None,
             current_url=session.page.url,
             success=True,
         )
-
-    async def show_deferred_overlay(self) -> None:
-        deferred = self._deferred_overlay
-        self._deferred_overlay = None
-        overlay = getattr(self, "overlay", None)
-        if deferred is None or overlay is None:
-            return
-
-        kind, kwargs = deferred
-        if kind == "show_action":
-            await overlay.show_action(kwargs["action_type"])
-            return
-        if kind == "set_status":
-            await overlay.set_status(kwargs["label"])
 
 
 class BlockingN1Client(FakeN1Client):
@@ -542,7 +522,11 @@ async def test_claim_verifier_uses_overlay_lifecycle_when_visualize_enabled(
     assert events.count("before_screenshot") == 1
     assert events.count("after_screenshot") == 1
     assert events.index("before_screenshot") > events.index("claim_started")
-    assert ("set_status", "Analyzing") in events
+    after_index = events.index("after_screenshot")
+    post_capture_status_index = next(
+        index for index, event in enumerate(events) if index > after_index and event == ("set_status", "Analyzing")
+    )
+    assert post_capture_status_index > after_index
     assert events[-1] == "claim_ended"
     assert action_executor.calls == [("goto_url", {"url": "http://fixture.local/modal"})]
     assert action_executor.overlays_seen == [fake_overlay]
@@ -673,10 +657,17 @@ async def test_claim_verifier_records_reasoning_events_and_shows_thought_for_too
     # The thought card must appear AFTER evidence capture (after_screenshot)
     # so it plays during the next LLM call, avoiding flash.
     last_after = len(overlay_events) - 1 - overlay_events[::-1].index("after_screenshot")
+    first_post_capture_status = next(
+        index
+        for index, event in enumerate(overlay_events)
+        if index > last_after and event == ("set_status", "Analyzing")
+    )
     first_thought = overlay_events.index(("show_thought", reasoning))
     assert first_thought > last_after, (
         f"show_thought at index {first_thought} should come after after_screenshot at index {last_after}"
     )
+    assert first_post_capture_status > last_after
+    assert first_thought > first_post_capture_status
     action_event, verdict_event = _field(result, "trace").events
     assert action_event.type == "action"
     assert action_event.reasoning == reasoning
@@ -696,7 +687,7 @@ async def test_claim_verifier_records_reasoning_events_and_shows_thought_for_too
 
 
 @pytest.mark.asyncio
-async def test_claim_verifier_replays_deferred_action_after_screenshot(
+async def test_claim_verifier_shows_post_capture_analysis_ui_after_action_screenshot(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     module = _import_claim_verifier_module()
@@ -708,9 +699,6 @@ async def test_claim_verifier_replays_deferred_action_after_screenshot(
 
         async def set_status(self, label: str) -> None:
             overlay_events.append(("set_status", label))
-
-        async def show_action(self, action_type: str, **_: Any) -> None:
-            overlay_events.append(("show_action", action_type))
 
         async def show_thought(self, text: str) -> None:
             overlay_events.append(("show_thought", text))
@@ -769,10 +757,14 @@ async def test_claim_verifier_replays_deferred_action_after_screenshot(
 
     assert _field(result, "status") == "passed"
     after_index = overlay_events.index("after_screenshot")
-    action_index = overlay_events.index(("show_action", "left_click"))
+    first_post_capture_status = next(
+        index
+        for index, event in enumerate(overlay_events)
+        if index > after_index and event == ("set_status", "Analyzing")
+    )
     thought_index = overlay_events.index(("show_thought", reasoning))
-    assert action_index > after_index
-    assert thought_index > action_index
+    assert first_post_capture_status > after_index
+    assert thought_index > first_post_capture_status
 
 
 @pytest.mark.asyncio
@@ -953,13 +945,39 @@ async def test_claim_verifier_records_force_stop_verdict_source_for_plain_text_r
 
 
 @pytest.mark.asyncio
-async def test_claim_verifier_preserves_tool_call_order_when_action_and_verdict_share_a_turn(tmp_path: Path) -> None:
+async def test_claim_verifier_preserves_tool_call_order_when_action_and_verdict_share_a_turn(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     module = _import_claim_verifier_module()
+    overlay_events: list[Any] = []
+
+    class FakeOverlay:
+        async def claim_started(self) -> None:
+            overlay_events.append("claim_started")
+
+        async def set_status(self, label: str) -> None:
+            overlay_events.append(("set_status", label))
+
+        async def show_thought(self, text: str) -> None:
+            overlay_events.append(("show_thought", text))
+
+        async def before_screenshot(self) -> None:
+            overlay_events.append("before_screenshot")
+
+        async def after_screenshot(self) -> None:
+            overlay_events.append("after_screenshot")
+
+        async def claim_ended(self) -> None:
+            overlay_events.append("claim_ended")
+
+    monkeypatch.setattr(module, "_create_overlay_controller", lambda page: FakeOverlay())
+    reasoning = "Click the modal and then decide."
     verifier, _, action_executor = _build_claim_verifier(
         module,
         tmp_path,
         responses=[
             FakeMessage(
+                content=reasoning,
                 tool_calls=[
                     FakeToolCall(
                         id="tool-1",
@@ -978,6 +996,7 @@ async def test_claim_verifier_preserves_tool_call_order_when_action_and_verdict_
                 ]
             ),
         ],
+        visualize=True,
     )
 
     result = await _call_verify(
@@ -987,11 +1006,22 @@ async def test_claim_verifier_preserves_tool_call_order_when_action_and_verdict_
         claim="The modal opens on click",
         url="http://fixture.local/modal",
         navigation_hint=None,
+        visualize=True,
     )
 
     assert _field(result, "status") == "passed"
     assert action_executor.calls == [("goto_url", {"url": "http://fixture.local/modal"})]
     assert _field(result, "page").url == "http://fixture.local/modal"
+    after_index = overlay_events.index("after_screenshot")
+    post_capture_status_index = next(
+        index
+        for index, event in enumerate(overlay_events)
+        if index > after_index and event == ("set_status", "Analyzing")
+    )
+    thought_index = overlay_events.index(("show_thought", reasoning))
+    assert post_capture_status_index > after_index
+    assert thought_index > post_capture_status_index
+    assert overlay_events[-1] == "claim_ended"
 
 
 @pytest.mark.asyncio
