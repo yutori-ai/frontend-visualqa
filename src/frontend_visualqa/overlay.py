@@ -237,8 +237,6 @@ _RESTORE_PERSISTENT_JS = f"""() => {{
     }}
 }}"""
 
-_CHECK_PERSISTENT_JS = f"!!document.getElementById('{PERSISTENT_ROOT_ID}')"
-
 
 class OverlayController:
     """Manage in-browser visual effects for a single claim lifecycle."""
@@ -333,15 +331,6 @@ class OverlayController:
             return
         await self._eval(_RESTORE_PERSISTENT_JS)
 
-    async def ensure_persistent_ui(self) -> None:
-        if not self._active:
-            return
-        try:
-            exists = await self._page.evaluate(_CHECK_PERSISTENT_JS)
-        except Exception:
-            exists = False
-        if not exists:
-            await self._inject_persistent_root()
 
     async def _inject_persistent_root(self) -> None:
         await self._eval(_PERSISTENT_ROOT_JS)

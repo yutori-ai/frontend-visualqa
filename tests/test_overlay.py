@@ -385,47 +385,6 @@ class TestOverlayScreenshotBoundary:
         page.evaluate.assert_not_called()
 
 
-class TestOverlayNavigationSafety:
-    @pytest.mark.asyncio
-    async def test_ensure_persistent_ui_reinjects_when_missing(self) -> None:
-        from frontend_visualqa.overlay import OverlayController
-
-        page = _make_mock_page(persistent_root_exists=False)
-        controller = OverlayController(page)
-        controller._active = True
-        controller._current_status = "Navigating"
-
-        await controller.ensure_persistent_ui()
-
-        scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
-        assert scripts[0] == "!!document.getElementById('__n1PersistentRoot')"
-        assert any("__n1PersistentRoot" in script for script in scripts[1:])
-        assert any("__n1StatusChip" in script and "Navigating" in script for script in scripts[1:])
-
-    @pytest.mark.asyncio
-    async def test_ensure_persistent_ui_is_noop_when_present(self) -> None:
-        from frontend_visualqa.overlay import OverlayController
-
-        page = _make_mock_page(persistent_root_exists=True)
-        controller = OverlayController(page)
-        controller._active = True
-
-        await controller.ensure_persistent_ui()
-
-        page.evaluate.assert_awaited_once()
-
-    @pytest.mark.asyncio
-    async def test_ensure_persistent_ui_is_noop_when_inactive(self) -> None:
-        from frontend_visualqa.overlay import OverlayController
-
-        page = _make_mock_page(persistent_root_exists=False)
-        controller = OverlayController(page)
-
-        await controller.ensure_persistent_ui()
-
-        page.evaluate.assert_not_called()
-
-
 class TestOverlayBestEffort:
     @pytest.mark.asyncio
     async def test_overlay_methods_swallow_evaluate_failures(self) -> None:
@@ -444,5 +403,4 @@ class TestOverlayBestEffort:
             await controller.show_action("drag", x=200, y=200, start_x=100, start_y=100)
         await controller.before_screenshot()
         await controller.after_screenshot()
-        await controller.ensure_persistent_ui()
         await controller.claim_ended()
