@@ -34,7 +34,7 @@ CLICK_DURATION_MS = 250
 SCROLL_DURATION_MS = 1000
 DRAG_DURATION_MS = 200
 CURSOR_TRANSITION_MS = 350
-THOUGHT_DURATION_MS = 6000
+THOUGHT_DURATION_MS = 2000
 
 _CURSOR_SVG = (
     '<svg width="134" height="181" viewBox="0 0 134 181" fill="none" xmlns="http://www.w3.org/2000/svg">'
@@ -141,7 +141,9 @@ _PERSISTENT_ROOT_JS = f"""() => {{
     root.__n1AnimationFrame = requestAnimationFrame(animate);
 }}"""
 
-_THOUGHT_CARD_JS = f"""(text) => {{
+_THOUGHT_CARD_JS = f"""(args) => {{
+    const text = args.text;
+    const timeoutMs = args.timeout_ms;
     const root = document.getElementById('{PERSISTENT_ROOT_ID}');
     if (!root) return;
     const existing = document.getElementById('{THOUGHT_CARD_ID}');
@@ -172,10 +174,13 @@ _THOUGHT_CARD_JS = f"""(text) => {{
 
     const previousTimer = root.__n1ThoughtTimer;
     if (previousTimer) clearTimeout(previousTimer);
-    root.__n1ThoughtTimer = setTimeout(() => {{
-        const current = document.getElementById('{THOUGHT_CARD_ID}');
-        if (current) current.remove();
-    }}, {THOUGHT_DURATION_MS});
+    root.__n1ThoughtTimer = null;
+    if (timeoutMs > 0) {{
+        root.__n1ThoughtTimer = setTimeout(() => {{
+            const current = document.getElementById('{THOUGHT_CARD_ID}');
+            if (current) current.remove();
+        }}, timeoutMs);
+    }}
 }}"""
 
 _TRANSIENT_ROOT_JS = f"""() => {{
@@ -210,6 +215,16 @@ _REMOVE_ALL_JS = f"""() => {{
         const style = document.getElementById(styleId);
         if (style) style.remove();
     }}
+}}"""
+
+_CLEAR_THOUGHT_JS = f"""() => {{
+    const persistent = document.getElementById('{PERSISTENT_ROOT_ID}');
+    if (persistent && persistent.__n1ThoughtTimer) {{
+        clearTimeout(persistent.__n1ThoughtTimer);
+        persistent.__n1ThoughtTimer = null;
+    }}
+    const current = document.getElementById('{THOUGHT_CARD_ID}');
+    if (current) current.remove();
 }}"""
 
 def _toggle_both_roots_js(*, visibility: str, opacity: str) -> str:
@@ -272,6 +287,7 @@ class OverlayController:
         if not self._active:
             return
 
+        await self.clear_thought()
         await self._ensure_transient_root()
 
         # Cursor-first choreography: move cursor to target, then trigger effect.
@@ -311,6 +327,8 @@ class OverlayController:
         self._current_status = label
         if not self._active:
             return
+        if label != "Analyzing":
+            await self.clear_thought()
         await self._inject_persistent_root()
 
     async def show_thought(self, text: str) -> None:
@@ -318,7 +336,16 @@ class OverlayController:
             return
         await self._inject_persistent_root()
         clipped = self._clip_text(text, 520)
-        await self._eval(_THOUGHT_CARD_JS, clipped)
+        # During "Analyzing" the card stays until clear_thought() is called
+        # (by preview_action or a non-Analyzing status transition).
+        # Otherwise use the fallback timeout as a safety net.
+        timeout_ms = 0 if self._current_status == "Analyzing" else THOUGHT_DURATION_MS
+        await self._eval(_THOUGHT_CARD_JS, {"text": clipped, "timeout_ms": timeout_ms})
+
+    async def clear_thought(self) -> None:
+        if not self._active:
+            return
+        await self._eval(_CLEAR_THOUGHT_JS)
 
     async def before_screenshot(self) -> None:
         if not self._active:
@@ -510,6 +537,7 @@ class OverlayController:
                 }"""
             )
         except Exception:
+            logger.debug("Overlay _get_focused_element_center failed", exc_info=True)
             return None
 
     async def _ensure_transient_root(self) -> None:

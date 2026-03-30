@@ -460,6 +460,9 @@ async def test_claim_verifier_uses_overlay_lifecycle_when_visualize_enabled(
         async def show_thought(self, text: str) -> None:
             events.append(("show_thought", text))
 
+        async def clear_thought(self) -> None:
+            events.append("clear_thought")
+
         async def before_screenshot(self) -> None:
             events.append("before_screenshot")
 
@@ -604,6 +607,9 @@ async def test_claim_verifier_records_reasoning_events_and_shows_thought_for_too
         async def show_thought(self, text: str) -> None:
             overlay_events.append(("show_thought", text))
 
+        async def clear_thought(self) -> None:
+            overlay_events.append("clear_thought")
+
         async def before_screenshot(self) -> None:
             overlay_events.append("before_screenshot")
 
@@ -703,6 +709,9 @@ async def test_claim_verifier_shows_post_capture_analysis_ui_after_action_screen
         async def show_thought(self, text: str) -> None:
             overlay_events.append(("show_thought", text))
 
+        async def clear_thought(self) -> None:
+            overlay_events.append("clear_thought")
+
         async def before_screenshot(self) -> None:
             overlay_events.append("before_screenshot")
 
@@ -783,6 +792,9 @@ async def test_claim_verifier_does_not_show_thought_for_plain_text_turn_without_
 
         async def show_thought(self, text: str) -> None:
             overlay_events.append(("show_thought", text))
+
+        async def clear_thought(self) -> None:
+            overlay_events.append("clear_thought")
 
         async def before_screenshot(self) -> None:
             overlay_events.append("before_screenshot")
@@ -960,6 +972,9 @@ async def test_claim_verifier_preserves_tool_call_order_when_action_and_verdict_
 
         async def show_thought(self, text: str) -> None:
             overlay_events.append(("show_thought", text))
+
+        async def clear_thought(self) -> None:
+            overlay_events.append("clear_thought")
 
         async def before_screenshot(self) -> None:
             overlay_events.append("before_screenshot")
