@@ -467,8 +467,6 @@ class OverlayController:
                 setTimeout(() => {{ pressed.remove(); trail.remove(); style.remove(); }}, {DRAG_DURATION_MS + 300});
             }}"""
         )
-        # Move cursor to end point
-        await self._move_cursor(end_x, end_y)
 
     async def _get_focused_element_center(self) -> dict[str, int] | None:
         try:

@@ -304,8 +304,9 @@ class TestOverlayPreviewAction:
         assert any("n1dfade" in script and "n1dtrail" in script for script in scripts)
         # Start coordinates used for pressed indicator
         assert any("left:100px" in script and "top:200px" in script for script in scripts)
-        # Cursor moved to end point after drag
-        assert any("__n1Cursor" in script and "500px" in script and "600px" in script for script in scripts)
+        # Cursor stays at start point — the real drag moves the page element
+        cursor_scripts = [s for s in scripts if "__n1Cursor" in s]
+        assert not any("500px" in s and "600px" in s for s in cursor_scripts)
 
     @pytest.mark.asyncio
     async def test_unknown_action_returns_none(self) -> None:
