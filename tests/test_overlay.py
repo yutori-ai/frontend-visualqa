@@ -196,7 +196,7 @@ class TestOverlayPreviewAction:
         assert any("left:100px" in script and "top:200px" in script for script in scripts)
 
     @pytest.mark.asyncio
-    async def test_scroll_effect_uses_spinning_dots(self) -> None:
+    async def test_scroll_effect_shows_directional_chevron(self) -> None:
         from frontend_visualqa.overlay import OverlayController
 
         page = _make_mock_page()
@@ -211,15 +211,29 @@ class TestOverlayPreviewAction:
         assert label == "Scrolling"
         scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
         assert any("__n1ScrollStyle" in script for script in scripts)
-        # Scroll uses n1scroll keyframe with spinning dots
-        assert any(
-            "n1scroll" in script
-            and "rotate(0deg)" in script
-            and "rotate(360deg)" in script
-            for script in scripts
-        )
+        # Chevron element with directional rotation (down = 0deg)
+        assert any("rotate(45deg)" in script and "border-right" in script for script in scripts)
+        assert any("n1scroll" in script and "rotate(0deg)" in script for script in scripts)
         # Coordinates used
         assert any("left:640px" in script and "top:400px" in script for script in scripts)
+
+    @pytest.mark.asyncio
+    async def test_scroll_effect_rotates_for_up_direction(self) -> None:
+        from frontend_visualqa.overlay import OverlayController
+
+        page = _make_mock_page()
+        controller = OverlayController(page)
+
+        await controller.claim_started()
+        page.evaluate.reset_mock()
+
+        with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
+            label = await controller.preview_action("scroll", x=100, y=200, direction="up")
+
+        assert label == "Scrolling"
+        scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
+        # Up direction uses 180deg rotation
+        assert any("n1scroll" in script and "rotate(180deg)" in script for script in scripts)
 
     @pytest.mark.asyncio
     async def test_type_effect_uses_caret_and_dots(self) -> None:

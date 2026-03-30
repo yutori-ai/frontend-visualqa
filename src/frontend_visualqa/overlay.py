@@ -291,7 +291,7 @@ class OverlayController:
             await self._show_click_effect(x, y, num_clicks)
             return "Clicking"
         elif action_type == "scroll":
-            await self._show_scroll_effect(x, y)
+            await self._show_scroll_effect(x, y, direction)
             return "Scrolling"
         elif action_type == "type":
             await self._show_type_effect(center)
@@ -372,7 +372,11 @@ class OverlayController:
             }}"""
         )
 
-    async def _show_scroll_effect(self, x: int, y: int) -> None:
+    async def _show_scroll_effect(self, x: int, y: int, direction: str = "down") -> None:
+        rotation = {"down": 0, "up": 180, "right": 270, "left": 90}.get(direction, 0)
+        # Translate in the scroll direction as the chevron fades out.
+        tx = {"right": 18, "left": -18}.get(direction, 0)
+        ty = {"down": 18, "up": -18}.get(direction, 0)
         await self._eval(
             f"""() => {{
                 const root = document.getElementById('{TRANSIENT_ROOT_ID}');
@@ -382,16 +386,14 @@ class OverlayController:
 
                 const style = document.createElement('style');
                 style.id = '{SCROLL_STYLE_ID}';
-                style.textContent = '@keyframes n1scroll{{0%{{opacity:0.7;transform:translate(-50%,-50%) rotate(0deg)}}100%{{opacity:0;transform:translate(-50%,-50%) rotate(360deg)}}}}';
+                style.textContent = '@keyframes n1scroll{{0%{{opacity:0.7;transform:translate(-50%,-50%) rotate({rotation}deg) translateY(0)}}100%{{opacity:0;transform:translate(-50%,-50%) rotate({rotation}deg) translateY({ty}px) translateX({tx}px)}}}}';
                 document.head.appendChild(style);
 
                 const container = document.createElement('div');
                 container.style.cssText = 'position:fixed;left:{x}px;top:{y}px;width:20px;height:20px;pointer-events:none;z-index:{Z_INDEX};animation:n1scroll {SCROLL_DURATION_MS}ms ease-out forwards;';
-                for (let i = 0; i < 2; i++) {{
-                    const dot = document.createElement('div');
-                    dot.style.cssText = 'position:absolute;width:4px;height:4px;background:{YUTORI_GREEN};border-radius:50%;left:50%;top:50%;transform-origin:0 0;transform:translate(-50%,-50%) rotate(' + (i * 180) + 'deg) translateY(-8px);';
-                    container.appendChild(dot);
-                }}
+                const chevron = document.createElement('div');
+                chevron.style.cssText = 'position:absolute;left:50%;top:50%;width:10px;height:10px;border-right:2px solid {YUTORI_GREEN};border-bottom:2px solid {YUTORI_GREEN};transform:translate(-50%,-70%) rotate(45deg);';
+                container.appendChild(chevron);
                 root.appendChild(container);
                 setTimeout(() => {{ container.remove(); style.remove(); }}, {SCROLL_DURATION_MS} + 100);
             }}"""
