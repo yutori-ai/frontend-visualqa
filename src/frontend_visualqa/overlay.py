@@ -279,21 +279,24 @@ class OverlayController:
         # position (first move or after a full-page navigation destroyed the DOM)
         # and teleports instead of transitioning.
         center: dict[str, int] | None = None
+        moved = False
         if action_type == "type":
             center = await self._get_focused_element_center()
             if center:
                 teleported = await self._move_cursor(center["x"], center["y"])
-            else:
-                teleported = True
+                moved = True
         elif action_type == "drag":
             teleported = await self._move_cursor(start_x, start_y)
+            moved = True
         else:
             teleported = await self._move_cursor(x, y)
+            moved = True
 
-        if teleported:
-            await asyncio.sleep(0.05)
-        else:
-            await asyncio.sleep(CURSOR_TRANSITION_MS / 1000)
+        if moved:
+            if teleported:
+                await asyncio.sleep(0.05)
+            else:
+                await asyncio.sleep(CURSOR_TRANSITION_MS / 1000)
 
         if action_type in {"left_click", "double_click", "triple_click", "right_click"}:
             await self._show_click_effect(x, y, num_clicks)

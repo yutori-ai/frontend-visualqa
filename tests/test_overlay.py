@@ -355,8 +355,8 @@ class TestOverlayPreviewAction:
 
     @pytest.mark.asyncio
     async def test_move_cursor_js_contains_teleport_logic(self) -> None:
-        """_move_cursor JS checks offScreen position and handles both paths."""
-        from frontend_visualqa.overlay import OverlayController
+        """_move_cursor JS detects off-screen via left==='-200px' and branches."""
+        from frontend_visualqa.overlay import CURSOR_TRANSITION_MS, OverlayController
 
         page = _make_mock_page()
         controller = OverlayController(page)
@@ -368,8 +368,16 @@ class TestOverlayPreviewAction:
         scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
         cursor_scripts = [s for s in scripts if "offScreen" in s]
         assert len(cursor_scripts) == 1
-        assert "transition" in cursor_scripts[0]
-        assert "none" in cursor_scripts[0]
+        js = cursor_scripts[0]
+        # Off-screen detection: checks the initial -200px position
+        assert "cursor.style.left === '-200px'" in js
+        # Teleport path: disables transition, sets position, forces reflow, re-enables
+        assert "cursor.style.transition = 'none'" in js
+        assert "cursor.offsetHeight" in js
+        assert f"left {CURSOR_TRANSITION_MS}ms ease-in-out" in js
+        # Both code paths return a boolean
+        assert "return true" in js
+        assert "return false" in js
 
 
 class TestOverlayScreenshotBoundary:
