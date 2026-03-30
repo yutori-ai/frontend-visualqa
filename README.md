@@ -231,6 +231,19 @@ frontend-visualqa verify 'http://localhost:8000/ecommerce_store.html#/cart' \
 # → fails: n1 sees the sale prices sum to $229.98 while the displayed subtotal is $279.98
 ```
 
+**Autonomous form filling** — n1 fills a multi-step form, picks a date, and catches a timezone bug:
+
+```bash
+frontend-visualqa verify 'http://localhost:8000/booking_form.html' \
+  --headed \
+  --max-steps-per-claim 25 \
+  --claims 'The date on the confirmation page matches the date selected on the calendar' \
+  --navigation-hint "Fill out the form with example data (grayed text is showing example format, not filled out values)"
+# → fails: n1 fills the form, picks a date, books the slot, and catches the off-by-one on the confirmation page
+```
+
+`--navigation-hint` gives n1 context it can't infer from pixels alone. Here, the booking form shows placeholder text like "John Doe" and "555-0123" — n1 can mistake these for already-filled values and skip the form. The hint tells it that grayed text is placeholder format, not real data, so it fills every field correctly.
+
 Use against your own frontend the same way — just swap the URL:
 
 ```bash
@@ -249,15 +262,6 @@ frontend-visualqa verify http://localhost:8000/ecommerce_store.html \
   --headed \
   --claims 'The cart badge shows 3 items' \
   --navigation-hint "Click 'Add to Cart' on the Mechanical Keyboard K7 product card."
-```
-
-Autonomous form filling — n1 picks a date and catches a timezone bug:
-
-```bash
-frontend-visualqa verify 'http://localhost:8000/booking_form.html#step3' \
-  --headed \
-  --claims 'The date on the confirmation page matches the date selected on the calendar'
-# → fails: n1 picks a date, books the slot, and catches the off-by-one on the confirmation page
 ```
 
 Scrolling to find off-screen content:
