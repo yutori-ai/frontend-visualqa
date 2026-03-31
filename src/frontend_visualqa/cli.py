@@ -18,6 +18,7 @@ from frontend_visualqa.errors import ConfigurationError
 from frontend_visualqa.mcp_server import close_runners_sync, configure_server, get_mcp_server
 from frontend_visualqa.serialization import serialize_result
 from frontend_visualqa.schemas import BrowserConfig, BrowserMode, ViewportConfig, validate_url
+from frontend_visualqa.text_utils import clip_text
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -256,16 +257,16 @@ def _handle_status(_: argparse.Namespace) -> int:
 
 async def _run_verify(args: argparse.Namespace) -> dict[str, Any]:
     claims_file: ParsedClaimsFile | None = None
-    claims = list(getattr(args, "claims", None) or [])
-    claims_file_path = getattr(args, "claims_file", None)
-    if claims_file_path:
-        claims_file = parse_claims_file(Path(claims_file_path))
+    if args.claims_file:
+        claims_file = parse_claims_file(Path(args.claims_file))
         claims = claims_file.claims
+    else:
+        claims = list(args.claims)
     await _preflight_verify_auth()
 
     runner = _new_runner(
         browser_config=_build_browser_config(args),
-        reporters=getattr(args, "reporter", None),
+        reporters=args.reporter,
     )
     try:
         total_claims = len(claims)
@@ -334,8 +335,6 @@ def _verify_exit_code(result: dict[str, Any]) -> int:
 
 
 def _truncate_for_progress(text: str, limit: int = 120) -> str:
-    from frontend_visualqa.text_utils import clip_text
-
     return clip_text(text, limit)
 
 
