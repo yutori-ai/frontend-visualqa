@@ -80,7 +80,7 @@ jobs:
           frontend-visualqa verify http://localhost:8000/yutori_login.html \
             --claims \
             'The email field shows "Please enter a valid email address" after submitting the empty form' \
-            --navigation-hint 'Click the Continue button without entering anything in the email or password fields.' \
+            --navigation-hint 'The grayed text in the fields is placeholder, not real input. Click the Continue button immediately without typing anything.' \
             --max-steps-per-claim 15 \
             --run-timeout-seconds 120 \
             --reporter native --reporter ctrf | tee visualqa-login-validation.json
