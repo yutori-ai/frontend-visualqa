@@ -24,6 +24,7 @@ from frontend_visualqa.prompts import (
     build_verification_task,
 )
 from frontend_visualqa.schemas import ClaimPage, ClaimProof, ClaimResult, ClaimStatus, ClaimTrace
+from frontend_visualqa.text_utils import clip_text
 from frontend_visualqa.tool_arguments import parse_tool_arguments
 
 if TYPE_CHECKING:
@@ -506,10 +507,7 @@ class ClaimVerifier:
         return result
 
     def _prepare_messages_for_request(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        trim_messages = getattr(self.n1_client, "trim_messages", None)
-        if callable(trim_messages):
-            return trim_messages(messages)
-        return messages
+        return self.n1_client.trim_messages(messages)
 
     @staticmethod
     def _model_tools() -> list[dict[str, Any]]:
@@ -608,8 +606,6 @@ class ClaimVerifier:
     def _clip_trace_output_preview(output_text: str | None) -> str | None:
         if output_text is None:
             return None
-        from frontend_visualqa.text_utils import clip_text
-
         clipped = clip_text(output_text, 280, ellipsis="…")
         return clipped or None
 

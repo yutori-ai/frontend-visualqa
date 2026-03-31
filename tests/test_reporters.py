@@ -506,6 +506,58 @@ def test_markdown_reporter_re_annotation_strips_stale_details_and_summary(tmp_pa
     assert "- [x] The heading reads 'Dashboard'" in round2_text
 
 
+def test_markdown_reporter_strips_legacy_unmarked_annotations_on_rerun(tmp_path: Path) -> None:
+    module = _import_reporters_module()
+    reporter = module.MarkdownReporter()
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1.0)
+    legacy_report = tmp_path / "legacy-report.md"
+    legacy_report.write_text(
+        (
+            "# Checks\n\n"
+            "- [ ] The heading reads 'Dashboard'\n"
+            "  Status: failed\n"
+            "  Finding: Heading says 'Home' instead.\n"
+            "\n"
+            "## Summary\n\n"
+            "Run summary: 0/1 claims passed. 1 failed.\n"
+        ),
+        encoding="utf-8",
+    )
+    claims_file = parse_claims_file(legacy_report)
+
+    run_result = RunResult(
+        overall_status="completed",
+        session_key="default",
+        run_name=None,
+        results=[
+            ClaimResult(
+                claim="The heading reads 'Dashboard'",
+                status="passed",
+                finding="Heading matches.",
+                proof=None,
+                page={"url": "http://localhost:3000", "viewport": viewport},
+                trace={
+                    "steps_taken": 0,
+                    "wrong_page_recovered": False,
+                    "screenshot_paths": [],
+                    "actions": [],
+                    "trace_path": None,
+                },
+            ),
+        ],
+        summary="1/1 claims passed.",
+        artifacts_dir=str(tmp_path),
+    )
+
+    reporter.write(run_result, tmp_path, claims_file=claims_file)
+
+    rendered = (tmp_path / "report.md").read_text()
+    assert "Status: failed" not in rendered
+    assert "Heading says 'Home' instead." not in rendered
+    assert rendered.count("## Summary") == 1
+    assert "- [x] The heading reads 'Dashboard'" in rendered
+
+
 def test_markdown_reporter_formats_additional_results_like_normal_claim_blocks(tmp_path: Path) -> None:
     module = _import_reporters_module()
     reporter = module.MarkdownReporter()

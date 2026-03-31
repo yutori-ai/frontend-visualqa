@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 
 from frontend_visualqa.errors import ConfigurationError
 
@@ -14,13 +14,16 @@ _TASK_MARKER_RE = re.compile(r"^\[(?: |x|X)\]\s*")
 _FENCE_RE = re.compile(r"^(?P<fence>`{3,}|~{3,})")
 
 
+ClaimBullet = Literal["-", "*"]
+
+
 @dataclass(frozen=True)
 class ParsedClaimLine:
     """Metadata for a claim line in a Markdown source file."""
 
     claim: str
     line_index: int
-    bullet: Literal["-", "*"]
+    bullet: ClaimBullet
 
 
 @dataclass(frozen=True)
@@ -75,7 +78,7 @@ def parse_claims_file(path: Path) -> ParsedClaimsFile:
         if raw_line[0] not in "-*":
             continue
 
-        bullet = raw_line[0]
+        bullet = cast(ClaimBullet, raw_line[0])
         if len(raw_line) == 1 or not raw_line[1].isspace():
             continue
 
@@ -87,7 +90,7 @@ def parse_claims_file(path: Path) -> ParsedClaimsFile:
             ParsedClaimLine(
                 claim=claim,
                 line_index=line_index,
-                bullet=bullet,  # type: ignore[arg-type]  # validated by raw_line[0] check above
+                bullet=bullet,
             )
         )
 
