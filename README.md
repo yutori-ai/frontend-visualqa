@@ -244,20 +244,27 @@ frontend-visualqa verify 'http://localhost:8000/booking_form.html' \
 
 `--navigation-hint` gives n1 context it can't infer from pixels alone. Here, the booking form shows placeholder text like "John Doe" and "555-0123" — n1 can mistake these for already-filled values and skip the form. The hint tells it that grayed text is placeholder format, not real data, so it fills every field correctly.
 
-**Login flow with visual bug detection** — n1 fills a login form, enters the dashboard, and catches a progress bar mismatch. `--no-reset-between-claims` keeps the session alive so claims 2 and 3 start from the already-loaded dashboard:
+**Login flow with visual bug detection** — use a persistent session to log in once, then verify the dashboard in a separate step without the navigation hint:
 
 ```bash
+# Step 1: Log in (navigation hint tells n1 how to fill the form)
+frontend-visualqa verify http://localhost:8000/yutori_login.html \
+  --headed \
+  --browser-mode persistent \
+  --max-steps-per-claim 20 \
+  --claims 'After logging in, the dashboard shows "Welcome back, Developer"' \
+  --navigation-hint 'Type "test@yutori.com" in the email field, type "password123" in the password field, then click Continue. Wait for the dashboard to load.'
+
+# Step 2: Verify dashboard (same persistent session — already logged in, no hint needed)
 frontend-visualqa verify http://localhost:8000/yutori_login.html \
   --headed \
   --browser-mode persistent \
   --no-reset-between-claims \
   --max-steps-per-claim 20 \
   --claims \
-  'After logging in, the dashboard shows "Welcome back, Developer"' \
   'The API Calls Today stat card shows the value 1,247' \
-  'The Monthly Quota progress bar fill matches the percentage shown in the label' \
-  --navigation-hint 'Type "test@yutori.com" in the email field, type "password123" in the password field, then click Continue. Wait for the dashboard to load.'
-# → first two claims pass, third fails: label says "100% used" but the progress bar is ~40% filled
+  'The Monthly Quota progress bar fill matches the percentage shown in the label'
+# → first claim passes, second fails: label says "100% used" but the progress bar is ~40% filled
 ```
 
 Use against your own frontend the same way — just swap the URL:
@@ -298,18 +305,24 @@ frontend-visualqa verify http://localhost:8000/yutori_login.html \
   --navigation-hint 'Click the Continue button without entering anything in the email or password fields.'
 ```
 
-Logging in and verifying the dashboard (persistent session — login once, check multiple claims):
+Persistent session — log in once, then verify the dashboard without repeating the hint:
 
 ```bash
+# Login step (with hint)
+frontend-visualqa verify http://localhost:8000/yutori_login.html \
+  --headed \
+  --browser-mode persistent \
+  --max-steps-per-claim 20 \
+  --claims 'After logging in, the dashboard shows "Welcome back, Developer"' \
+  --navigation-hint 'Type "test@yutori.com" in the email field, type "password123" in the password field, then click Continue. Wait for the dashboard to load.'
+
+# Dashboard step (already logged in, no hint)
 frontend-visualqa verify http://localhost:8000/yutori_login.html \
   --headed \
   --browser-mode persistent \
   --no-reset-between-claims \
   --max-steps-per-claim 20 \
-  --claims \
-  'After logging in, the dashboard shows "Welcome back, Developer"' \
-  'The API Calls Today stat card shows the value 1,247' \
-  --navigation-hint 'Type "test@yutori.com" in the email field, type "password123" in the password field, then click Continue. Wait for the dashboard to load.'
+  --claims 'The API Calls Today stat card shows the value 1,247'
 ```
 
 </details>

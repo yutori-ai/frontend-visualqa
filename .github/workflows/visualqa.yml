@@ -85,9 +85,20 @@ jobs:
             --run-timeout-seconds 120 \
             --reporter native --reporter ctrf | tee visualqa-login-validation.json
 
-      # ── Dashboard — login once, verify dashboard, catch visual bug ──
+      # ── Dashboard — login once, then verify without repeating the hint ──
 
-      - name: Visual QA — Login and verify dashboard
+      - name: Visual QA — Login to dashboard
+        run: |
+          set -o pipefail
+          frontend-visualqa verify http://localhost:8000/yutori_login.html \
+            --browser-mode persistent \
+            --claims 'After logging in, the dashboard shows "Welcome back, Developer"' \
+            --navigation-hint 'Type "test@yutori.com" in the email field, type "password123" in the password field, then click Continue. Wait for the dashboard to load.' \
+            --max-steps-per-claim 20 \
+            --run-timeout-seconds 240 \
+            --reporter native --reporter ctrf | tee visualqa-login.json
+
+      - name: Visual QA — Dashboard claims (persistent session)
         run: |
           set -o pipefail
           exit_code=0
@@ -95,16 +106,14 @@ jobs:
             --browser-mode persistent \
             --no-reset-between-claims \
             --claims \
-            'After logging in, the dashboard shows "Welcome back, Developer"' \
             'The API Calls Today stat card shows the value 1,247' \
             'The Monthly Quota progress bar fill matches the percentage shown in the label' \
-            --navigation-hint 'Type "test@yutori.com" in the email field, type "password123" in the password field, then click Continue. Wait for the dashboard to load.' \
             --max-steps-per-claim 20 \
-            --run-timeout-seconds 300 \
+            --run-timeout-seconds 240 \
             --reporter native --reporter ctrf | tee visualqa-dashboard.json \
             || exit_code=$?
 
-          # Claims 1-2 should pass, claim 3 (progress bar bug) should fail
+          # Claim 1 should pass, claim 2 (progress bar bug) should fail
           if [ "$exit_code" -eq 0 ]; then
             echo "::error::All claims passed — the progress bar bug may have been fixed or the check is broken"
             exit 1
@@ -123,8 +132,8 @@ jobs:
               print('::error::No results in output'); sys.exit(1)
           passed = [r for r in results if r.get('status') == 'passed']
           failed = [r for r in results if r.get('status') == 'failed']
-          if len(passed) < 2:
-              print(f'::error::Expected 2+ passing claims, got {len(passed)}'); sys.exit(1)
+          if not passed:
+              print('::error::Expected at least 1 passing claim, got 0'); sys.exit(1)
           if not failed:
               print('::error::No failed claims — progress bar bug not detected'); sys.exit(1)
           print(f'OK: {len(passed)} passed, {len(failed)} failed (progress bar bug detected)')
