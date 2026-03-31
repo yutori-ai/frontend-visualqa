@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -10,11 +11,11 @@ from frontend_visualqa.errors import ConfigurationError
 from frontend_visualqa.schemas import BrowserConfig, BrowserMode, BrowserStatusResult, ClaimResult, RunResult, ScreenshotResult, ViewportConfig
 
 
-def _sample_claim_result(*, url: str, viewport: ViewportConfig) -> ClaimResult:
+def _sample_claim_result(*, url: str, viewport: ViewportConfig, claim: str = "The modal title reads Edit Task") -> ClaimResult:
     return ClaimResult(
-        claim="The modal title reads Edit Task",
+        claim=claim,
         status="passed",
-        finding="The modal title reads Edit Task.",
+        finding=f"{claim}.",
         proof={
             "screenshot_path": "artifacts/run-fake/claim-01/step-00.webp",
             "step": 0,
@@ -58,12 +59,23 @@ class FakeRunner:
     async def run(self, **kwargs: Any) -> RunResult:
         self.run_calls.append(kwargs)
         viewport = kwargs.get("viewport", ViewportConfig())
+        claims = list(kwargs.get("claims", [])) or ["The modal title reads Edit Task"]
+        on_claim_start = kwargs.get("on_claim_start")
+        on_claim_complete = kwargs.get("on_claim_complete")
+        results: list[ClaimResult] = []
+        for index, claim in enumerate(claims, start=1):
+            if callable(on_claim_start):
+                on_claim_start(index, claim)
+            result = _sample_claim_result(url=kwargs["url"], viewport=viewport, claim=claim)
+            if callable(on_claim_complete):
+                on_claim_complete(index, claim, result)
+            results.append(result)
         return RunResult(
             overall_status="completed",
             session_key=kwargs["session_key"],
             run_name=kwargs.get("run_name"),
-            results=[_sample_claim_result(url=kwargs["url"], viewport=viewport)],
-            summary="1/1 claims passed.",
+            results=results,
+            summary=f"{len(results)}/{len(results)} claims passed.",
             artifacts_dir="artifacts/run-fake",
         )
 
@@ -166,6 +178,7 @@ def test_handle_verify_closes_runner_and_forwards_browser_config(monkeypatch: An
         SimpleNamespace(
             url="http://localhost:3000/tasks/123",
             claims=["The modal title reads Edit Task"],
+            claims_file=None,
             width=1280,
             height=800,
             device_scale_factor=1.0,
@@ -309,6 +322,7 @@ def test_handle_verify_passes_reporters_to_runner(monkeypatch: Any) -> None:
         SimpleNamespace(
             url="http://localhost:3000/tasks/123",
             claims=["The modal title reads Edit Task"],
+            claims_file=None,
             width=1280,
             height=800,
             device_scale_factor=1.0,
@@ -329,6 +343,170 @@ def test_handle_verify_passes_reporters_to_runner(monkeypatch: Any) -> None:
 
     assert exit_code == 0
     assert captured_reporters == [["native", "ctrf"]]
+
+
+def test_verify_parser_rejects_claims_and_claims_file_together(capsys: pytest.CaptureFixture[str]) -> None:
+    from frontend_visualqa.cli import build_parser
+
+    parser = build_parser()
+    with pytest.raises(SystemExit, match="2"):
+        parser.parse_args(
+            [
+                "verify",
+                "http://localhost:3000",
+                "--claims",
+                "one",
+                "--claims-file",
+                "claims.md",
+            ]
+        )
+    assert "not allowed with argument" in capsys.readouterr().err
+
+
+def test_handle_verify_reads_claims_file_and_emits_progress(
+    monkeypatch: Any,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import frontend_visualqa.cli as cli
+
+    claims_file = tmp_path / "claims.md"
+    claims_file.write_text(
+        """# Dashboard checks
+
+- The modal title reads Edit Task
+- The API status indicator shows Active
+""",
+        encoding="utf-8",
+    )
+
+    fake_runner = FakeRunner()
+    emitted: list[dict[str, Any]] = []
+    captured_reporters: list[list[str] | None] = []
+
+    def _fake_new_runner(*, browser_config=None, reporters=None):
+        captured_reporters.append(reporters)
+        return fake_runner
+
+    monkeypatch.setattr(cli, "_new_runner", _fake_new_runner)
+    monkeypatch.setattr(cli, "_emit_json", emitted.append)
+    monkeypatch.setattr(cli, "_preflight_verify_auth", _noop_preflight_verify_auth)
+
+    exit_code = cli._handle_verify(
+        SimpleNamespace(
+            url="http://localhost:3000/tasks/123",
+            claims=None,
+            claims_file=str(claims_file),
+            width=1280,
+            height=800,
+            device_scale_factor=1.0,
+            browser_mode="ephemeral",
+            user_data_dir=None,
+            headed=False,
+            session_key="default",
+            run_name=None,
+            reuse_session=True,
+            reset_between_claims=True,
+            max_steps_per_claim=12,
+            claim_timeout_seconds=120.0,
+            run_timeout_seconds=300.0,
+            navigation_hint=None,
+            reporter=["markdown"],
+        )
+    )
+
+    assert exit_code == 0
+    assert captured_reporters == [["markdown"]]
+    assert fake_runner.run_calls[0]["claims"] == [
+        "The modal title reads Edit Task",
+        "The API status indicator shows Active",
+    ]
+    assert fake_runner.run_calls[0]["claims_file"].source_path == claims_file
+    stderr = capsys.readouterr().err
+    assert "[1/2] Verifying: The modal title reads Edit Task" in stderr
+    assert "[2/2] passed" in stderr
+
+
+def test_handle_verify_rejects_missing_claims_file(
+    monkeypatch: Any,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import frontend_visualqa.cli as cli
+
+    emitted: list[dict[str, Any]] = []
+    monkeypatch.setattr(cli, "_emit_json", emitted.append)
+    monkeypatch.setattr(cli, "_preflight_verify_auth", _noop_preflight_verify_auth)
+
+    exit_code = cli._handle_verify(
+        SimpleNamespace(
+            url="http://localhost:3000/tasks/123",
+            claims=None,
+            claims_file=str(tmp_path / "missing.md"),
+            width=1280,
+            height=800,
+            device_scale_factor=1.0,
+            browser_mode="ephemeral",
+            user_data_dir=None,
+            headed=False,
+            session_key="default",
+            run_name=None,
+            reuse_session=True,
+            reset_between_claims=True,
+            max_steps_per_claim=12,
+            claim_timeout_seconds=120.0,
+            run_timeout_seconds=300.0,
+            navigation_hint=None,
+            reporter=None,
+        )
+    )
+
+    assert exit_code == 1
+    assert emitted == []
+    assert "Claims file" in capsys.readouterr().err
+
+
+def test_handle_verify_checks_claims_file_before_auth_preflight(
+    monkeypatch: Any,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import frontend_visualqa.cli as cli
+
+    emitted: list[dict[str, Any]] = []
+
+    async def _failing_preflight() -> None:
+        raise AssertionError("auth preflight should not run for a missing claims file")
+
+    monkeypatch.setattr(cli, "_emit_json", emitted.append)
+    monkeypatch.setattr(cli, "_preflight_verify_auth", _failing_preflight)
+
+    exit_code = cli._handle_verify(
+        SimpleNamespace(
+            url="http://localhost:3000/tasks/123",
+            claims=None,
+            claims_file=str(tmp_path / "missing.md"),
+            width=1280,
+            height=800,
+            device_scale_factor=1.0,
+            browser_mode="ephemeral",
+            user_data_dir=None,
+            headed=False,
+            session_key="default",
+            run_name=None,
+            reuse_session=True,
+            reset_between_claims=True,
+            max_steps_per_claim=12,
+            claim_timeout_seconds=120.0,
+            run_timeout_seconds=300.0,
+            navigation_hint=None,
+            reporter=None,
+        )
+    )
+
+    assert exit_code == 1
+    assert emitted == []
+    assert "Claims file" in capsys.readouterr().err
 
 
 def test_handle_verify_returns_nonzero_when_any_claim_is_not_passed(monkeypatch: Any) -> None:
@@ -373,6 +551,7 @@ def test_handle_verify_returns_nonzero_when_any_claim_is_not_passed(monkeypatch:
         SimpleNamespace(
             url="http://localhost:3000/tasks/123",
             claims=["The modal title reads Edit Task"],
+            claims_file=None,
             width=1280,
             height=800,
             device_scale_factor=1.0,
@@ -415,6 +594,7 @@ def test_handle_verify_returns_nonzero_without_json_when_auth_preflight_fails(
         SimpleNamespace(
             url="http://localhost:3000/tasks/123",
             claims=["The modal title reads Edit Task"],
+            claims_file=None,
             width=1280,
             height=800,
             device_scale_factor=1.0,

@@ -7,6 +7,8 @@ import base64
 import logging
 from typing import TYPE_CHECKING
 
+from frontend_visualqa.text_utils import clip_text
+
 if TYPE_CHECKING:
     from playwright.async_api import Page
 
@@ -554,7 +556,4 @@ class OverlayController:
 
     @staticmethod
     def _clip_text(text: str, limit: int) -> str:
-        normalized = " ".join(str(text).split())
-        if len(normalized) <= limit:
-            return normalized
-        return normalized[: max(limit - 1, 0)].rstrip() + "…"
+        return clip_text(str(text), limit, ellipsis="…")

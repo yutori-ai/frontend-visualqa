@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from frontend_visualqa.claim_parser import ParsedClaimLine, ParsedClaimsFile, parse_claims_file
 from frontend_visualqa.schemas import ClaimResult, RunResult, ViewportConfig
 
 
@@ -74,6 +75,61 @@ def _sample_run_result(artifacts_dir: str) -> RunResult:
     )
 
 
+def _duplicate_claim_run_result(artifacts_dir: str) -> RunResult:
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1.0)
+    return RunResult(
+        overall_status="completed",
+        session_key="default",
+        run_name="duplicate-claims",
+        results=[
+            ClaimResult(
+                claim="The heading reads 'Dashboard'",
+                status="passed",
+                finding="Visible heading matched 'Dashboard'.",
+                proof={
+                    "screenshot_path": "artifacts/run-002/claim-01/step-00.webp",
+                    "step": 0,
+                    "after_action": None,
+                    "text": None,
+                    "text_path": None,
+                },
+                page={"url": "http://localhost:3000/dashboard", "viewport": viewport},
+                trace={
+                    "steps_taken": 0,
+                    "wrong_page_recovered": False,
+                    "screenshot_paths": ["artifacts/run-002/claim-01/step-00.webp"],
+                    "actions": [],
+                    "trace_path": None,
+                },
+            ),
+            ClaimResult(
+                claim="The heading reads 'Dashboard'",
+                status="failed",
+                finding="The second heading is missing.",
+                proof={
+                    "screenshot_path": "artifacts/run-002/claim-02/step-01.webp",
+                    "step": 1,
+                    "after_action": None,
+                    "text": None,
+                    "text_path": None,
+                },
+                page={"url": "http://localhost:3000/dashboard", "viewport": viewport},
+                trace={
+                    "steps_taken": 1,
+                    "wrong_page_recovered": False,
+                    "screenshot_paths": ["artifacts/run-002/claim-02/step-01.webp"],
+                    "actions": [],
+                    "trace_path": None,
+                },
+            ),
+        ],
+        summary="1/2 claims passed. 1 failed.",
+        artifacts_dir=artifacts_dir,
+    )
+
+
+
+
 def _assert_claim_result_payload_shape(result: dict[str, object]) -> None:
     assert set(result) == {"claim", "status", "finding", "proof", "page", "trace"}
 
@@ -136,6 +192,13 @@ def test_get_reporters_returns_requested_reporters() -> None:
     names = [r.name for r in reporters]
     assert "native" in names
     assert len(reporters) == 1
+
+
+def test_get_reporters_returns_markdown_reporter() -> None:
+    module = _import_reporters_module()
+    reporters = module.get_reporters(["markdown"])
+    assert len(reporters) == 1
+    assert reporters[0].name == "markdown"
 
 
 def test_get_reporters_raises_on_unknown_reporter() -> None:
@@ -301,6 +364,250 @@ def test_ctrf_reporter_name() -> None:
     module = _import_reporters_module()
     reporter = module.CTRFReporter()
     assert reporter.name == "ctrf"
+
+
+def test_markdown_reporter_name() -> None:
+    module = _import_reporters_module()
+    reporter = module.MarkdownReporter()
+    assert reporter.name == "markdown"
+
+
+def test_markdown_reporter_annotates_source_markdown_and_preserves_non_claim_lines(tmp_path: Path) -> None:
+    module = _import_reporters_module()
+    reporter = module.MarkdownReporter()
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1.0)
+    run_result = _duplicate_claim_run_result(str(tmp_path))
+    source = ParsedClaimsFile(
+        source_path=tmp_path / "claims.md",
+        source_content=(
+            "# Dashboard checks\n"
+            "\n"
+            "A note above the claims.\n"
+            "\n"
+            "- The heading reads 'Dashboard'\n"
+            "  - Nested note that should stay untouched\n"
+            "- The heading reads 'Dashboard'\n"
+            "\n"
+            "Trailing note.\n"
+        ),
+        lines=(
+            ParsedClaimLine(line_index=4, bullet="-", claim="The heading reads 'Dashboard'"),
+            ParsedClaimLine(line_index=6, bullet="-", claim="The heading reads 'Dashboard'"),
+        ),
+    )
+
+    reporter.write(run_result, tmp_path, claims_file=source)
+
+    output_path = tmp_path / "report.md"
+    assert output_path.exists()
+    rendered = output_path.read_text()
+    assert "# Dashboard checks" in rendered
+    assert "A note above the claims." in rendered
+    assert "Trailing note." in rendered
+    assert "  - Nested note that should stay untouched" in rendered
+    assert rendered.count("- [x] The heading reads 'Dashboard'") == 1
+    assert rendered.count("- [ ] The heading reads 'Dashboard'") == 1
+    assert "  Status: failed" in rendered
+    assert "  Finding: The second heading is missing." in rendered
+    assert "## Summary" in rendered
+    assert "Run summary: 1/2 claims passed. 1 failed." in rendered
+    assert run_result.results[0].page.viewport == viewport
+
+
+def test_markdown_reporter_output_is_rerunnable_as_claim_input(tmp_path: Path) -> None:
+    module = _import_reporters_module()
+    reporter = module.MarkdownReporter()
+    run_result = _duplicate_claim_run_result(str(tmp_path))
+    source_path = tmp_path / "claims.md"
+    source_path.write_text(
+        "# Dashboard checks\n\n- The heading reads 'Dashboard'\n- The heading reads 'Dashboard'\n",
+        encoding="utf-8",
+    )
+    claims_file = parse_claims_file(source_path)
+
+    reporter.write(run_result, tmp_path, claims_file=claims_file)
+
+    reparsed = parse_claims_file(tmp_path / "report.md")
+    assert reparsed.claims == claims_file.claims
+
+
+def test_markdown_reporter_re_annotation_strips_stale_details_and_summary(tmp_path: Path) -> None:
+    """Re-annotating an already-annotated file should not accumulate stale detail lines or duplicate summaries."""
+    module = _import_reporters_module()
+    reporter = module.MarkdownReporter()
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1.0)
+
+    # First run: one claim fails
+    run1_result = RunResult(
+        overall_status="completed",
+        session_key="default",
+        run_name=None,
+        results=[
+            ClaimResult(
+                claim="The heading reads 'Dashboard'",
+                status="failed",
+                finding="Heading says 'Home' instead.",
+                proof=None,
+                page={"url": "http://localhost:3000", "viewport": viewport},
+                trace={"steps_taken": 0, "wrong_page_recovered": False, "screenshot_paths": [], "actions": [], "trace_path": None},
+            ),
+        ],
+        summary="0/1 claims passed. 1 failed.",
+        artifacts_dir=str(tmp_path),
+    )
+
+    source_path = tmp_path / "claims.md"
+    source_path.write_text("# Checks\n\n- The heading reads 'Dashboard'\n", encoding="utf-8")
+    claims_file1 = parse_claims_file(source_path)
+    out1 = tmp_path / "round1"
+    out1.mkdir()
+    reporter.write(run1_result, out1, claims_file=claims_file1)
+
+    round1_report = out1 / "report.md"
+    round1_text = round1_report.read_text()
+    assert round1_text.count("## Summary") == 1
+    assert "  Status: failed" in round1_text
+
+    # Second run: same claim now passes — reparse the annotated output
+    claims_file2 = parse_claims_file(round1_report)
+    assert claims_file2.claims == ["The heading reads 'Dashboard'"]
+
+    run2_result = RunResult(
+        overall_status="completed",
+        session_key="default",
+        run_name=None,
+        results=[
+            ClaimResult(
+                claim="The heading reads 'Dashboard'",
+                status="passed",
+                finding="Heading matches.",
+                proof=None,
+                page={"url": "http://localhost:3000", "viewport": viewport},
+                trace={"steps_taken": 0, "wrong_page_recovered": False, "screenshot_paths": [], "actions": [], "trace_path": None},
+            ),
+        ],
+        summary="1/1 claims passed.",
+        artifacts_dir=str(tmp_path),
+    )
+
+    out2 = tmp_path / "round2"
+    out2.mkdir()
+    reporter.write(run2_result, out2, claims_file=claims_file2)
+
+    round2_text = (out2 / "report.md").read_text()
+
+    # No stale detail lines from the prior failed run
+    assert "Status: failed" not in round2_text
+    assert "Heading says" not in round2_text
+    # Exactly one summary section
+    assert round2_text.count("## Summary") == 1
+    assert "1/1 claims passed." in round2_text
+    # The claim is now passing
+    assert "- [x] The heading reads 'Dashboard'" in round2_text
+
+
+def test_markdown_reporter_strips_legacy_unmarked_annotations_on_rerun(tmp_path: Path) -> None:
+    module = _import_reporters_module()
+    reporter = module.MarkdownReporter()
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1.0)
+    legacy_report = tmp_path / "legacy-report.md"
+    legacy_report.write_text(
+        (
+            "# Checks\n\n"
+            "- [ ] The heading reads 'Dashboard'\n"
+            "  Status: failed\n"
+            "  Finding: Heading says 'Home' instead.\n"
+            "\n"
+            "## Summary\n\n"
+            "Run summary: 0/1 claims passed. 1 failed.\n"
+        ),
+        encoding="utf-8",
+    )
+    claims_file = parse_claims_file(legacy_report)
+
+    run_result = RunResult(
+        overall_status="completed",
+        session_key="default",
+        run_name=None,
+        results=[
+            ClaimResult(
+                claim="The heading reads 'Dashboard'",
+                status="passed",
+                finding="Heading matches.",
+                proof=None,
+                page={"url": "http://localhost:3000", "viewport": viewport},
+                trace={
+                    "steps_taken": 0,
+                    "wrong_page_recovered": False,
+                    "screenshot_paths": [],
+                    "actions": [],
+                    "trace_path": None,
+                },
+            ),
+        ],
+        summary="1/1 claims passed.",
+        artifacts_dir=str(tmp_path),
+    )
+
+    reporter.write(run_result, tmp_path, claims_file=claims_file)
+
+    rendered = (tmp_path / "report.md").read_text()
+    assert "Status: failed" not in rendered
+    assert "Heading says 'Home' instead." not in rendered
+    assert rendered.count("## Summary") == 1
+    assert "- [x] The heading reads 'Dashboard'" in rendered
+
+
+def test_markdown_reporter_formats_additional_results_like_normal_claim_blocks(tmp_path: Path) -> None:
+    module = _import_reporters_module()
+    reporter = module.MarkdownReporter()
+    run_result = _sample_run_result(str(tmp_path))
+    source = ParsedClaimsFile(
+        source_path=tmp_path / "claims.md",
+        source_content="- The heading reads 'Dashboard'\n",
+        lines=(ParsedClaimLine(line_index=0, bullet="-", claim="The heading reads 'Dashboard'"),),
+    )
+
+    reporter.write(run_result, tmp_path, claims_file=source)
+
+    rendered = (tmp_path / "report.md").read_text()
+    assert "## Additional Results" in rendered
+    assert "- [ ] The progress bar shows 100%" in rendered
+    assert "  Status: failed" in rendered
+    assert "  Finding: Progress bar shows 65%, not 100%." in rendered
+    assert "  - Status:" not in rendered
+    assert "  - Finding:" not in rendered
+
+
+def test_markdown_reporter_synthesizes_markdown_without_source(tmp_path: Path) -> None:
+    module = _import_reporters_module()
+    reporter = module.MarkdownReporter()
+    run_result = _sample_run_result(str(tmp_path))
+
+    reporter.write(run_result, tmp_path)
+
+    rendered = (tmp_path / "report.md").read_text()
+    assert "# frontend-visualqa report" in rendered
+    assert "Run: dashboard-ci" in rendered
+    assert "Artifacts: " in rendered
+    assert "## Claims" in rendered
+    assert "- [x] The heading reads 'Dashboard'" in rendered
+    assert "- [ ] The progress bar shows 100%" in rendered
+    assert "  Status: failed" in rendered
+    assert "  Finding: Progress bar shows 65%, not 100%." in rendered
+    assert "## Summary" in rendered
+    assert "Run summary: 1/2 claims passed. 1 failed." in rendered
+
+
+def test_markdown_reporter_synthesized_output_is_rerunnable(tmp_path: Path) -> None:
+    module = _import_reporters_module()
+    reporter = module.MarkdownReporter()
+    run_result = _sample_run_result(str(tmp_path))
+
+    reporter.write(run_result, tmp_path)
+
+    reparsed = parse_claims_file(tmp_path / "report.md")
+    assert reparsed.claims == [r.claim for r in run_result.results]
 
 
 def test_ctrf_output_validates_against_official_schema(tmp_path: Path) -> None:
