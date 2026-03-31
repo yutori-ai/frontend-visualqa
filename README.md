@@ -244,18 +244,23 @@ frontend-visualqa verify 'http://localhost:8000/booking_form.html' \
 
 `--navigation-hint` gives n1 context it can't infer from pixels alone. Here, the booking form shows placeholder text like "John Doe" and "555-0123" — n1 can mistake these for already-filled values and skip the form. The hint tells it that grayed text is placeholder format, not real data, so it fills every field correctly.
 
-**Login flow with visual bug detection** — n1 fills a login form, enters the dashboard, and verifies multiple claims without re-navigating. The navigation hint drives claim 1 (login); claims 2-3 run on the already-loaded dashboard:
+**Login flow with visual bug detection** — when only the first claim needs setup, put the hint next to that claim in a claims file. The runner reuses the logged-in session for later claims, and only the claim that carries the hint gets the login guidance:
+
+```md
+# Login flow
+
+- After logging in, the dashboard shows "Welcome back, Developer"
+  - navigation_hint: Type "test@yutori.com" in the email field, type "password123" in the password field, then click Continue. Wait for the dashboard to load.
+- The API Calls Today stat card shows the value 1,247
+- The Monthly Quota progress bar fill matches the percentage shown in the label
+```
 
 ```bash
 frontend-visualqa verify http://localhost:8000/yutori_login.html \
   --headed \
   --no-reset-between-claims \
   --max-steps-per-claim 20 \
-  --claims \
-  'After logging in, the dashboard shows "Welcome back, Developer"' \
-  'The API Calls Today stat card shows the value 1,247' \
-  'The Monthly Quota progress bar fill matches the percentage shown in the label' \
-  --navigation-hint 'Type "test@yutori.com" in the email field, type "password123" in the password field, then click Continue. Wait for the dashboard to load.'
+  --claims-file /tmp/login-flow.md
 # → first two claims pass, third fails: label says "100% used" but the progress bar is ~40% filled
 ```
 
@@ -297,19 +302,7 @@ frontend-visualqa verify http://localhost:8000/yutori_login.html \
   --navigation-hint 'The grayed text in the fields is placeholder, not real input. Click the Continue button immediately without typing anything.'
 ```
 
-Persistent session across claims — log in once, then verify multiple dashboard claims without re-navigating:
-
-```bash
-frontend-visualqa verify http://localhost:8000/yutori_login.html \
-  --headed \
-  --no-reset-between-claims \
-  --max-steps-per-claim 20 \
-  --claims \
-  'After logging in, the dashboard shows "Welcome back, Developer"' \
-  'The API Calls Today stat card shows the value 1,247' \
-  --navigation-hint 'Type "test@yutori.com" in the email field, type "password123" in the password field, then click Continue. Wait for the dashboard to load.'
-# → hint drives claim 1 (login); claim 2 runs on the already-loaded dashboard
-```
+Persistent session across claims — if different claims need different setup, use `--claims-file` with per-claim metadata or split warm-session MCP calls instead of relying on one global hint to apply selectively inside the batch.
 
 </details>
 
@@ -383,6 +376,14 @@ Markdown claims file example:
 - The API status indicator shows Active
 ```
 
+Per-claim metadata can live under an individual claim bullet:
+
+```md
+- After logging in, the dashboard shows "Welcome back, Developer"
+  - navigation_hint: Type "test@yutori.com" in the email field, type "password123" in the password field, then click Continue.
+- The API Calls Today stat card shows the value 1,247
+```
+
 ```bash
 frontend-visualqa verify http://localhost:3000/analytics_dashboard.html \
   --claims-file /tmp/claims.md \
@@ -391,6 +392,7 @@ frontend-visualqa verify http://localhost:3000/analytics_dashboard.html \
 ```
 
 This file-based input path is CLI-only; the MCP tool still takes an explicit `list[str]` of claims.
+For MCP and skill-driven workflows, make separate warm-session `verify_visual_claims` calls when the setup differs between claims instead of expecting one navigation hint to apply selectively within a batch.
 
 ## Browser modes and visualization
 

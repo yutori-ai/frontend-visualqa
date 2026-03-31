@@ -343,6 +343,7 @@ def test_handle_verify_passes_reporters_to_runner(monkeypatch: Any) -> None:
 
     assert exit_code == 0
     assert captured_reporters == [["native", "ctrf"]]
+    assert fake_runner.run_calls[0]["claim_navigation_hints"] is None
 
 
 def test_verify_parser_rejects_claims_and_claims_file_together(capsys: pytest.CaptureFixture[str]) -> None:
@@ -375,6 +376,7 @@ def test_handle_verify_reads_claims_file_and_emits_progress(
         """# Dashboard checks
 
 - The modal title reads Edit Task
+  - navigation_hint: Open the task modal before judging.
 - The API status indicator shows Active
 """,
         encoding="utf-8",
@@ -410,7 +412,7 @@ def test_handle_verify_reads_claims_file_and_emits_progress(
             max_steps_per_claim=12,
             claim_timeout_seconds=120.0,
             run_timeout_seconds=300.0,
-            navigation_hint=None,
+            navigation_hint="Fallback hint for claims without one.",
             reporter=["markdown"],
         )
     )
@@ -421,10 +423,70 @@ def test_handle_verify_reads_claims_file_and_emits_progress(
         "The modal title reads Edit Task",
         "The API status indicator shows Active",
     ]
+    assert fake_runner.run_calls[0]["claim_navigation_hints"] == [
+        "Open the task modal before judging.",
+        None,
+    ]
     assert fake_runner.run_calls[0]["claims_file"].source_path == claims_file
+    assert fake_runner.run_calls[0]["navigation_hint"] == "Fallback hint for claims without one."
     stderr = capsys.readouterr().err
     assert "[1/2] Verifying: The modal title reads Edit Task" in stderr
     assert "[2/2] passed" in stderr
+
+
+def test_handle_verify_reads_claims_file_with_second_claim_navigation_hint(
+    monkeypatch: Any,
+    tmp_path: Path,
+) -> None:
+    import frontend_visualqa.cli as cli
+
+    claims_file = tmp_path / "claims.md"
+    claims_file.write_text(
+        """# Dashboard checks
+
+- The modal title reads Edit Task
+- The API status indicator shows Active
+  - navigation_hint: Scroll to the status card before judging.
+""",
+        encoding="utf-8",
+    )
+
+    fake_runner = FakeRunner()
+    emitted: list[dict[str, Any]] = []
+
+    monkeypatch.setattr(cli, "_new_runner", lambda **_: fake_runner)
+    monkeypatch.setattr(cli, "_emit_json", emitted.append)
+    monkeypatch.setattr(cli, "_preflight_verify_auth", _noop_preflight_verify_auth)
+
+    exit_code = cli._handle_verify(
+        SimpleNamespace(
+            url="http://localhost:3000/tasks/123",
+            claims=None,
+            claims_file=str(claims_file),
+            width=1280,
+            height=800,
+            device_scale_factor=1.0,
+            browser_mode="ephemeral",
+            user_data_dir=None,
+            headed=False,
+            session_key="default",
+            run_name=None,
+            reuse_session=True,
+            reset_between_claims=True,
+            max_steps_per_claim=12,
+            claim_timeout_seconds=120.0,
+            run_timeout_seconds=300.0,
+            navigation_hint="Fallback hint for claims without one.",
+            reporter=None,
+        )
+    )
+
+    assert exit_code == 0
+    assert emitted[0]["overall_status"] == "completed"
+    assert fake_runner.run_calls[0]["claim_navigation_hints"] == [
+        None,
+        "Scroll to the status card before judging.",
+    ]
 
 
 def test_handle_verify_rejects_missing_claims_file(

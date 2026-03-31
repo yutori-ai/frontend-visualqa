@@ -36,6 +36,16 @@ Claims must be observable from pixels. Open `references/claim-writing.md` for ex
 
 If a claim requires interaction before it becomes true or false, pass a `navigation_hint`. Keep the claim focused on the final visible state instead of burying a multi-step script inside the claim text.
 
+For multi-claim flows where only some claims need setup, prefer a claims file and put per-claim metadata under the specific bullet, for example:
+
+```md
+- After logging in, the dashboard shows "Welcome back, Developer"
+  - navigation_hint: Type "test@yutori.com" in the email field, type "password123" in the password field, then click Continue.
+- The API Calls Today stat card shows the value 1,247
+```
+
+When using MCP, split warm-session verification into successive `verify_visual_claims` calls if the setup differs between claims. Do not expect one global navigation hint to apply selectively within a single batch.
+
 ## Session Strategy
 
 Use ephemeral mode for public pages and quick checks.

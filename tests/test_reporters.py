@@ -414,6 +414,83 @@ def test_markdown_reporter_annotates_source_markdown_and_preserves_non_claim_lin
     assert run_result.results[0].page.viewport == viewport
 
 
+def test_markdown_reporter_preserves_navigation_hint_metadata_when_reannotated(tmp_path: Path) -> None:
+    module = _import_reporters_module()
+    reporter = module.MarkdownReporter()
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1.0)
+    run_result = RunResult(
+        overall_status="completed",
+        session_key="default",
+        run_name="login-flow",
+        results=[
+            ClaimResult(
+                claim='After logging in, the dashboard shows "Welcome back, Developer"',
+                status="failed",
+                finding="The page is still on the login screen.",
+                proof=None,
+                page={"url": "http://localhost:3000/login", "viewport": viewport},
+                trace={
+                    "steps_taken": 0,
+                    "wrong_page_recovered": False,
+                    "screenshot_paths": [],
+                    "actions": [],
+                    "trace_path": None,
+                },
+            ),
+            ClaimResult(
+                claim="The API Calls Today stat card shows the value 1,247",
+                status="passed",
+                finding="The stat card shows 1,247.",
+                proof=None,
+                page={"url": "http://localhost:3000/dashboard", "viewport": viewport},
+                trace={
+                    "steps_taken": 0,
+                    "wrong_page_recovered": False,
+                    "screenshot_paths": [],
+                    "actions": [],
+                    "trace_path": None,
+                },
+            ),
+        ],
+        summary="1/2 claims passed. 1 failed.",
+        artifacts_dir=str(tmp_path),
+    )
+    source = ParsedClaimsFile(
+        source_path=tmp_path / "claims.md",
+        source_content=(
+            "# Dashboard checks\n"
+            "\n"
+            '- After logging in, the dashboard shows "Welcome back, Developer"\n'
+            '  - navigation_hint: Type "test@yutori.com" in the email field, type "password123" in the password field, then click Continue.\n'
+            "\n"
+            "- The API Calls Today stat card shows the value 1,247\n"
+        ),
+        lines=(
+            ParsedClaimLine(
+                line_index=2,
+                bullet="-",
+                claim='After logging in, the dashboard shows "Welcome back, Developer"',
+                navigation_hint='Type "test@yutori.com" in the email field, type "password123" in the password field, then click Continue.',
+            ),
+            ParsedClaimLine(
+                line_index=5,
+                bullet="-",
+                claim="The API Calls Today stat card shows the value 1,247",
+            ),
+        ),
+    )
+
+    reporter.write(run_result, tmp_path, claims_file=source)
+
+    rendered = (tmp_path / "report.md").read_text()
+    assert "  - navigation_hint: Type \"test@yutori.com\" in the email field" in rendered
+    assert "Status: failed" in rendered
+    reparsed = parse_claims_file(tmp_path / "report.md")
+    assert reparsed.claims == source.claims
+    assert reparsed.lines[0].navigation_hint == source.lines[0].navigation_hint
+    assert reparsed.lines[1].navigation_hint is None
+
+
 def test_markdown_reporter_output_is_rerunnable_as_claim_input(tmp_path: Path) -> None:
     module = _import_reporters_module()
     reporter = module.MarkdownReporter()

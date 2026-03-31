@@ -297,6 +297,70 @@ async def test_runner_run_aggregates_claim_results_and_resets_between_claims(
 
 
 @pytest.mark.asyncio
+async def test_runner_run_uses_per_claim_navigation_hints_and_falls_back_to_global_hint(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _import_runner_module()
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    runner, _, verifier = _build_runner(
+        module,
+        tmp_path,
+        verifier_results=[_result("Claim one", "passed", viewport), _result("Claim two", "passed", viewport)],
+        monkeypatch=monkeypatch,
+    )
+
+    result = await _call_run(
+        runner,
+        url="http://fixture.local/page",
+        claims=["Claim one", "Claim two"],
+        claim_navigation_hints=["Open the modal first.", None],
+        viewport=viewport,
+        session_key="qa-session",
+        reuse_session=True,
+        reset_between_claims=True,
+        max_steps_per_claim=5,
+        navigation_hint="Open the login page if needed.",
+    )
+
+    assert [item.status for item in result.results] == ["passed", "passed"]
+    assert verifier.calls[0]["navigation_hint"] == "Open the modal first."
+    assert verifier.calls[1]["navigation_hint"] == "Open the login page if needed."
+
+
+@pytest.mark.asyncio
+async def test_runner_run_uses_second_claim_navigation_hint_override(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _import_runner_module()
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    runner, _, verifier = _build_runner(
+        module,
+        tmp_path,
+        verifier_results=[_result("Claim one", "passed", viewport), _result("Claim two", "passed", viewport)],
+        monkeypatch=monkeypatch,
+    )
+
+    result = await _call_run(
+        runner,
+        url="http://fixture.local/page",
+        claims=["Claim one", "Claim two"],
+        claim_navigation_hints=[None, "Scroll to the quota card before judging."],
+        viewport=viewport,
+        session_key="qa-session",
+        reuse_session=True,
+        reset_between_claims=True,
+        max_steps_per_claim=5,
+        navigation_hint="Open the login page if needed.",
+    )
+
+    assert [item.status for item in result.results] == ["passed", "passed"]
+    assert verifier.calls[0]["navigation_hint"] == "Open the login page if needed."
+    assert verifier.calls[1]["navigation_hint"] == "Scroll to the quota card before judging."
+
+
+@pytest.mark.asyncio
 async def test_runner_run_request_reuses_prevalidated_input(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -319,6 +383,7 @@ async def test_runner_run_request_reuses_prevalidated_input(
         reset_between_claims=True,
         visualize=True,
         max_steps_per_claim=5,
+        claim_navigation_hints=["Open the modal if needed."],
         navigation_hint="Open the modal if needed.",
     )
 
@@ -330,6 +395,15 @@ async def test_runner_run_request_reuses_prevalidated_input(
     assert browser.goto_calls[0] == ("qa-session", "http://fixture.local/page")
     assert verifier.calls[0]["navigation_hint"] == "Open the modal if needed."
     assert verifier.calls[0]["visualize"] is True
+
+
+def test_verify_visual_claims_input_requires_navigation_hint_alignment() -> None:
+    with pytest.raises(ValueError, match="claim_navigation_hints must match claims length"):
+        VerifyVisualClaimsInput(
+            url="http://fixture.local/page",
+            claims=["Claim one", "Claim two"],
+            claim_navigation_hints=["Only one hint"],
+        )
 
 
 @pytest.mark.asyncio

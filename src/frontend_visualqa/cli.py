@@ -257,9 +257,11 @@ def _handle_status(_: argparse.Namespace) -> int:
 
 async def _run_verify(args: argparse.Namespace) -> dict[str, Any]:
     claims_file: ParsedClaimsFile | None = None
+    claim_navigation_hints: list[str | None] | None = None
     if args.claims_file:
         claims_file = parse_claims_file(Path(args.claims_file))
         claims = claims_file.claims
+        claim_navigation_hints = [line.navigation_hint for line in claims_file.lines]
     else:
         claims = list(args.claims)
     await _preflight_verify_auth()
@@ -284,6 +286,7 @@ async def _run_verify(args: argparse.Namespace) -> dict[str, Any]:
         result = await runner.run(
             url=args.url,
             claims=claims,
+            claim_navigation_hints=claim_navigation_hints,
             claims_file=claims_file,
             viewport=_build_viewport(args),
             session_key=args.session_key,

@@ -46,6 +46,85 @@ The parser should ignore prose.
     assert [line.line_index for line in parsed.lines] == [4, 5]
     assert [line.bullet for line in parsed.lines] == ["-", "*"]
     assert [line.claim for line in parsed.lines] == parsed.claims
+    assert [line.navigation_hint for line in parsed.lines] == [None, None]
+
+
+def test_parse_claims_file_attaches_nested_navigation_hint_metadata(tmp_path: Path) -> None:
+    module = _import_claim_parser_module()
+    claims_file = tmp_path / "claims.md"
+    claims_file.write_text(
+        """# Dashboard checks
+
+- After logging in, the dashboard shows "Welcome back, Developer"
+  - navigation_hint: Type "test@yutori.com" in the email field, type "password123" in the password field, then click Continue.
+
+- The API Calls Today stat card shows the value 1,247
+""",
+        encoding="utf-8",
+    )
+
+    parsed = module.parse_claims_file(claims_file)
+
+    assert parsed.claims == [
+        'After logging in, the dashboard shows "Welcome back, Developer"',
+        "The API Calls Today stat card shows the value 1,247",
+    ]
+    assert parsed.lines[0].navigation_hint == (
+        'Type "test@yutori.com" in the email field, type "password123" in the password field, then click Continue.'
+    )
+    assert parsed.lines[1].navigation_hint is None
+
+
+def test_parse_claims_file_attaches_navigation_hint_to_second_claim(tmp_path: Path) -> None:
+    module = _import_claim_parser_module()
+    claims_file = tmp_path / "claims.md"
+    claims_file.write_text(
+        """# Dashboard checks
+
+- The API Calls Today stat card shows the value 1,247
+- The Monthly Quota progress bar fill matches the percentage shown in the label
+  - navigation_hint: Scroll to the quota card before judging.
+""",
+        encoding="utf-8",
+    )
+
+    parsed = module.parse_claims_file(claims_file)
+
+    assert parsed.claims == [
+        "The API Calls Today stat card shows the value 1,247",
+        "The Monthly Quota progress bar fill matches the percentage shown in the label",
+    ]
+    assert parsed.lines[0].navigation_hint is None
+    assert parsed.lines[1].navigation_hint == "Scroll to the quota card before judging."
+
+
+def test_parse_claims_file_skips_reporter_generated_details_before_navigation_hint(tmp_path: Path) -> None:
+    module = _import_claim_parser_module()
+    claims_file = tmp_path / "report.md"
+    claims_file.write_text(
+        """# Dashboard checks
+
+- [ ] After logging in, the dashboard shows "Welcome back, Developer"
+<!-- frontend-visualqa:claim-details:start -->
+  Status: failed
+  Finding: The user is still on the login screen.
+<!-- frontend-visualqa:claim-details:end -->
+  - navigation_hint: Type "test@yutori.com" in the email field, type "password123" in the password field, then click Continue.
+
+- The API Calls Today stat card shows the value 1,247
+""",
+        encoding="utf-8",
+    )
+
+    parsed = module.parse_claims_file(claims_file)
+
+    assert parsed.claims == [
+        'After logging in, the dashboard shows "Welcome back, Developer"',
+        "The API Calls Today stat card shows the value 1,247",
+    ]
+    assert parsed.lines[0].navigation_hint == (
+        'Type "test@yutori.com" in the email field, type "password123" in the password field, then click Continue.'
+    )
 
 
 def test_parse_claims_file_returns_tuple_of_lines(tmp_path: Path) -> None:
