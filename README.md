@@ -284,6 +284,39 @@ frontend-visualqa verify http://localhost:8000/analytics_dashboard.html \
 # → fails: n1 scrolls to the request table and finds a 500 Error
 ```
 
+Login page element verification:
+
+```bash
+frontend-visualqa verify http://localhost:8000/yutori_login.html \
+  --headed \
+  --claims \
+  'The page shows a "Log in to Yutori Platform" heading' \
+  'There is an email input field with placeholder text' \
+  'A "Continue" button is visible below the password field' \
+  'The left panel shows "Stay ahead on what matters most" heading'
+```
+
+Form validation — triggering and verifying an error message:
+
+```bash
+frontend-visualqa verify http://localhost:8000/yutori_login.html \
+  --headed \
+  --claims 'The email field shows "Please enter a valid email address" after submitting the empty form' \
+  --navigation-hint 'Click the Continue button without entering anything in the email or password fields.'
+```
+
+Logging in and verifying the dashboard:
+
+```bash
+frontend-visualqa verify http://localhost:8000/yutori_login.html \
+  --headed \
+  --max-steps-per-claim 20 \
+  --claims \
+  'After logging in, the dashboard shows "Welcome back, Developer"' \
+  'The API Calls Today stat card shows the value 1,247' \
+  --navigation-hint 'Type "test@yutori.com" in the email field, type "password123" in the password field, then click Continue. Wait for the dashboard to load.'
+```
+
 </details>
 
 ## MCP tools
