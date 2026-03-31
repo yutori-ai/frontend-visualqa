@@ -252,7 +252,7 @@ frontend-visualqa verify http://localhost:8000/yutori_login.html \
   --max-steps-per-claim 20 \
   --claims 'The Monthly Quota progress bar fill matches the percentage shown in the label' \
   --navigation-hint 'Type "test@yutori.com" in the email field, type "password123" in the password field, then click Continue. Wait for the dashboard to load.'
-# → fails: label says "100% used" but the progress bar is visually only ~65% filled
+# → fails: label says "100% used" but the progress bar is visually only ~40% filled
 ```
 
 Use against your own frontend the same way — just swap the URL:

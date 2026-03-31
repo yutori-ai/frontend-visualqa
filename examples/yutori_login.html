@@ -501,9 +501,9 @@
 
     /* Progress bar */
     .progress-bar {
-      height: 8px;
+      height: 20px;
       background: #E2E8F0;
-      border-radius: 4px;
+      border-radius: 10px;
       margin-top: 12px;
       overflow: hidden;
     }
@@ -511,7 +511,7 @@
     .progress-fill {
       height: 100%;
       background: var(--accent-gradient);
-      border-radius: 4px;
+      border-radius: 10px;
       transition: width 0.8s ease;
     }
 
@@ -785,13 +785,13 @@
 
         <div class="stat-card">
           <div class="stat-label">Monthly Quota</div>
-          <!-- BUG: "100% used" label disagrees with both the progress bar (~65% fill) and the request count (8,125 / 12,500 = 65%) -->
+          <!-- BUG: "100% used" label disagrees with both the progress bar (~40% fill) and the request count (5,000 / 12,500 = 40%) -->
           <div class="stat-value">100% used</div>
           <div class="progress-bar">
-            <div class="progress-fill" style="width: 65%"></div>
+            <div class="progress-fill" style="width: 40%"></div>
           </div>
           <div class="progress-meta">
-            <span class="progress-label">8,125 / 12,500 requests</span>
+            <span class="progress-label">5,000 / 12,500 requests</span>
             <span class="progress-label">Resets Apr 1</span>
           </div>
         </div>
