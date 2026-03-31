@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from frontend_visualqa.claim_parser import ParsedClaimLine, ParsedClaimsFile
-from frontend_visualqa.schemas import RunResult
+from frontend_visualqa.schemas import ClaimResult, RunResult
 from frontend_visualqa.text_utils import collapse_whitespace as _collapse_whitespace
 
 
@@ -154,12 +154,21 @@ def _render_detail_line(prefix: str, label: str, value: str) -> str:
     return f"{prefix}{label}: {_escape_markdown_inline(value)}"
 
 
-def _render_claim_block(*, source_line: ParsedClaimLine, claim_result: Any, line_ending: str) -> str:
+def _render_claim_lines(*, bullet: str, claim: str, claim_result: ClaimResult) -> list[str]:
     marker = "x" if claim_result.status == "passed" else " "
-    lines = [f"{source_line.bullet} [{marker}] {source_line.claim}"]
+    lines = [f"{bullet} [{marker}] {claim}"]
     if claim_result.status != "passed":
         lines.append(_render_detail_line("  ", "Status", claim_result.status))
         lines.append(_render_detail_line("  ", "Finding", _collapse_whitespace(claim_result.finding)))
+    return lines
+
+
+def _render_claim_block(*, source_line: ParsedClaimLine, claim_result: ClaimResult, line_ending: str) -> str:
+    lines = _render_claim_lines(
+        bullet=source_line.bullet,
+        claim=source_line.claim,
+        claim_result=claim_result,
+    )
     return line_ending.join(lines) + line_ending
 
 
@@ -177,11 +186,7 @@ def _render_synthesized_markdown(run_result: RunResult) -> str:
     lines.append("## Claims")
     lines.append("")
     for claim_result in run_result.results:
-        marker = "x" if claim_result.status == "passed" else " "
-        lines.append(f"- [{marker}] {claim_result.claim}")
-        if claim_result.status != "passed":
-            lines.append(f"  Status: {claim_result.status}")
-            lines.append(f"  Finding: {_escape_markdown_inline(_collapse_whitespace(claim_result.finding))}")
+        lines.extend(_render_claim_lines(bullet="-", claim=claim_result.claim, claim_result=claim_result))
     lines.append("")
     lines.append("## Summary")
     lines.append("")
@@ -201,13 +206,37 @@ def _render_annotated_source_markdown(run_result: RunResult, claims_file: Parsed
             line_ending=_line_ending(original_text),
         )
 
+    # Build set of line indices to skip: stale detail lines from prior
+    # annotations and prior summary/additional-results sections.  Without
+    # this, re-annotating an already-annotated file accumulates duplicate
+    # Status/Finding lines and ## Summary sections.
+    skip_indices: set[int] = set()
+
+    for claim_idx in sorted(rendered_by_index):
+        i = claim_idx + 1
+        while i < len(source_lines):
+            stripped = source_lines[i].lstrip()
+            if stripped.startswith("Status: ") or stripped.startswith("Finding: "):
+                skip_indices.add(i)
+                i += 1
+                continue
+            break
+
+    for i, line in enumerate(source_lines):
+        heading = line.strip()
+        if heading in ("## Summary", "## Additional Results"):
+            skip_indices.update(range(i, len(source_lines)))
+            break
+
     rendered_lines: list[str] = []
     for index, line in enumerate(source_lines):
+        if index in skip_indices:
+            continue
         replacement = rendered_by_index.get(index)
         if replacement is None:
             rendered_lines.append(line)
-            continue
-        rendered_lines.append(replacement)
+        else:
+            rendered_lines.append(replacement)
 
     if rendered_lines and not rendered_lines[-1].endswith(("\n", "\r")):
         rendered_lines.append("\n")
@@ -215,13 +244,12 @@ def _render_annotated_source_markdown(run_result: RunResult, claims_file: Parsed
     if len(run_result.results) > len(claims_file.lines):
         rendered_lines.append("\n## Additional Results\n\n")
         for claim_result in run_result.results[len(claims_file.lines) :]:
-            marker = "x" if claim_result.status == "passed" else " "
-            rendered_lines.append(f"- [{marker}] {claim_result.claim}\n")
-            if claim_result.status != "passed":
-                rendered_lines.append(f"  - Status: {claim_result.status}\n")
-                rendered_lines.append(
-                    f"  - Finding: {_escape_markdown_inline(_collapse_whitespace(claim_result.finding))}\n"
+            rendered_lines.append(
+                "\n".join(
+                    _render_claim_lines(bullet="-", claim=claim_result.claim, claim_result=claim_result)
                 )
+                + "\n"
+            )
 
     rendered_lines.append(_render_summary_section(run_result))
     return "".join(rendered_lines)

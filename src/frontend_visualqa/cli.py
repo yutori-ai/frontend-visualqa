@@ -275,11 +275,9 @@ async def _run_verify(args: argparse.Namespace) -> dict[str, Any]:
 
         def _progress_complete(index: int, claim: str, result: Any) -> None:
             del claim
-            status = getattr(result, "status", "unknown")
-            finding = _truncate_for_progress(getattr(result, "finding", ""))
-            message = f"[{index}/{total_claims}] {status}"
-            if status != "passed" and finding:
-                message += f" - {finding}"
+            message = f"[{index}/{total_claims}] {result.status}"
+            if result.status != "passed" and result.finding:
+                message += f" - {_truncate_for_progress(result.finding)}"
             print(message, file=sys.stderr, flush=True)
 
         result = await runner.run(

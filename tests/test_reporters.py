@@ -431,6 +431,102 @@ def test_markdown_reporter_output_is_rerunnable_as_claim_input(tmp_path: Path) -
     assert reparsed.claims == claims_file.claims
 
 
+def test_markdown_reporter_re_annotation_strips_stale_details_and_summary(tmp_path: Path) -> None:
+    """Re-annotating an already-annotated file should not accumulate stale detail lines or duplicate summaries."""
+    module = _import_reporters_module()
+    reporter = module.MarkdownReporter()
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1.0)
+
+    # First run: one claim fails
+    run1_result = RunResult(
+        overall_status="completed",
+        session_key="default",
+        run_name=None,
+        results=[
+            ClaimResult(
+                claim="The heading reads 'Dashboard'",
+                status="failed",
+                finding="Heading says 'Home' instead.",
+                proof=None,
+                page={"url": "http://localhost:3000", "viewport": viewport},
+                trace={"steps_taken": 0, "wrong_page_recovered": False, "screenshot_paths": [], "actions": [], "trace_path": None},
+            ),
+        ],
+        summary="0/1 claims passed. 1 failed.",
+        artifacts_dir=str(tmp_path),
+    )
+
+    source_path = tmp_path / "claims.md"
+    source_path.write_text("# Checks\n\n- The heading reads 'Dashboard'\n", encoding="utf-8")
+    claims_file1 = parse_claims_file(source_path)
+    out1 = tmp_path / "round1"
+    out1.mkdir()
+    reporter.write(run1_result, out1, claims_file=claims_file1)
+
+    round1_report = out1 / "report.md"
+    round1_text = round1_report.read_text()
+    assert round1_text.count("## Summary") == 1
+    assert "  Status: failed" in round1_text
+
+    # Second run: same claim now passes — reparse the annotated output
+    claims_file2 = parse_claims_file(round1_report)
+    assert claims_file2.claims == ["The heading reads 'Dashboard'"]
+
+    run2_result = RunResult(
+        overall_status="completed",
+        session_key="default",
+        run_name=None,
+        results=[
+            ClaimResult(
+                claim="The heading reads 'Dashboard'",
+                status="passed",
+                finding="Heading matches.",
+                proof=None,
+                page={"url": "http://localhost:3000", "viewport": viewport},
+                trace={"steps_taken": 0, "wrong_page_recovered": False, "screenshot_paths": [], "actions": [], "trace_path": None},
+            ),
+        ],
+        summary="1/1 claims passed.",
+        artifacts_dir=str(tmp_path),
+    )
+
+    out2 = tmp_path / "round2"
+    out2.mkdir()
+    reporter.write(run2_result, out2, claims_file=claims_file2)
+
+    round2_text = (out2 / "report.md").read_text()
+
+    # No stale detail lines from the prior failed run
+    assert "Status: failed" not in round2_text
+    assert "Heading says" not in round2_text
+    # Exactly one summary section
+    assert round2_text.count("## Summary") == 1
+    assert "1/1 claims passed." in round2_text
+    # The claim is now passing
+    assert "- [x] The heading reads 'Dashboard'" in round2_text
+
+
+def test_markdown_reporter_formats_additional_results_like_normal_claim_blocks(tmp_path: Path) -> None:
+    module = _import_reporters_module()
+    reporter = module.MarkdownReporter()
+    run_result = _sample_run_result(str(tmp_path))
+    source = ParsedClaimsFile(
+        source_path=tmp_path / "claims.md",
+        source_content="- The heading reads 'Dashboard'\n",
+        lines=(ParsedClaimLine(line_index=0, bullet="-", claim="The heading reads 'Dashboard'"),),
+    )
+
+    reporter.write(run_result, tmp_path, claims_file=source)
+
+    rendered = (tmp_path / "report.md").read_text()
+    assert "## Additional Results" in rendered
+    assert "- [ ] The progress bar shows 100%" in rendered
+    assert "  Status: failed" in rendered
+    assert "  Finding: Progress bar shows 65%, not 100%." in rendered
+    assert "  - Status:" not in rendered
+    assert "  - Finding:" not in rendered
+
+
 def test_markdown_reporter_synthesizes_markdown_without_source(tmp_path: Path) -> None:
     module = _import_reporters_module()
     reporter = module.MarkdownReporter()

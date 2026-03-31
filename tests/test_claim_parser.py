@@ -101,6 +101,15 @@ Nothing to see here.
         module.parse_claims_file(claims_file)
 
 
+def test_parse_claims_file_rejects_non_utf8_file(tmp_path: Path) -> None:
+    module = _import_claim_parser_module()
+    claims_file = tmp_path / "latin1.md"
+    claims_file.write_bytes(b"- Caf\xe9 claim\n")
+
+    with pytest.raises(ConfigurationError, match="not valid UTF-8"):
+        module.parse_claims_file(claims_file)
+
+
 def test_parse_claims_file_handles_crlf_line_endings(tmp_path: Path) -> None:
     module = _import_claim_parser_module()
     claims_file = tmp_path / "crlf.md"

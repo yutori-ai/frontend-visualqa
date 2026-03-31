@@ -43,6 +43,10 @@ def parse_claims_file(path: Path) -> ParsedClaimsFile:
         source_content = path.read_text(encoding="utf-8")
     except FileNotFoundError:
         raise ConfigurationError(f"Claims file does not exist: {path}")
+    except UnicodeDecodeError:
+        raise ConfigurationError(
+            f"Claims file is not valid UTF-8: {path}. Save the file as UTF-8 and retry."
+        )
     except OSError as exc:
         raise ConfigurationError(f"Could not read claims file {path}: {exc}")
 

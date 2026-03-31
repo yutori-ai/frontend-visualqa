@@ -390,7 +390,7 @@ frontend-visualqa verify http://localhost:3000/analytics_dashboard.html \
   --reporter markdown
 ```
 
-This file-based input path is CLI-only in v1; the MCP tool still takes an explicit `list[str]` of claims.
+This file-based input path is CLI-only; the MCP tool still takes an explicit `list[str]` of claims.
 
 ## Browser modes and visualization
 
