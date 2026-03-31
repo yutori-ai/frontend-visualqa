@@ -244,23 +244,14 @@ frontend-visualqa verify 'http://localhost:8000/booking_form.html' \
 
 `--navigation-hint` gives n1 context it can't infer from pixels alone. Here, the booking form shows placeholder text like "John Doe" and "555-0123" — n1 can mistake these for already-filled values and skip the form. The hint tells it that grayed text is placeholder format, not real data, so it fills every field correctly.
 
-**Login flow with visual bug detection** — when only the first claim needs setup, put the hint next to that claim in a claims file. The runner reuses the logged-in session for later claims, and only the claim that carries the hint gets the login guidance:
-
-```md
-# Login flow
-
-- After logging in, the dashboard shows "Welcome back, Developer"
-  - navigation_hint: Type "test@yutori.com" in the email field, type "password123" in the password field, then click Continue. Wait for the dashboard to load.
-- The API Calls Today stat card shows the value 1,247
-- The Monthly Quota progress bar fill matches the percentage shown in the label
-```
+**Login flow with visual bug detection** — when only the first claim needs setup, put the hint next to that claim in a claims file (`examples/login_flow_claims.md`). The runner reuses the logged-in session for later claims, and only the claim that carries the hint gets the login guidance:
 
 ```bash
 frontend-visualqa verify http://localhost:8000/yutori_login.html \
   --headed \
   --no-reset-between-claims \
   --max-steps-per-claim 20 \
-  --claims-file /tmp/login-flow.md
+  --claims-file examples/login_flow_claims.md
 # → first two claims pass, third fails: label says "100% used" but the progress bar is ~40% filled
 ```
 
@@ -385,8 +376,8 @@ Per-claim metadata can live under an individual claim bullet:
 ```
 
 ```bash
-frontend-visualqa verify http://localhost:3000/analytics_dashboard.html \
-  --claims-file /tmp/claims.md \
+frontend-visualqa verify http://localhost:8000/analytics_dashboard.html \
+  --claims-file examples/login_flow_claims.md \
   --reporter native \
   --reporter markdown
 ```
