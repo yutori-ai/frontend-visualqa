@@ -101,6 +101,7 @@ class VisualQARunner:
         *,
         url: str,
         claims: list[str],
+        claim_navigation_hints: list[str | None] | None = None,
         claims_file: ParsedClaimsFile | None = None,
         viewport: ViewportConfig | dict[str, Any] | None = None,
         session_key: str = "default",
@@ -120,6 +121,7 @@ class VisualQARunner:
         request = VerifyVisualClaimsInput(
             url=url,
             claims=claims,
+            claim_navigation_hints=claim_navigation_hints,
             viewport=self._coerce_viewport(viewport),
             session_key=session_key,
             run_name=run_name,
@@ -223,6 +225,7 @@ class VisualQARunner:
                     for index, claim in enumerate(request.claims, start=1):
                         next_claim_index = index
                         _safe_on_claim_start(index, claim)
+                        navigation_hint_for_claim = self._navigation_hint_for_claim(request, index)
                         try:
                             session = await self._prepare_session_for_claim(
                                 session=session,
@@ -247,6 +250,7 @@ class VisualQARunner:
                                 request=request,
                                 run_artifacts=run_artifacts,
                                 claim_index=index,
+                                navigation_hint=navigation_hint_for_claim,
                             )
                         except TimeoutError:
                             finding = self._format_claim_timeout_finding(request.claim_timeout_seconds)
@@ -597,6 +601,7 @@ class VisualQARunner:
         request: VerifyVisualClaimsInput,
         run_artifacts: Any,
         claim_index: int,
+        navigation_hint: str | None,
     ) -> ClaimResult:
         visualize = request.visualize if request.visualize is not None else self._default_visualize
 
@@ -608,7 +613,7 @@ class VisualQARunner:
                 claim_index=claim_index,
                 run_artifacts=run_artifacts,
                 max_steps=request.max_steps_per_claim,
-                navigation_hint=request.navigation_hint,
+                navigation_hint=navigation_hint,
                 visualize=visualize,
             )
 
@@ -616,6 +621,14 @@ class VisualQARunner:
             async with asyncio.timeout(request.claim_timeout_seconds):
                 return await _call_verifier()
         return await _call_verifier()
+
+    @staticmethod
+    def _navigation_hint_for_claim(request: VerifyVisualClaimsInput, claim_index: int) -> str | None:
+        if request.claim_navigation_hints is not None:
+            claim_hint = request.claim_navigation_hints[claim_index - 1]
+            if claim_hint is not None:
+                return claim_hint
+        return request.navigation_hint
 
 
 class _null_async_context:

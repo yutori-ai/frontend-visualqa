@@ -125,6 +125,7 @@ class VerifyVisualClaimsInput(FrontendVisualQABaseModel):
 
     url: str
     claims: list[str] = Field(min_length=1)
+    claim_navigation_hints: list[str | None] | None = None
     viewport: ViewportConfig = Field(default_factory=ViewportConfig)
     session_key: str = "default"
     run_name: str | None = None
@@ -144,10 +145,32 @@ class VerifyVisualClaimsInput(FrontendVisualQABaseModel):
     @field_validator("claims")
     @classmethod
     def validate_claims(cls, value: list[str]) -> list[str]:
-        normalized = [claim.strip() for claim in value if claim.strip()]
+        normalized = [claim.strip() for claim in value]
+        if any(not claim for claim in normalized):
+            raise ValueError("claims must not contain empty strings")
         if not normalized:
             raise ValueError("claims must contain at least one non-empty claim")
         return normalized
+
+    @field_validator("claim_navigation_hints")
+    @classmethod
+    def normalize_claim_navigation_hints(cls, value: list[str | None] | None) -> list[str | None] | None:
+        if value is None:
+            return None
+        normalized: list[str | None] = []
+        for hint in value:
+            if hint is None:
+                normalized.append(None)
+                continue
+            stripped = hint.strip()
+            normalized.append(stripped or None)
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_claim_navigation_hint_alignment(self) -> "VerifyVisualClaimsInput":
+        if self.claim_navigation_hints is not None and len(self.claim_navigation_hints) != len(self.claims):
+            raise ValueError("claim_navigation_hints must match claims length")
+        return self
 
 
 class ClaimResult(FrontendVisualQABaseModel):

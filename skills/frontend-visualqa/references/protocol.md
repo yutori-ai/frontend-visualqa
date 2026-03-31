@@ -20,6 +20,8 @@ If any of that is unclear, call `take_screenshot` first.
 5. Inspect the saved screenshots when a claim fails or is inconclusive.
 6. Fix the frontend and rerun the same claims.
 
+If only some claims in a batch need setup, split them into separate warm-session `verify_visual_claims` calls or move to a CLI claims file with per-claim metadata. Do not expect one `navigation_hint` to target only part of a batch.
+
 ## Status Meanings
 
 - `passed`: visual evidence matched the claim
