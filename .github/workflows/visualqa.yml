@@ -85,58 +85,50 @@ jobs:
             --run-timeout-seconds 120 \
             --reporter native --reporter ctrf | tee visualqa-login-validation.json
 
-      # ── Dashboard — post-login claims ──
+      # ── Dashboard — login once, verify dashboard, catch visual bug ──
 
-      - name: Visual QA — Dashboard after login
-        run: |
-          set -o pipefail
-          frontend-visualqa verify http://localhost:8000/yutori_login.html \
-            --claims \
-            'After logging in, the dashboard shows "Welcome back, Developer"' \
-            'The API Calls Today stat card shows the value 1,247' \
-            --navigation-hint 'Type "test@yutori.com" in the email field, type "password123" in the password field, then click Continue. Wait for the dashboard to load.' \
-            --max-steps-per-claim 20 \
-            --run-timeout-seconds 240 \
-            --reporter native --reporter ctrf | tee visualqa-dashboard.json
-
-      # ── Dashboard — visual bug detection ──
-
-      - name: Visual QA — Catch quota progress bar bug
+      - name: Visual QA — Login and verify dashboard
         run: |
           set -o pipefail
           exit_code=0
           frontend-visualqa verify http://localhost:8000/yutori_login.html \
+            --browser-mode persistent \
+            --no-reset-between-claims \
             --claims \
+            'After logging in, the dashboard shows "Welcome back, Developer"' \
+            'The API Calls Today stat card shows the value 1,247' \
             'The Monthly Quota progress bar fill matches the percentage shown in the label' \
             --navigation-hint 'Type "test@yutori.com" in the email field, type "password123" in the password field, then click Continue. Wait for the dashboard to load.' \
             --max-steps-per-claim 20 \
-            --run-timeout-seconds 240 \
-            --reporter native --reporter ctrf | tee visualqa-quota-bug.json \
+            --run-timeout-seconds 300 \
+            --reporter native --reporter ctrf | tee visualqa-dashboard.json \
             || exit_code=$?
 
+          # Claims 1-2 should pass, claim 3 (progress bar bug) should fail
           if [ "$exit_code" -eq 0 ]; then
-            echo "::error::Claim unexpectedly passed — the visual bug may have been fixed or the check is broken"
+            echo "::error::All claims passed — the progress bar bug may have been fixed or the check is broken"
             exit 1
           fi
 
-          # Verify the tool produced a real result, not just a crash
-          if [ ! -s visualqa-quota-bug.json ]; then
+          if [ ! -s visualqa-dashboard.json ]; then
             echo "::error::No output produced — frontend-visualqa may have crashed"
             exit 1
           fi
 
-          if ! python3 -c "
+          python3 -c "
           import json, sys
-          d = json.load(open('visualqa-quota-bug.json'))
+          d = json.load(open('visualqa-dashboard.json'))
           results = d.get('results', [])
-          if not results or not any(r.get('status') == 'failed' for r in results):
-              print('::error::Output has no failed claim — tool may have errored instead of evaluating')
-              sys.exit(1)
-          " 2>&1; then
-            exit 1
-          fi
-
-          echo "OK: progress bar bug correctly detected (exit code $exit_code)"
+          if not results:
+              print('::error::No results in output'); sys.exit(1)
+          passed = [r for r in results if r.get('status') == 'passed']
+          failed = [r for r in results if r.get('status') == 'failed']
+          if len(passed) < 2:
+              print(f'::error::Expected 2+ passing claims, got {len(passed)}'); sys.exit(1)
+          if not failed:
+              print('::error::No failed claims — progress bar bug not detected'); sys.exit(1)
+          print(f'OK: {len(passed)} passed, {len(failed)} failed (progress bar bug detected)')
+          "
 
       # ── Upload artifacts ──
 
