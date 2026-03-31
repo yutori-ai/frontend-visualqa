@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import inspect
 import logging
 import time
 from pathlib import Path
@@ -34,16 +33,6 @@ logger = logging.getLogger(__name__)
 if not TYPE_CHECKING:
     ClaimVerifier = None  # type: ignore[assignment]
     N1Client = None  # type: ignore[assignment]
-
-
-def _callable_accepts_visualize(target: Any) -> bool:
-    try:
-        signature = inspect.signature(target)
-    except (TypeError, ValueError):
-        return False
-    return "visualize" in signature.parameters or any(
-        parameter.kind == inspect.Parameter.VAR_KEYWORD for parameter in signature.parameters.values()
-    )
 
 
 def _load_claim_verifier_class() -> Any:
@@ -85,7 +74,7 @@ class VisualQARunner:
                 resolved_browser_config = BrowserConfig(headless=headless)
         elif headless is not None:
             resolved_browser_config = resolved_browser_config.model_copy(update={"headless": headless})
-        configured_visualize = bool(getattr(resolved_browser_config or BrowserConfig(), "visualize", False))
+        configured_visualize = (resolved_browser_config or BrowserConfig()).visualize
         self.browser_manager = browser_manager or BrowserManager(config=resolved_browser_config)
         self.artifact_manager = artifact_manager or ArtifactManager(artifacts_dir)
         if n1_client is None:
@@ -95,18 +84,12 @@ class VisualQARunner:
             self.n1_client = n1_client
         if claim_verifier is None:
             claim_verifier_class = _load_claim_verifier_class()
-            claim_verifier_kwargs: dict[str, Any] = {
-                "browser_manager": self.browser_manager,
-                "artifact_manager": self.artifact_manager,
-                "n1_client": self.n1_client,
-            }
-            if _callable_accepts_visualize(claim_verifier_class):
-                claim_verifier_kwargs["visualize"] = configured_visualize
-            try:
-                self.claim_verifier = claim_verifier_class(**claim_verifier_kwargs)
-            except TypeError:
-                claim_verifier_kwargs.pop("visualize", None)
-                self.claim_verifier = claim_verifier_class(**claim_verifier_kwargs)
+            self.claim_verifier = claim_verifier_class(
+                browser_manager=self.browser_manager,
+                artifact_manager=self.artifact_manager,
+                n1_client=self.n1_client,
+                visualize=configured_visualize,
+            )
         else:
             self.claim_verifier = claim_verifier
         self._default_visualize = bool(getattr(self.claim_verifier, "_visualize", configured_visualize))
@@ -251,8 +234,8 @@ class VisualQARunner:
                                 claim=claim,
                                 status="not_testable",
                                 finding=f"Could not prepare browser state for this claim: {exc}",
-                                final_url=getattr(session.page, "url", request.url) or request.url,
-                                viewport=getattr(session, "viewport", request.viewport),
+                                final_url=session.page.url or request.url,
+                                viewport=session.viewport,
                             )
                             _append_result(index, claim, result)
                             continue
@@ -274,8 +257,8 @@ class VisualQARunner:
                                 claim=claim,
                                 status="inconclusive",
                                 finding=finding,
-                                final_url=getattr(session.page, "url", request.url) or request.url,
-                                viewport=getattr(session, "viewport", request.viewport),
+                                final_url=session.page.url or request.url,
+                                viewport=session.viewport,
                             )
                         except Exception as exc:
                             finding = f"Verification crashed unexpectedly before returning a verdict: {exc}"
@@ -286,8 +269,8 @@ class VisualQARunner:
                                 claim=claim,
                                 status="inconclusive",
                                 finding=finding,
-                                final_url=getattr(session.page, "url", request.url) or request.url,
-                                viewport=getattr(session, "viewport", request.viewport),
+                                final_url=session.page.url or request.url,
+                                viewport=session.viewport,
                             )
                         _append_result(index, claim, result)
                         next_claim_index = index + 1
@@ -304,8 +287,8 @@ class VisualQARunner:
                         claim=interrupted_claim,
                         status="inconclusive",
                         finding=timeout_finding,
-                        final_url=getattr(session.page, "url", request.url) or request.url,
-                        viewport=getattr(session, "viewport", request.viewport),
+                        final_url=session.page.url or request.url,
+                        viewport=session.viewport,
                     )
                     _append_result(interrupted_index, interrupted_claim, interrupted_result)
 
@@ -315,8 +298,8 @@ class VisualQARunner:
                             claim=claim,
                             status="inconclusive",
                             finding=timeout_finding,
-                            final_url=getattr(session.page, "url", request.url) or request.url,
-                            viewport=getattr(session, "viewport", request.viewport),
+                            final_url=session.page.url or request.url,
+                            viewport=session.viewport,
                         )
                         _append_result(claim_index, claim, fallback_result)
 
@@ -386,7 +369,7 @@ class VisualQARunner:
                     screenshot_path=None,
                     summary=preflight_error,
                 )
-                self._save_json(run_artifacts, "screenshot_result.json", result.model_dump())
+                self.artifact_manager.save_json(run_artifacts, "screenshot_result.json", result.model_dump())
                 return result
 
             try:
@@ -415,7 +398,7 @@ class VisualQARunner:
                     screenshot_path=None,
                     summary=f"Could not capture a screenshot for {url}: {exc}",
                 )
-            self._save_json(run_artifacts, "screenshot_result.json", result.model_dump())
+            self.artifact_manager.save_json(run_artifacts, "screenshot_result.json", result.model_dump())
             return result
 
     async def manage_browser(
@@ -442,17 +425,11 @@ class VisualQARunner:
                 await self.browser_manager.close_session(request.session_key)
                 return self.browser_manager.status()
             if request.action == "restart":
-                try:
-                    await self.browser_manager.restart_session(
-                        request.session_key,
-                        viewport=request.viewport,
-                        preserve_url=True,
-                    )
-                except TypeError:
-                    await self.browser_manager.restart_session(
-                        request.session_key,
-                        viewport=request.viewport,
-                    )
+                await self.browser_manager.restart_session(
+                    request.session_key,
+                    viewport=request.viewport,
+                    preserve_url=True,
+                )
                 return self.browser_manager.status()
             if request.action == "set_viewport":
                 await self.browser_manager.set_viewport(request.session_key, request.viewport or ViewportConfig())
@@ -463,9 +440,7 @@ class VisualQARunner:
         """Close all long-lived resources."""
 
         await self.browser_manager.close()
-        close = getattr(self.n1_client, "close", None)
-        if callable(close):
-            await close()
+        await self.n1_client.close()
 
     @staticmethod
     def _summarize_results(results: list[ClaimResult]) -> str:
@@ -594,14 +569,6 @@ class VisualQARunner:
             except Exception:
                 logger.warning("Reporter %s failed to write", reporter.name, exc_info=True)
 
-    def _save_json(self, run_artifacts: Any, relative_path: str, payload: dict[str, Any]) -> None:
-        save_json = getattr(self.artifact_manager, "save_json", None)
-        if callable(save_json):
-            try:
-                save_json(run_artifacts, relative_path, payload)
-            except Exception:
-                logger.warning("Failed to save JSON artifact %s", relative_path, exc_info=True)
-
     async def _preflight_url(self, url: str) -> str | None:
         try:
             async with httpx.AsyncClient(follow_redirects=True, timeout=5.0) as client:
@@ -634,18 +601,16 @@ class VisualQARunner:
         visualize = request.visualize if request.visualize is not None else self._default_visualize
 
         async def _call_verifier() -> ClaimResult:
-            verify_kwargs: dict[str, Any] = {
-                "session": session,
-                "claim": claim,
-                "url": request.url,
-                "claim_index": claim_index,
-                "run_artifacts": run_artifacts,
-                "max_steps": request.max_steps_per_claim,
-                "navigation_hint": request.navigation_hint,
-            }
-            if _callable_accepts_visualize(self.claim_verifier.verify):
-                verify_kwargs["visualize"] = visualize
-            return await self.claim_verifier.verify(**verify_kwargs)
+            return await self.claim_verifier.verify(
+                session=session,
+                claim=claim,
+                url=request.url,
+                claim_index=claim_index,
+                run_artifacts=run_artifacts,
+                max_steps=request.max_steps_per_claim,
+                navigation_hint=request.navigation_hint,
+                visualize=visualize,
+            )
 
         if request.claim_timeout_seconds:
             async with asyncio.timeout(request.claim_timeout_seconds):
