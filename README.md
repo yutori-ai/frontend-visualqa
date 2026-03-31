@@ -348,11 +348,14 @@ frontend-visualqa <command> [options]
 
 ```bash
 frontend-visualqa verify <url> --claims 'claim1' 'claim2' [options]
+# or
+frontend-visualqa verify <url> --claims-file claims.md [options]
 ```
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--claims` | *(required)* | One or more visual claims |
+| `--claims` | | One or more visual claims. Mutually exclusive with `--claims-file`; one of the two is required. |
+| `--claims-file` | | Read root-level Markdown bullets from a file. Annotated reports stay rerunnable by stripping task-list markers on parse. |
 | `--navigation-hint` | | Interaction guidance before judging |
 | `--width` / `--height` | 1280 / 800 | Viewport size |
 | `--device-scale-factor` | 1.0 | DPR |
@@ -365,9 +368,29 @@ frontend-visualqa verify <url> --claims 'claim1' 'claim2' [options]
 | `--max-steps-per-claim` | 12 | Max actions per claim |
 | `--claim-timeout-seconds` | 120 | Per-claim timeout |
 | `--run-timeout-seconds` | 300 | Whole-run timeout |
-| `--reporter` | native | Output reporter (`native`, `ctrf`). Repeat for multiple. |
+| `--reporter` | native | Output reporter (`native`, `ctrf`, `markdown`). Repeat for multiple. |
 
 </details>
+
+Progress is written to `stderr` as each claim starts and completes. Final JSON still goes to `stdout`.
+
+Markdown claims file example:
+
+```md
+# Dashboard checks
+
+- The page title reads "Analytics Dashboard"
+- The API status indicator shows Active
+```
+
+```bash
+frontend-visualqa verify http://localhost:3000/analytics_dashboard.html \
+  --claims-file /tmp/claims.md \
+  --reporter native \
+  --reporter markdown
+```
+
+This file-based input path is CLI-only in v1; the MCP tool still takes an explicit `list[str]` of claims.
 
 ## Browser modes and visualization
 
@@ -462,6 +485,9 @@ Output format for persisted artifacts. Does not affect CLI stdout or MCP tool re
 |----------|------|-------------|
 | `native` *(default)* | `run_result.json` | Full domain-specific schema with all fields |
 | `ctrf` | `ctrf-report.json` | [CTRF](https://ctrf.io/) standard JSON for CI/CD integration |
+| `markdown` | `report.md` | Annotated Markdown report, either from the original claims file or synthesized from the run result |
+
+When a Markdown claims file is provided, the markdown reporter preserves the original non-claim lines and annotates only the claim bullets so the report can be fed back in as input.
 
 Each claim result contains:
 - **`finding`** — the verdict explanation (what was observed)

@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from frontend_visualqa.artifacts import RunArtifacts
+from frontend_visualqa.claim_parser import parse_claims_file
 from fakes import FakeArtifactManager, instantiate_with_supported_kwargs, is_bootstrap_step_artifact
 
 from frontend_visualqa.schemas import (
@@ -143,6 +143,7 @@ def _build_runner(
     *,
     browser_manager: FakeBrowserManager | None = None,
     claim_verifier: Any | None = None,
+    reporters: list[str] | None = None,
 ) -> tuple[Any, FakeBrowserManager, FakeClaimVerifier]:
     viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
     browser = browser_manager or FakeBrowserManager(viewport)
@@ -162,6 +163,7 @@ def _build_runner(
         verifier=verifier,
         artifact_manager=artifacts,
         artifacts=artifacts,
+        reporters=reporters,
     )
 
     for attribute_name, value in {
@@ -328,6 +330,113 @@ async def test_runner_run_request_reuses_prevalidated_input(
     assert browser.goto_calls[0] == ("qa-session", "http://fixture.local/page")
     assert verifier.calls[0]["navigation_hint"] == "Open the modal if needed."
     assert verifier.calls[0]["visualize"] is True
+
+
+@pytest.mark.asyncio
+async def test_runner_ignores_callback_exceptions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _import_runner_module()
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    runner, _, _ = _build_runner(
+        module,
+        tmp_path,
+        verifier_results=[_result("Claim one", "passed", viewport)],
+        monkeypatch=monkeypatch,
+    )
+
+    def _boom(*_: Any) -> None:
+        raise RuntimeError("progress renderer failed")
+
+    result = await _call_run(
+        runner,
+        url="http://fixture.local/page",
+        claims=["Claim one"],
+        viewport=viewport,
+        session_key="qa-session",
+        reuse_session=True,
+        reset_between_claims=True,
+        max_steps_per_claim=5,
+        on_claim_start=_boom,
+        on_claim_complete=_boom,
+    )
+
+    assert [item.status for item in result.results] == ["passed"]
+
+
+def test_runner_parses_claims_file_and_ignores_nested_or_fenced_content(tmp_path: Path) -> None:
+    claims_file = tmp_path / "claims.md"
+    claims_file.write_text(
+        """# Dashboard checks
+
+- The heading reads 'Dashboard'
+  - nested note should be ignored
+* [x] The progress bar shows 100%
+
+```markdown
+- This line lives in code and should be ignored
+```
+
+Some prose that should be ignored too.
+""",
+        encoding="utf-8",
+    )
+
+    parsed = parse_claims_file(claims_file)
+
+    assert parsed.claims == ["The heading reads 'Dashboard'", "The progress bar shows 100%"]
+    assert [line.line_index for line in parsed.lines] == [2, 4]
+    assert parsed.lines[1].bullet == "*"
+    assert parsed.lines[1].claim == "The progress bar shows 100%"
+
+
+@pytest.mark.asyncio
+async def test_runner_writes_rerunnable_markdown_report_from_claims_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _import_runner_module()
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    claims_file = tmp_path / "claims.md"
+    claims_file.write_text(
+        """# Dashboard checks
+
+- The heading reads 'Dashboard'
+- The progress bar shows 100%
+""",
+        encoding="utf-8",
+    )
+    parsed = parse_claims_file(claims_file)
+    runner, _, _ = _build_runner(
+        module,
+        tmp_path,
+        verifier_results=[_result("The heading reads 'Dashboard'", "passed", viewport), _result("The progress bar shows 100%", "failed", viewport)],
+        monkeypatch=monkeypatch,
+        reporters=["markdown"],
+    )
+
+    result = await _call_run(
+        runner,
+        url="http://fixture.local/page",
+        claims=parsed.claims,
+        claims_file=parsed,
+        viewport=viewport,
+        session_key="qa-session",
+        reuse_session=True,
+        reset_between_claims=True,
+        max_steps_per_claim=5,
+    )
+
+    report_path = Path(result.artifacts_dir) / "report.md"
+    report_text = report_path.read_text(encoding="utf-8")
+
+    assert report_path.exists()
+    assert "- [x] The heading reads 'Dashboard'" in report_text
+    assert "- [ ] The progress bar shows 100%" in report_text
+    assert "Status: failed" in report_text
+    assert "Finding: The progress bar shows 100%: failed" in report_text
+    assert parse_claims_file(report_path).claims == parsed.claims
 
 
 @pytest.mark.asyncio
@@ -517,6 +626,7 @@ async def test_runner_marks_claim_not_testable_when_reset_between_claims_fails(
         monkeypatch=monkeypatch,
         browser_manager=browser,
     )
+    events: list[tuple[str, int, str, str | None]] = []
 
     result = await _call_run(
         runner,
@@ -527,11 +637,21 @@ async def test_runner_marks_claim_not_testable_when_reset_between_claims_fails(
         reuse_session=True,
         reset_between_claims=True,
         max_steps_per_claim=5,
+        on_claim_start=lambda index, claim: events.append(("start", index, claim, None)),
+        on_claim_complete=lambda index, claim, claim_result: events.append(
+            ("complete", index, claim, claim_result.status)
+        ),
     )
 
     assert [item.status for item in result.results] == ["passed", "not_testable"]
     assert "Could not prepare browser state" in result.results[1].finding
     assert len(verifier.calls) == 1
+    assert events == [
+        ("start", 1, "Claim one", None),
+        ("complete", 1, "Claim one", "passed"),
+        ("start", 2, "Claim two", None),
+        ("complete", 2, "Claim two", "not_testable"),
+    ]
 
 
 @pytest.mark.asyncio
@@ -549,6 +669,7 @@ async def test_runner_marks_claim_not_testable_when_verifier_raises(
         claim_verifier=exploding_verifier,
     )
     viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    events: list[tuple[str, int, str, str | None]] = []
 
     result = await _call_run(
         runner,
@@ -559,11 +680,19 @@ async def test_runner_marks_claim_not_testable_when_verifier_raises(
         reuse_session=True,
         reset_between_claims=True,
         max_steps_per_claim=5,
+        on_claim_start=lambda index, claim: events.append(("start", index, claim, None)),
+        on_claim_complete=lambda index, claim, claim_result: events.append(
+            ("complete", index, claim, claim_result.status)
+        ),
     )
 
     assert [item.status for item in result.results] == ["inconclusive"]
     assert "Verification crashed unexpectedly before returning a verdict" in result.results[0].finding
     assert exploding_verifier.calls
+    assert events == [
+        ("start", 1, "Claim one", None),
+        ("complete", 1, "Claim one", "inconclusive"),
+    ]
 
 
 @pytest.mark.asyncio
@@ -608,6 +737,7 @@ async def test_runner_marks_claim_inconclusive_when_claim_timeout_expires(
         monkeypatch=monkeypatch,
         claim_verifier=slow_verifier,
     )
+    events: list[tuple[str, int, str, str | None]] = []
 
     result = await _call_run(
         runner,
@@ -619,10 +749,18 @@ async def test_runner_marks_claim_inconclusive_when_claim_timeout_expires(
         reset_between_claims=True,
         max_steps_per_claim=5,
         claim_timeout_seconds=0.01,
+        on_claim_start=lambda index, claim: events.append(("start", index, claim, None)),
+        on_claim_complete=lambda index, claim, claim_result: events.append(
+            ("complete", index, claim, claim_result.status)
+        ),
     )
 
     assert [item.status for item in result.results] == ["inconclusive"]
     assert "Claim verification timed out" in result.results[0].finding
+    assert events == [
+        ("start", 1, "Claim one", None),
+        ("complete", 1, "Claim one", "inconclusive"),
+    ]
 
 
 @pytest.mark.asyncio
@@ -640,6 +778,7 @@ async def test_runner_handles_timeout_error_when_claim_timeout_is_disabled(
         monkeypatch=monkeypatch,
         claim_verifier=verifier,
     )
+    events: list[tuple[str, int, str, str | None]] = []
 
     result = await _call_run(
         runner,
@@ -651,10 +790,18 @@ async def test_runner_handles_timeout_error_when_claim_timeout_is_disabled(
         reset_between_claims=True,
         max_steps_per_claim=5,
         claim_timeout_seconds=None,
+        on_claim_start=lambda index, claim: events.append(("start", index, claim, None)),
+        on_claim_complete=lambda index, claim, claim_result: events.append(
+            ("complete", index, claim, claim_result.status)
+        ),
     )
 
     assert [item.status for item in result.results] == ["inconclusive"]
     assert result.results[0].finding == "Claim verification timed out before a verdict was recorded."
+    assert events == [
+        ("start", 1, "Claim one", None),
+        ("complete", 1, "Claim one", "inconclusive"),
+    ]
 
 
 @pytest.mark.asyncio
@@ -692,6 +839,7 @@ async def test_runner_uses_partial_claim_result_when_timeout_interrupts_verifier
         monkeypatch=monkeypatch,
         claim_verifier=verifier,
     )
+    events: list[tuple[str, int, str, str | None]] = []
 
     result = await _call_run(
         runner,
@@ -703,6 +851,10 @@ async def test_runner_uses_partial_claim_result_when_timeout_interrupts_verifier
         reset_between_claims=True,
         max_steps_per_claim=5,
         claim_timeout_seconds=1.0,
+        on_claim_start=lambda index, claim: events.append(("start", index, claim, None)),
+        on_claim_complete=lambda index, claim, claim_result: events.append(
+            ("complete", index, claim, claim_result.status)
+        ),
     )
 
     assert [item.status for item in result.results] == ["inconclusive"]
@@ -710,6 +862,10 @@ async def test_runner_uses_partial_claim_result_when_timeout_interrupts_verifier
     assert is_bootstrap_step_artifact(result.results[0].proof.screenshot_path)
     assert result.results[0].trace.steps_taken == 1
     assert result.results[0].trace.actions == ["scroll(direction='down', amount=300)"]
+    assert events == [
+        ("start", 1, "Claim one", None),
+        ("complete", 1, "Claim one", "inconclusive"),
+    ]
 
 
 @pytest.mark.asyncio
@@ -750,6 +906,7 @@ async def test_runner_uses_partial_claim_result_when_verifier_crashes(
         monkeypatch=monkeypatch,
         claim_verifier=verifier,
     )
+    events: list[tuple[str, int, str, str | None]] = []
 
     result = await _call_run(
         runner,
@@ -760,12 +917,20 @@ async def test_runner_uses_partial_claim_result_when_verifier_crashes(
         reuse_session=True,
         reset_between_claims=True,
         max_steps_per_claim=5,
+        on_claim_start=lambda index, claim: events.append(("start", index, claim, None)),
+        on_claim_complete=lambda index, claim, claim_result: events.append(
+            ("complete", index, claim, claim_result.status)
+        ),
     )
 
     assert [item.status for item in result.results] == ["inconclusive"]
     assert result.results[0].proof is not None
     assert result.results[0].proof.after_action == "goto_url(\"http://fixture.local/dashboard\")"
     assert result.results[0].trace.trace_path == "artifacts/run-001/claim-01/trace.json"
+    assert events == [
+        ("start", 1, "Claim one", None),
+        ("complete", 1, "Claim one", "inconclusive"),
+    ]
 
 
 @pytest.mark.asyncio
@@ -783,6 +948,7 @@ async def test_runner_marks_remaining_claims_inconclusive_when_run_timeout_expir
         monkeypatch=monkeypatch,
         claim_verifier=slow_verifier,
     )
+    events: list[tuple[str, int, str, str | None]] = []
 
     result = await _call_run(
         runner,
@@ -795,10 +961,20 @@ async def test_runner_marks_remaining_claims_inconclusive_when_run_timeout_expir
         max_steps_per_claim=5,
         claim_timeout_seconds=None,
         run_timeout_seconds=0.01,
+        on_claim_start=lambda index, claim: events.append(("start", index, claim, None)),
+        on_claim_complete=lambda index, claim, claim_result: events.append(
+            ("complete", index, claim, claim_result.status)
+        ),
     )
 
     assert [item.status for item in result.results] == ["inconclusive", "inconclusive"]
     assert all("Run timed out" in item.finding for item in result.results)
+    assert events == [
+        ("start", 1, "Claim one", None),
+        ("complete", 1, "Claim one", "inconclusive"),
+        ("start", 2, "Claim two", None),
+        ("complete", 2, "Claim two", "inconclusive"),
+    ]
 
 
 @pytest.mark.asyncio
@@ -839,6 +1015,7 @@ async def test_runner_preserves_partial_claim_result_when_run_timeout_interrupts
         monkeypatch=monkeypatch,
         claim_verifier=verifier,
     )
+    events: list[tuple[str, int, str, str | None]] = []
 
     result = await _call_run(
         runner,
@@ -850,6 +1027,10 @@ async def test_runner_preserves_partial_claim_result_when_run_timeout_interrupts
         reset_between_claims=True,
         max_steps_per_claim=5,
         run_timeout_seconds=0.01,
+        on_claim_start=lambda index, claim: events.append(("start", index, claim, None)),
+        on_claim_complete=lambda index, claim, claim_result: events.append(
+            ("complete", index, claim, claim_result.status)
+        ),
     )
 
     assert [item.status for item in result.results] == ["inconclusive", "inconclusive"]
@@ -858,6 +1039,12 @@ async def test_runner_preserves_partial_claim_result_when_run_timeout_interrupts
     assert result.results[0].trace.steps_taken == 1
     assert result.results[1].proof is None
     assert result.results[1].trace.steps_taken == 0
+    assert events == [
+        ("start", 1, "Claim one", None),
+        ("complete", 1, "Claim one", "inconclusive"),
+        ("start", 2, "Claim two", None),
+        ("complete", 2, "Claim two", "inconclusive"),
+    ]
 
 
 def test_build_not_testable_run_uses_aggregate_summary() -> None:
@@ -1065,14 +1252,14 @@ async def test_per_call_visualize_override_does_not_leak_across_requests(
 class SpyReporter:
     """Test spy that records write() calls."""
     def __init__(self) -> None:
-        self.write_calls: list[tuple[Any, Path]] = []
+        self.write_calls: list[tuple[Any, Path, Any | None]] = []
 
     @property
     def name(self) -> str:
         return "spy"
 
-    def write(self, run_result: Any, output_dir: Path) -> None:
-        self.write_calls.append((run_result, output_dir))
+    def write(self, run_result: Any, output_dir: Path, *, claims_file: Any | None = None) -> None:
+        self.write_calls.append((run_result, output_dir, claims_file))
 
 
 @pytest.mark.asyncio
@@ -1101,9 +1288,10 @@ async def test_runner_invokes_reporters_after_run(
         max_steps_per_claim=5,
     )
     assert len(spy.write_calls) == 1
-    written_result, written_dir = spy.write_calls[0]
+    written_result, written_dir, written_claims_file = spy.write_calls[0]
     assert written_result.overall_status == "completed"
     assert str(written_dir) == result.artifacts_dir
+    assert written_claims_file is None
 
 
 @pytest.mark.asyncio

@@ -8,10 +8,12 @@ import json
 import logging
 import sys
 import threading
+from pathlib import Path
 from typing import Any
 
 from frontend_visualqa import __version__
 from frontend_visualqa.browser import BrowserManager
+from frontend_visualqa.claim_parser import ParsedClaimsFile, parse_claims_file
 from frontend_visualqa.errors import ConfigurationError
 from frontend_visualqa.mcp_server import close_runners_sync, configure_server, get_mcp_server
 from frontend_visualqa.serialization import serialize_result
@@ -34,11 +36,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     verify_parser = subparsers.add_parser("verify", help="Verify one or more visual claims against a URL.")
     verify_parser.add_argument("url", help="Target page URL, usually a localhost route.")
-    verify_parser.add_argument(
+    claims_group = verify_parser.add_mutually_exclusive_group(required=True)
+    claims_group.add_argument(
         "--claims",
         nargs="+",
-        required=True,
         help="One or more explicit visual claims to verify.",
+    )
+    claims_group.add_argument(
+        "--claims-file",
+        help="Markdown file containing root-level bullet claims to verify.",
     )
     _add_viewport_args(verify_parser)
     _add_browser_args(verify_parser)
@@ -74,7 +80,7 @@ def build_parser() -> argparse.ArgumentParser:
     verify_parser.add_argument(
         "--reporter",
         action="append",
-        choices=("native", "ctrf"),
+        choices=("native", "ctrf", "markdown"),
         default=None,
         help="Output reporter. Can be specified multiple times. Defaults to native.",
     )
@@ -249,15 +255,37 @@ def _handle_status(_: argparse.Namespace) -> int:
 
 
 async def _run_verify(args: argparse.Namespace) -> dict[str, Any]:
+    claims_file: ParsedClaimsFile | None = None
+    claims = list(getattr(args, "claims", None) or [])
+    claims_file_path = getattr(args, "claims_file", None)
+    if claims_file_path:
+        claims_file = parse_claims_file(Path(claims_file_path))
+        claims = claims_file.claims
     await _preflight_verify_auth()
+
     runner = _new_runner(
         browser_config=_build_browser_config(args),
         reporters=getattr(args, "reporter", None),
     )
     try:
+        total_claims = len(claims)
+
+        def _progress_start(index: int, claim: str) -> None:
+            print(f"[{index}/{total_claims}] Verifying: {_truncate_for_progress(claim)}", file=sys.stderr, flush=True)
+
+        def _progress_complete(index: int, claim: str, result: Any) -> None:
+            del claim
+            status = getattr(result, "status", "unknown")
+            finding = _truncate_for_progress(getattr(result, "finding", ""))
+            message = f"[{index}/{total_claims}] {status}"
+            if status != "passed" and finding:
+                message += f" - {finding}"
+            print(message, file=sys.stderr, flush=True)
+
         result = await runner.run(
             url=args.url,
-            claims=args.claims,
+            claims=claims,
+            claims_file=claims_file,
             viewport=_build_viewport(args),
             session_key=args.session_key,
             run_name=args.run_name,
@@ -267,6 +295,8 @@ async def _run_verify(args: argparse.Namespace) -> dict[str, Any]:
             claim_timeout_seconds=args.claim_timeout_seconds,
             run_timeout_seconds=args.run_timeout_seconds,
             navigation_hint=args.navigation_hint,
+            on_claim_start=_progress_start,
+            on_claim_complete=_progress_complete,
         )
         return serialize_result(result)
     finally:
@@ -303,6 +333,12 @@ async def _preflight_verify_auth() -> None:
 def _verify_exit_code(result: dict[str, Any]) -> int:
     statuses = [item.get("status") for item in result.get("results", [])]
     return 0 if statuses and all(status == "passed" for status in statuses) else 1
+
+
+def _truncate_for_progress(text: str, limit: int = 120) -> str:
+    from frontend_visualqa.text_utils import clip_text
+
+    return clip_text(text, limit)
 
 
 async def _run_screenshot(args: argparse.Namespace) -> dict[str, Any]:

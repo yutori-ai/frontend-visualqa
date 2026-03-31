@@ -608,12 +608,10 @@ class ClaimVerifier:
     def _clip_trace_output_preview(output_text: str | None) -> str | None:
         if output_text is None:
             return None
-        normalized = " ".join(output_text.split())
-        if not normalized:
-            return None
-        if len(normalized) <= 280:
-            return normalized
-        return normalized[:279].rstrip() + "…"
+        from frontend_visualqa.text_utils import clip_text
+
+        clipped = clip_text(output_text, 280, ellipsis="…")
+        return clipped or None
 
     @staticmethod
     def _message_to_dict(message: Any) -> dict[str, Any]:

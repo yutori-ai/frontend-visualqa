@@ -554,7 +554,6 @@ class OverlayController:
 
     @staticmethod
     def _clip_text(text: str, limit: int) -> str:
-        normalized = " ".join(str(text).split())
-        if len(normalized) <= limit:
-            return normalized
-        return normalized[: max(limit - 1, 0)].rstrip() + "…"
+        from frontend_visualqa.text_utils import clip_text
+
+        return clip_text(str(text), limit, ellipsis="…")
