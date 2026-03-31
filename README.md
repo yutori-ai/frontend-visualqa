@@ -294,7 +294,7 @@ Form validation — triggering and verifying an error message:
 frontend-visualqa verify http://localhost:8000/yutori_login.html \
   --headed \
   --claims 'The email field shows "Please enter a valid email address" after submitting the empty form' \
-  --navigation-hint 'Click the Continue button without entering anything in the email or password fields.'
+  --navigation-hint 'The grayed text in the fields is placeholder, not real input. Click the Continue button immediately without typing anything.'
 ```
 
 Persistent session across claims — log in once, then verify multiple dashboard claims without re-navigating:
