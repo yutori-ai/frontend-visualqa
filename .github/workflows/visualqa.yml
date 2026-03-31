@@ -102,6 +102,7 @@ jobs:
             'The Monthly Quota progress bar fill matches the percentage shown in the label' \
             --navigation-hint 'Type "test@yutori.com" in the email field, type "password123" in the password field, then click Continue. Wait for the dashboard to load.' \
             --max-steps-per-claim 20 \
+            --claim-timeout-seconds 180 \
             --run-timeout-seconds 300 \
             --reporter native --reporter ctrf | tee visualqa-dashboard.json \
             || exit_code=$?
