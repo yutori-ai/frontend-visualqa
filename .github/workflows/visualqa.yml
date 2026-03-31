@@ -24,13 +24,14 @@ jobs:
           enable-cache: true
 
       - name: Configure Yutori API key
+        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
         run: |
           if [ -z "$YUTORI_TESTING_API_KEY" ]; then
             echo "::error::YUTORI_TESTING_API_KEY secret is not set. Add it in Settings > Secrets and variables > Actions."
             exit 1
           fi
           mkdir -p ~/.yutori
-          printf '{"api_key": "%s"}\n' "$YUTORI_TESTING_API_KEY" > ~/.yutori/config.json
+          python3 -c "import json, os; open(os.path.expanduser('~/.yutori/config.json'), 'w').write(json.dumps({'api_key': os.environ['YUTORI_TESTING_API_KEY']}))"
 
       - name: Cache Playwright browsers
         uses: actions/cache@v5
@@ -78,7 +79,7 @@ jobs:
           set -o pipefail
           frontend-visualqa verify http://localhost:8000/yutori_login.html \
             --claims \
-            'An error message is visible after submitting the form with an empty email field' \
+            'The email field shows "Please enter a valid email address" after submitting the empty form' \
             --navigation-hint 'Click the Continue button without entering anything in the email or password fields.' \
             --max-steps-per-claim 15 \
             --run-timeout-seconds 120 \

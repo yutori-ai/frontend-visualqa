@@ -774,7 +774,7 @@
     </nav>
 
     <div class="dash-content">
-      <h1 class="dash-welcome">Welcome back, Developer</h1>
+      <h1 class="dash-welcome" id="dashboardHeading" tabindex="-1">Welcome back, Developer</h1>
 
       <div class="stats-grid">
         <div class="stat-card">
@@ -890,6 +890,7 @@
       if (emailInput.classList.contains('input-error')) {
         emailError.classList.remove('visible');
         emailInput.classList.remove('input-error');
+        emailInput.removeAttribute('aria-invalid');
       }
     });
 
@@ -897,6 +898,7 @@
       if (passwordInput.classList.contains('input-error')) {
         passwordError.classList.remove('visible');
         passwordInput.classList.remove('input-error');
+        passwordInput.removeAttribute('aria-invalid');
       }
     });
 
@@ -938,6 +940,7 @@
         loginView.style.display = 'none';
         loadingOverlay.classList.remove('active');
         dashboardView.classList.add('active');
+        document.getElementById('dashboardHeading').focus();
         submitBtn.classList.remove('loading');
         submitBtn.disabled = false;
       }, 1800);

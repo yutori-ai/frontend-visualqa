@@ -526,7 +526,7 @@ The repo includes a GitHub Actions workflow (`.github/workflows/visualqa.yml`) t
     ```yaml
     - name: Upload visual QA artifacts
       if: always()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: visualqa-results
         path: |
@@ -556,6 +556,14 @@ To verify that frontend-visualqa catches known bugs, capture the exit code and v
     if [ ! -s visualqa-bug.json ]; then
       echo "ERROR: no output — tool may have crashed" && exit 1
     fi
+
+    if ! python3 -c "
+    import json, sys
+    data = json.load(open('visualqa-bug.json'))
+    results = data.get('results', [])
+    if not results or not any(r.get('status') == 'failed' for r in results):
+        print('ERROR: output has no failed claim'); sys.exit(1)
+    "; then exit 1; fi
 
     echo "Expected failure: visual bug detected"
 ```
