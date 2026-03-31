@@ -85,14 +85,16 @@ jobs:
             --run-timeout-seconds 120 \
             --reporter native --reporter ctrf | tee visualqa-login-validation.json
 
-      # ── Dashboard — login once, verify dashboard, catch visual bug ──
+      # ── Dashboard — login once, verify claims without re-navigating ──
+      # The navigation hint applies to claim 1 (login). Claims 2-3 run on the
+      # already-loaded dashboard thanks to --no-reset-between-claims. n1 correctly
+      # ignores the hint for claims that don't need it.
 
       - name: Visual QA — Login and verify dashboard
         run: |
           set -o pipefail
           exit_code=0
           frontend-visualqa verify http://localhost:8000/yutori_login.html \
-            --browser-mode persistent \
             --no-reset-between-claims \
             --claims \
             'After logging in, the dashboard shows "Welcome back, Developer"' \

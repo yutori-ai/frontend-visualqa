@@ -244,12 +244,11 @@ frontend-visualqa verify 'http://localhost:8000/booking_form.html' \
 
 `--navigation-hint` gives n1 context it can't infer from pixels alone. Here, the booking form shows placeholder text like "John Doe" and "555-0123" — n1 can mistake these for already-filled values and skip the form. The hint tells it that grayed text is placeholder format, not real data, so it fills every field correctly.
 
-**Login flow with visual bug detection** — n1 fills a login form, enters the dashboard, and catches a progress bar mismatch. `--no-reset-between-claims` keeps the session alive so claims 2 and 3 start from the already-loaded dashboard:
+**Login flow with visual bug detection** — n1 fills a login form, enters the dashboard, and verifies multiple claims without re-navigating. The navigation hint drives claim 1 (login); claims 2-3 run on the already-loaded dashboard:
 
 ```bash
 frontend-visualqa verify http://localhost:8000/yutori_login.html \
   --headed \
-  --browser-mode persistent \
   --no-reset-between-claims \
   --max-steps-per-claim 20 \
   --claims \
@@ -298,18 +297,18 @@ frontend-visualqa verify http://localhost:8000/yutori_login.html \
   --navigation-hint 'Click the Continue button without entering anything in the email or password fields.'
 ```
 
-Logging in and verifying the dashboard (persistent session — login once, check multiple claims):
+Persistent session across claims — log in once, then verify multiple dashboard claims without re-navigating:
 
 ```bash
 frontend-visualqa verify http://localhost:8000/yutori_login.html \
   --headed \
-  --browser-mode persistent \
   --no-reset-between-claims \
   --max-steps-per-claim 20 \
   --claims \
   'After logging in, the dashboard shows "Welcome back, Developer"' \
   'The API Calls Today stat card shows the value 1,247' \
   --navigation-hint 'Type "test@yutori.com" in the email field, type "password123" in the password field, then click Continue. Wait for the dashboard to load.'
+# → hint drives claim 1 (login); claim 2 runs on the already-loaded dashboard
 ```
 
 </details>
