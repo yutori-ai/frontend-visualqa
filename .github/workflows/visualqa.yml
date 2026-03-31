@@ -8,6 +8,7 @@ on:
 jobs:
   visualqa-tests:
     name: Visual QA (frontend-visualqa)
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
     timeout-minutes: 10
     runs-on: ubuntu-latest
     env:
@@ -24,7 +25,6 @@ jobs:
           enable-cache: true
 
       - name: Configure Yutori API key
-        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
         run: |
           if [ -z "$YUTORI_TESTING_API_KEY" ]; then
             echo "::error::YUTORI_TESTING_API_KEY secret is not set. Add it in Settings > Secrets and variables > Actions."
