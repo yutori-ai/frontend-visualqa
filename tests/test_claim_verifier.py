@@ -684,11 +684,15 @@ async def test_claim_verifier_records_reasoning_events_and_shows_thought_for_too
     assert verdict_event.type == "verdict"
     assert verdict_event.reasoning is None
     assert verdict_event.verdict_source == "record_claim_result"
+    assert verdict_event.raw_verdict_status == "passed"
+    assert "Save button" in verdict_event.raw_finding
     assert verdict_event.verdict_status == "passed"
     assert "Save button" in verdict_event.finding
     trace_payload = json.loads(Path(_field(result, "trace").trace_path).read_text(encoding="utf-8"))
     assert [item["type"] for item in trace_payload] == ["action", "verdict"]
     assert trace_payload[0]["reasoning"] == reasoning
+    assert trace_payload[1]["raw_verdict_status"] == "passed"
+    assert "Save button" in trace_payload[1]["raw_finding"]
     assert trace_payload[1]["finding"] == verdict_event.finding
 
 
@@ -1406,6 +1410,12 @@ async def test_claim_verifier_downgrades_partially_filled_progress_bar_claim(tmp
 
     assert _field(result, "status") == "failed"
     assert "65% filled" in _field(result, "finding")
+    verdict_event = _field(result, "trace").events[0]
+    assert verdict_event.type == "verdict"
+    assert verdict_event.raw_verdict_status == "passed"
+    assert verdict_event.raw_finding == "The Monthly Quota progress bar appears completely filled."
+    assert verdict_event.verdict_status == "failed"
+    assert "65% filled" in verdict_event.finding
 
 
 @pytest.mark.asyncio

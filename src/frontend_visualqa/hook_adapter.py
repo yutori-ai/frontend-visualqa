@@ -53,6 +53,8 @@ class VisualQAHookAdapter(RunHooksBase):
         *,
         step: int | None,
         source: str,
+        raw_status: ClaimStatus,
+        raw_finding: str,
         status: ClaimStatus,
         finding: str,
     ) -> None:
@@ -61,6 +63,8 @@ class VisualQAHookAdapter(RunHooksBase):
                 type="verdict",
                 step=step,
                 reasoning=self._current_turn_reasoning,
+                raw_verdict_status=raw_status,
+                raw_finding=raw_finding,
                 verdict_source=source,
                 verdict_status=status,
                 finding=finding,
