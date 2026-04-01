@@ -2,6 +2,8 @@
 
 Gives coding agents eyes for frontend work — visual QA and verification powered by [Yutori n1](https://yutori.com/api).
 
+![CLI demo](docs/images/cli-demo.gif)
+
 ## What it does
 
 - Verifies explicit visual claims against a running localhost frontend
