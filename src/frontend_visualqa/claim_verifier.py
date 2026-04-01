@@ -715,6 +715,8 @@ class ClaimVerifier:
                 hook.record_verdict_event(
                     step=progress.step_count,
                     source=verdict_source,
+                    raw_status=status,
+                    raw_finding=finding,
                     status=grounded_status,
                     finding=grounded_finding,
                 )

@@ -73,6 +73,8 @@ class TraceEvent(FrontendVisualQABaseModel):
     action_args: dict[str, Any] | None = None
     output_preview: str | None = None
     screenshot_path: str | None = None
+    raw_verdict_status: ClaimStatus | None = None
+    raw_finding: str | None = None
     verdict_status: ClaimStatus | None = None
     verdict_source: Literal["record_claim_result", "fallback_content", "force_stop", "legacy_stop"] | None = None
     finding: str | None = None
