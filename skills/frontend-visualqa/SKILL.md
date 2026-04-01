@@ -26,8 +26,8 @@ Do not use it for:
 
 1. Make sure the frontend is already running locally.
 2. Prefer the `frontend-visualqa` MCP tools when available. They keep browser state warm across calls.
-3. If the route or UI state is uncertain, call `take_screenshot` first.
-4. Run `verify_visual_claims` with 1-5 explicit claims and an explicit viewport.
+3. If the user provides a URL and explicit claims, go straight to `verify_visual_claims` — it captures screenshots internally, so a separate `take_screenshot` is redundant.
+4. Only call `take_screenshot` first when you have no claims yet and need to see the page before writing them.
 5. Fix the frontend, then rerun the same claims until they pass.
 
 ## Claim Discipline
@@ -59,8 +59,8 @@ The detailed QA playbook, status meanings, and recovery steps live in `reference
 
 Prefer the tools in this order:
 
-- `take_screenshot` for quick visual grounding
-- `verify_visual_claims` for claim-based checks with evidence
+- `verify_visual_claims` when the user provides claims — this is the primary tool and captures its own screenshots
+- `take_screenshot` only when you need to see the page before you can write claims
 - `manage_browser` when the shared browser state is stale, wrong-sized, or needs reset
 
 If the MCP server is not available, use the CLI fallback in `references/install.md`.
