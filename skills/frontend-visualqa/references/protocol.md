@@ -22,6 +22,19 @@ If any of that is unclear, call `take_screenshot` first.
 
 If only some claims in a batch need setup, split them into separate warm-session `verify_visual_claims` calls or move to a CLI claims file with per-claim metadata. Do not expect one `navigation_hint` to target only part of a batch.
 
+## Proof Artifacts
+
+`verify_visual_claims` returns proof for every claim:
+
+- `results[].proof.screenshot_path` — the screenshot that decided the verdict. Read this file to see what the page actually rendered.
+- `results[].proof.text` — a textual description of the evidence.
+- `results[].trace.screenshot_paths` — all screenshots captured during the claim's evaluation, including intermediate steps.
+- `artifacts_dir` — the directory containing all screenshots and trace files for the run.
+
+`take_screenshot` returns a single `screenshot_path`.
+
+When reporting results, read the proof screenshot for any failed or inconclusive claim and present it to the user. If the client supports inline images, display it; otherwise print the absolute path.
+
 ## Status Meanings
 
 - `passed`: visual evidence matched the claim

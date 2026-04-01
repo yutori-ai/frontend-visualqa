@@ -55,6 +55,22 @@ Use persistent mode for auth-gated apps, multi-step flows, or any case where coo
 Setup and client-specific install commands live in `references/install.md`.
 The detailed QA playbook, status meanings, and recovery steps live in `references/protocol.md`.
 
+## Presenting Proof to the User
+
+Every tool response includes file paths to screenshot evidence. Always surface this proof — do not just summarize the text result.
+
+`verify_visual_claims` returns an `artifacts_dir` and, for each claim, `results[].proof.screenshot_path` (the decisive screenshot) and `results[].proof.text` (a textual summary). Additional screenshots from intermediate steps live in `results[].trace.screenshot_paths`.
+
+`take_screenshot` returns a `screenshot_path`.
+
+After a verification run:
+
+1. Read the proof screenshot file for any failed or inconclusive claim so you can describe what is visually wrong.
+2. Show the user the screenshot path and, if the client supports it, open or display the image inline.
+3. When summarizing results, reference the specific visual evidence — do not just repeat the text finding.
+
+If your client cannot display images inline, print the absolute path so the user can open it manually.
+
 ## Tool Preference
 
 Prefer the tools in this order:
