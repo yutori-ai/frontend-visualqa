@@ -9,7 +9,7 @@
   },
   "homepage": "https://github.com/yutori-ai/frontend-visualqa",
   "repository": "https://github.com/yutori-ai/frontend-visualqa",
-  "license": "Apache-2.0",
+  "license": "MIT",
   "keywords": ["frontend", "visual-qa", "browser", "playwright", "mcp"],
   "skills": "skills",
   "mcpServers": ".mcp.json"
