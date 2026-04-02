@@ -16,6 +16,7 @@ from frontend_visualqa.grounding import capture_grounding_state, ground_claim_ve
 from frontend_visualqa.hook_adapter import VisualQAHookAdapter
 from frontend_visualqa.recovery import wrong_page_recovered
 from frontend_visualqa.prompts import (
+    EXTRACT_CONTENT_AND_LINKS_TOOL,
     RECORD_CLAIM_RESULT_TOOL,
     build_action_or_verdict_prompt,
     build_follow_navigation_hint_prompt,
@@ -513,7 +514,7 @@ class ClaimVerifier:
     def _model_tools() -> list[dict[str, Any]]:
         # n1's built-in browser actions are injected server-side by the Yutori
         # chat completions endpoint. We only need to send truly custom tools.
-        return [RECORD_CLAIM_RESULT_TOOL]
+        return [EXTRACT_CONTENT_AND_LINKS_TOOL, RECORD_CLAIM_RESULT_TOOL]
 
     @staticmethod
     def _build_tool_result_text(trace: str, current_url: str, output_text: str | None = None) -> str:

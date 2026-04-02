@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import re
+from dataclasses import dataclass
 from typing import Any, TYPE_CHECKING
 
 from frontend_visualqa.browser import BrowserSession, DEFAULT_NAVIGATION_TIMEOUT_MS as BROWSER_NAVIGATION_TIMEOUT_MS
@@ -19,6 +20,11 @@ logger = logging.getLogger(__name__)
 
 MODEL_COORDINATE_SCALE = 1000
 DEFAULT_WAIT_SECONDS = 1.0
+EXTRACT_CONTENT_AND_LINKS_TOOL_NAME = "extract_content_and_links"
+MAX_ACCESSIBLE_SNAPSHOT_CHARS = 4_000
+_ARIA_LINK_PATTERN = re.compile(r'- link "([^"]*)"')
+_ARIA_URL_PATTERN = re.compile(r"- /url: (.+)")
+_LINK_TITLE_CLEANER_PATTERN = re.compile(r"\s+\d+$")
 
 ACTION_DELAY_SECONDS: dict[str, float] = {
     "left_click": 0.25,
@@ -227,6 +233,13 @@ def render_action_trace(
     return f"{canonical_name}({ordered_parts})"
 
 
+@dataclass
+class ToolExecutionResult:
+    trace: str
+    output_text: str | None = None
+    current_url: str | None = None
+
+
 class ActionExecutor:
     """Execute n1 browser action tool calls against a Playwright page."""
 
@@ -248,11 +261,14 @@ class ActionExecutor:
     def overlay(self, value: OverlayController | None) -> None:
         self._overlay = value
 
-    async def execute_tool_call(self, session: BrowserSession, tool_call: Any) -> str:
+    async def execute_tool_call(self, session: BrowserSession, tool_call: Any) -> ToolExecutionResult | str:
         """Execute a tool call object with ``function.name`` and JSON arguments."""
 
         arguments = parse_tool_arguments(tool_call)
         action_name = getattr(getattr(tool_call, "function", tool_call), "name", "")
+        canonical_name = ACTION_NAME_ALIASES.get(action_name, action_name)
+        if canonical_name == EXTRACT_CONTENT_AND_LINKS_TOOL_NAME:
+            return await self._execute_extract_content_and_links(session)
         return await self.execute_action(session=session, action_name=action_name, arguments=arguments)
 
     async def execute_action(
@@ -426,6 +442,101 @@ class ActionExecutor:
             await self._best_effort_wait_for_domcontentloaded(page)
             await asyncio.sleep(self._post_action_delay(canonical_name))
         return trace
+
+    async def _execute_extract_content_and_links(self, session: BrowserSession) -> ToolExecutionResult:
+        await self._best_effort_overlay_set_status("Reading page")
+        output_text = await self._extract_content_and_links(session.page)
+        return ToolExecutionResult(
+            trace=f"{EXTRACT_CONTENT_AND_LINKS_TOOL_NAME}()",
+            output_text=output_text,
+            current_url=session.page.url,
+        )
+
+    async def _extract_content_and_links(self, page: Any) -> str:
+        snapshot = await self._accessible_page_snapshot(page)
+        links = self._extract_links_from_snapshot(snapshot) if snapshot else []
+
+        sections = [f"Current URL: {page.url}"]
+        if snapshot:
+            sections.extend(
+                [
+                    "Accessible page snapshot:",
+                    self._clip_multiline_text(snapshot, MAX_ACCESSIBLE_SNAPSHOT_CHARS),
+                ]
+            )
+        if links:
+            sections.extend(
+                [
+                    "Links on the page:",
+                    "\n".join(f"- [{title}]({url})" for url, title in links),
+                ]
+            )
+        return "\n\n".join(sections)
+
+    async def _accessible_page_snapshot(self, page: Any) -> str | None:
+        locator = getattr(page, "locator", None)
+        if callable(locator):
+            try:
+                body = locator("body")
+                aria_snapshot = getattr(body, "aria_snapshot", None)
+                if callable(aria_snapshot):
+                    snapshot = await aria_snapshot()
+                    if snapshot:
+                        return str(snapshot).strip() or None
+            except Exception:
+                logger.debug("body aria_snapshot failed; falling back to innerText", exc_info=True)
+
+        try:
+            snapshot = await page.evaluate(
+                """() => {
+                    const text = (document.body?.innerText || "").replace(/\\n{3,}/g, "\\n\\n").trim();
+                    return text || null;
+                }"""
+            )
+        except Exception:
+            logger.debug("innerText fallback failed for extract_content_and_links", exc_info=True)
+            return None
+        if not snapshot:
+            return None
+        return str(snapshot).strip() or None
+
+    @staticmethod
+    def _extract_links_from_snapshot(snapshot: str) -> list[tuple[str, str]]:
+        url_to_title: dict[str, str] = {}
+        lines = snapshot.splitlines()
+        for index, line in enumerate(lines):
+            link_match = _ARIA_LINK_PATTERN.search(line)
+            if link_match is None:
+                continue
+            title = _LINK_TITLE_CLEANER_PATTERN.sub("", link_match.group(1)).strip()
+            if not title:
+                continue
+
+            url: str | None = None
+            child_indent = len(line) - len(line.lstrip()) + 2
+            for next_line in lines[index + 1 :]:
+                if next_line.strip() and not next_line.startswith(" " * child_indent):
+                    break
+                url_match = _ARIA_URL_PATTERN.search(next_line)
+                if url_match is not None:
+                    url = url_match.group(1).strip()
+                    break
+
+            if not url:
+                continue
+
+            existing_title = url_to_title.get(url)
+            if existing_title is None or len(title) > len(existing_title):
+                url_to_title[url] = title
+
+        return list(url_to_title.items())
+
+    @staticmethod
+    def _clip_multiline_text(text: str, limit: int) -> str:
+        normalized = text.strip()
+        if len(normalized) <= limit:
+            return normalized
+        return normalized[: max(limit - 3, 0)].rstrip() + "..."
 
     async def _best_effort_wait_for_domcontentloaded(self, page: Any) -> None:
         try:

@@ -230,7 +230,10 @@ async def test_claim_verifier_returns_structured_verdict_from_record_claim_resul
     assert _field(result, "trace").actions == []
     assert action_executor.calls == []
     assert n1_client.calls
-    assert [tool["function"]["name"] for tool in n1_client.calls[0]["tools"]] == ["record_claim_result"]
+    assert [tool["function"]["name"] for tool in n1_client.calls[0]["tools"]] == [
+        "extract_content_and_links",
+        "record_claim_result",
+    ]
 
 
 @pytest.mark.asyncio
@@ -289,6 +292,72 @@ async def test_claim_verifier_executes_actions_before_final_verdict(tmp_path: Pa
     assert _field(result, "proof").step == _field(result, "trace").steps_taken
     assert _field(result, "proof").after_action == "goto_url({'url': 'http://fixture.local/modal'})"
     assert _field(result, "proof").text is None
+
+
+@pytest.mark.asyncio
+async def test_claim_verifier_saves_proof_text_for_extract_content_and_links(tmp_path: Path) -> None:
+    module = _import_claim_verifier_module()
+
+    class ExtractingActionExecutor(FakeActionExecutor):
+        async def execute_tool_call(self, session: FakeSession, tool_call: Any) -> Any:
+            self.calls.append((tool_call.function.name, json.loads(tool_call.function.arguments or "{}")))
+            if tool_call.function.name == "extract_content_and_links":
+                return SimpleNamespace(
+                    trace="extract_content_and_links()",
+                    output_text=(
+                        "Current URL: http://fixture.local/cart\n\n"
+                        "Accessible page snapshot:\n"
+                        '- heading "Shopping Cart"'
+                    ),
+                    current_url=session.page.url,
+                    success=True,
+                )
+            return await super().execute_tool_call(session, tool_call)
+
+    verifier, _, action_executor = _build_claim_verifier(
+        module,
+        tmp_path,
+        responses=[
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-1",
+                        function=FakeFunction(name="extract_content_and_links", arguments=json.dumps({})),
+                    )
+                ]
+            ),
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-2",
+                        function=FakeFunction(
+                            name="record_claim_result",
+                            arguments=json.dumps({"status": "passed", "finding": "The cart summary is visible."}),
+                        ),
+                    )
+                ]
+            ),
+        ],
+        action_executor=ExtractingActionExecutor(),
+    )
+
+    result = await _call_verify(
+        verifier,
+        page=FakePage(url="http://fixture.local/cart"),
+        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+        claim="The cart summary is visible",
+        url="http://fixture.local/cart",
+        navigation_hint=None,
+    )
+
+    assert _field(result, "status") == "passed"
+    assert action_executor.calls == [("extract_content_and_links", {})]
+    assert _field(result, "proof").step == 1
+    assert _field(result, "proof").after_action == "extract_content_and_links()"
+    assert _field(result, "proof").text is not None
+    assert "Accessible page snapshot:" in _field(result, "proof").text
+    assert _field(result, "proof").text_path.endswith("step-01.txt")
+    assert "Shopping Cart" in Path(_field(result, "proof").text_path).read_text(encoding="utf-8")
 
 
 @pytest.mark.asyncio

@@ -5,6 +5,19 @@ from __future__ import annotations
 from typing import Any
 
 
+EXTRACT_CONTENT_AND_LINKS_TOOL: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "extract_content_and_links",
+        "description": (
+            "Extract page content and hyperlinks relevant to the current verification task. "
+            "This tool is strictly read-only and never interacts with or alters the page."
+        ),
+        "parameters": {"type": "object", "properties": {}, "required": []},
+    },
+}
+
+
 RECORD_CLAIM_RESULT_TOOL: dict[str, Any] = {
     "type": "function",
     "function": {
@@ -53,6 +66,7 @@ def build_verification_task(claim: str, url: str, navigation_hint: str | None = 
         "5. Treat the claim literally: do not substitute similar controls, nearby text, or adjacent UI for the element named in the claim.",
         "6. A pass requires exact grounding in the current screenshot. If the claim references text, title, heading, tab, or button label, verify that exact wording or a direct prefix match is visible.",
         "7. Do not change browser zoom or device scale. Judge the page at the provided viewport.",
+        "8. If reading the page content or visible links would help you orient yourself or verify exact text, you may call the read-only extract_content_and_links tool.",
         "",
         "Use one of these statuses:",
         "- passed: the claim is visually true",
