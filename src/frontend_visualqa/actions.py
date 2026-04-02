@@ -456,7 +456,7 @@ class ActionExecutor:
         snapshot = await self._accessible_page_snapshot(page)
         links = self._extract_links_from_snapshot(snapshot) if snapshot else []
 
-        sections = [f"Current URL: {page.url}"]
+        sections = []
         if snapshot:
             sections.extend(
                 [
@@ -465,10 +465,11 @@ class ActionExecutor:
                 ]
             )
         if links:
+            links_text = "\n".join(f"- [{title}]({url})" for title, url in links)
             sections.extend(
                 [
                     "Links on the page:",
-                    "\n".join(f"- [{title}]({url})" for title, url in links),
+                    self._clip_multiline_text(links_text, MAX_ACCESSIBLE_SNAPSHOT_CHARS),
                 ]
             )
         return "\n\n".join(sections)

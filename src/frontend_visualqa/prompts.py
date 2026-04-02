@@ -10,8 +10,9 @@ EXTRACT_CONTENT_AND_LINKS_TOOL: dict[str, Any] = {
     "function": {
         "name": "extract_content_and_links",
         "description": (
-            "Extract page content and hyperlinks relevant to the current verification task. "
-            "This tool is strictly read-only and never interacts with or alters the page."
+            "Read exact visible text, headings, buttons, prices, totals, status strings, and hyperlinks "
+            "from the current page. Use this tool to verify copy and arithmetic after you reach the "
+            "relevant page state."
         ),
         "parameters": {"type": "object", "properties": {}, "required": []},
     },
@@ -84,6 +85,17 @@ def build_verification_task(claim: str, url: str, navigation_hint: str | None = 
     ]
     if navigation_hint:
         parts.extend(["", f"Navigation hint: {navigation_hint}"])
+    parts.extend(
+        [
+            "",
+            "Additional guidance:",
+            "Verification checklist:",
+            "1. Reach the relevant page state first.",
+            "2. If the claim mentions exact text, numbers, totals, prices, status labels, endpoints, or URLs, call extract_content_and_links before deciding.",
+            "3. For arithmetic claims, compute the expected value from extracted text step by step, then compare it to the displayed value.",
+            "4. For progress bars or claims that say a visual fill matches a percentage, compare extracted label text against the screenshot's visible fill and judge the fill from pixels when they disagree.",
+        ]
+    )
     return "\n".join(parts)
 
 

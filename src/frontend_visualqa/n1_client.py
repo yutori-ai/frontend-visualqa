@@ -107,6 +107,13 @@ class N1Client:
                 getattr(usage, "completion_tokens", "?"),
                 getattr(usage, "total_tokens", "?"),
             )
+        response_error = getattr(response, "error", None)
+        if response_error:
+            if isinstance(response_error, dict):
+                message = str(response_error.get("message") or response_error)
+            else:
+                message = str(response_error)
+            raise N1ClientError(f"n1 request failed: {message}")
         try:
             return response.choices[0].message
         except Exception as exc:

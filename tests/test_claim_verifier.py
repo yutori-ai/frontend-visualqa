@@ -151,6 +151,7 @@ async def _call_verify(
     url: str,
     navigation_hint: str | None,
     visualize: bool | None = None,
+    max_steps: int = 2,
 ) -> Any:
     signature = inspect.signature(verifier.verify)
     kwargs: dict[str, Any] = {}
@@ -167,7 +168,7 @@ async def _call_verify(
     if "url" in signature.parameters:
         kwargs["url"] = url
     if "max_steps" in signature.parameters:
-        kwargs["max_steps"] = 2
+        kwargs["max_steps"] = max_steps
     if "navigation_hint" in signature.parameters:
         kwargs["navigation_hint"] = navigation_hint
     if "visualize" in signature.parameters and visualize is not None:
@@ -305,7 +306,6 @@ async def test_claim_verifier_saves_proof_text_for_extract_content_and_links(tmp
                 return SimpleNamespace(
                     trace="extract_content_and_links()",
                     output_text=(
-                        "Current URL: http://fixture.local/cart\n\n"
                         "Accessible page snapshot:\n"
                         '- heading "Shopping Cart"'
                     ),
@@ -358,6 +358,94 @@ async def test_claim_verifier_saves_proof_text_for_extract_content_and_links(tmp
     assert "Accessible page snapshot:" in _field(result, "proof").text
     assert _field(result, "proof").text_path.endswith("step-01.txt")
     assert "Shopping Cart" in Path(_field(result, "proof").text_path).read_text(encoding="utf-8")
+
+
+@pytest.mark.asyncio
+async def test_extract_content_and_links_does_not_bypass_navigation_hint_guard(tmp_path: Path) -> None:
+    module = _import_claim_verifier_module()
+
+    class ExtractingActionExecutor(FakeActionExecutor):
+        async def execute_tool_call(self, session: FakeSession, tool_call: Any) -> Any:
+            self.calls.append((tool_call.function.name, json.loads(tool_call.function.arguments or "{}")))
+            if tool_call.function.name == "extract_content_and_links":
+                return SimpleNamespace(
+                    trace="extract_content_and_links()",
+                    output_text="Accessible page snapshot:\n- heading \"Products\"",
+                    current_url=session.page.url,
+                    success=True,
+                )
+            return await super().execute_tool_call(session, tool_call)
+
+    verifier, n1_client, action_executor = _build_claim_verifier(
+        module,
+        tmp_path,
+        responses=[
+            # Model calls extract_content_and_links (read-only), then immediately tries to verdict
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-1",
+                        function=FakeFunction(name="extract_content_and_links", arguments=json.dumps({})),
+                    )
+                ]
+            ),
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-2",
+                        function=FakeFunction(
+                            name="record_claim_result",
+                            arguments=json.dumps({"status": "failed", "finding": "Badge not visible."}),
+                        ),
+                    )
+                ]
+            ),
+            # After reprompt, model takes a real action
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-3",
+                        function=FakeFunction(
+                            name="left_click",
+                            arguments=json.dumps({"coordinates": [500, 500]}),
+                        ),
+                    )
+                ]
+            ),
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-4",
+                        function=FakeFunction(
+                            name="record_claim_result",
+                            arguments=json.dumps({"status": "passed", "finding": "Badge shows 3 items."}),
+                        ),
+                    )
+                ]
+            ),
+        ],
+        action_executor=ExtractingActionExecutor(),
+    )
+
+    result = await _call_verify(
+        verifier,
+        page=FakePage(url="http://fixture.local/products"),
+        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+        claim="The cart badge shows 3 items",
+        url="http://fixture.local/products",
+        navigation_hint="Click Add to Cart before deciding.",
+        max_steps=4,
+    )
+
+    assert _field(result, "status") == "passed"
+    # The extract_content_and_links call should NOT have satisfied the navigation hint guard
+    assert len(n1_client.calls) == 4
+    reminder_message = next(
+        message
+        for message in reversed(n1_client.calls[2]["messages"])
+        if message.get("role") == "user" and isinstance(message.get("content"), list)
+    )
+    assert "You have not followed the navigation hint yet." in reminder_message["content"][0]["text"]
 
 
 @pytest.mark.asyncio

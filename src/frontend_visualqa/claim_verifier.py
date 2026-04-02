@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, TYPE_CHECKING
 
-from frontend_visualqa.actions import ActionExecutor
+from frontend_visualqa.actions import ActionExecutor, EXTRACT_CONTENT_AND_LINKS_TOOL_NAME
 from frontend_visualqa.artifacts import ArtifactManager, RunArtifacts
 from frontend_visualqa.browser import BrowserManager, BrowserSession, image_bytes_to_data_url
 from frontend_visualqa.errors import BrowserActionError, N1ClientError
@@ -89,6 +89,7 @@ class _VerificationProgress:
     screenshot_paths: list[str]
     action_trace: list[str]
     url_history: list[str]
+    has_interacted: bool = False
     proof_text: str | None = None
     proof_text_path: str | None = None
 
@@ -228,13 +229,13 @@ class ClaimVerifier:
                             reprompt_text: str | None = None
                             force_stop_finding: str | None = None
                             if (
-                                progress.step_count == 0
+                                not progress.has_interacted
                                 and verdict[0] == "inconclusive"
                                 and self._finding_says_action_is_needed(verdict[1])
                             ):
                                 reprompt_text = build_take_action_prompt(claim)
                                 force_stop_finding = "The model kept saying more interaction was needed without taking the next browser action."
-                            elif navigation_hint and progress.step_count == 0 and verdict[0] != "not_testable":
+                            elif navigation_hint and not progress.has_interacted and verdict[0] != "not_testable":
                                 reprompt_text = build_follow_navigation_hint_prompt(claim, navigation_hint)
                                 force_stop_finding = "The model tried to render a verdict before following the navigation hint."
                             if reprompt_text is not None:
@@ -287,9 +288,12 @@ class ClaimVerifier:
                     )
                     current_url = execution.get("current_url", session.page.url) or url
                     progress.url_history.append(current_url)
+                    is_read_only = tool_name == EXTRACT_CONTENT_AND_LINKS_TOOL_NAME
                     progress.step_count += 1
                     non_action_reprompts = 0
-                    had_action_in_turn = True
+                    if not is_read_only:
+                        had_action_in_turn = True
+                        progress.has_interacted = True
                     screenshot_bytes, screenshot_path = await self._capture_evidence_screenshot(
                         session=session,
                         run_artifacts=run_artifacts,

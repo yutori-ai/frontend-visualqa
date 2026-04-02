@@ -606,8 +606,8 @@ async def test_execute_tool_call_extract_content_and_links_returns_snapshot_and_
 
     assert result.trace == "extract_content_and_links()"
     assert result.current_url == "http://fixture.local/cart"
-    assert "Current URL: http://fixture.local/cart" in result.output_text
     assert "Accessible page snapshot:" in result.output_text
+    assert '- heading "Shopping Cart"' in result.output_text
     assert '- [Wireless Headphones Pro](http://fixture.local/products/1)' in result.output_text
     assert '- [USB-C Hub Pro](http://fixture.local/products/2)' in result.output_text
 
