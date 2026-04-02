@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, TYPE_CHECKING
 
-from frontend_visualqa.actions import ActionExecutor, EXTRACT_CONTENT_AND_LINKS_TOOL_NAME
+from frontend_visualqa.actions import ActionExecutor
 from frontend_visualqa.artifacts import ArtifactManager, RunArtifacts
 from frontend_visualqa.browser import BrowserManager, BrowserSession, image_bytes_to_data_url
 from frontend_visualqa.errors import BrowserActionError, N1ClientError
@@ -288,10 +288,10 @@ class ClaimVerifier:
                     )
                     current_url = execution.get("current_url", session.page.url) or url
                     progress.url_history.append(current_url)
-                    is_read_only = tool_name == EXTRACT_CONTENT_AND_LINKS_TOOL_NAME
+                    is_read_only = tool_name == "extract_content_and_links"
                     progress.step_count += 1
-                    non_action_reprompts = 0
                     if not is_read_only:
+                        non_action_reprompts = 0
                         had_action_in_turn = True
                         progress.has_interacted = True
                     screenshot_bytes, screenshot_path = await self._capture_evidence_screenshot(

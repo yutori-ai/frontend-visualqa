@@ -24,7 +24,6 @@ EXTRACT_CONTENT_AND_LINKS_TOOL_NAME = "extract_content_and_links"
 MAX_ACCESSIBLE_SNAPSHOT_CHARS = 4_000
 _ARIA_LINK_PATTERN = re.compile(r'- link "([^"]*)"')
 _ARIA_URL_PATTERN = re.compile(r"- /url: (.+)")
-_LINK_TITLE_CLEANER_PATTERN = re.compile(r"\s+\d+$")
 
 ACTION_DELAY_SECONDS: dict[str, float] = {
     "left_click": 0.25,
@@ -455,6 +454,8 @@ class ActionExecutor:
     async def _extract_content_and_links(self, page: Any) -> str:
         snapshot = await self._accessible_page_snapshot(page)
         links = self._extract_links_from_snapshot(snapshot) if snapshot else []
+        if not links:
+            links = await self._extract_links_from_dom(page)
 
         sections = []
         if snapshot:
@@ -509,7 +510,7 @@ class ActionExecutor:
             link_match = _ARIA_LINK_PATTERN.search(line)
             if link_match is None:
                 continue
-            title = _LINK_TITLE_CLEANER_PATTERN.sub("", link_match.group(1)).strip()
+            title = link_match.group(1).strip()
             if not title:
                 continue
 
@@ -530,6 +531,35 @@ class ActionExecutor:
             if existing_title is None or len(title) > len(existing_title):
                 url_to_title[url] = title
 
+        return [(title, url) for url, title in url_to_title.items()]
+
+    @staticmethod
+    async def _extract_links_from_dom(page: Any) -> list[tuple[str, str]]:
+        try:
+            raw = await page.evaluate(
+                """() => {
+                    const links = [];
+                    for (const a of document.querySelectorAll('a[href]')) {
+                        if (a.offsetParent === null) continue;
+                        const title = (a.textContent || '').trim().replace(/\\s+/g, ' ');
+                        const url = a.href;
+                        if (title && url) links.push([title, url]);
+                    }
+                    return links;
+                }"""
+            )
+        except Exception:
+            return []
+        if not raw or not isinstance(raw, list):
+            return []
+        url_to_title: dict[str, str] = {}
+        for pair in raw:
+            if isinstance(pair, (list, tuple)) and len(pair) == 2:
+                title, url = str(pair[0]).strip(), str(pair[1]).strip()
+                if title and url:
+                    existing = url_to_title.get(url)
+                    if existing is None or len(title) > len(existing):
+                        url_to_title[url] = title
         return [(title, url) for url, title in url_to_title.items()]
 
     @staticmethod
