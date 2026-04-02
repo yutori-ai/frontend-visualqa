@@ -468,7 +468,7 @@ class ActionExecutor:
             sections.extend(
                 [
                     "Links on the page:",
-                    "\n".join(f"- [{title}]({url})" for url, title in links),
+                    "\n".join(f"- [{title}]({url})" for title, url in links),
                 ]
             )
         return "\n\n".join(sections)
@@ -529,7 +529,7 @@ class ActionExecutor:
             if existing_title is None or len(title) > len(existing_title):
                 url_to_title[url] = title
 
-        return list(url_to_title.items())
+        return [(title, url) for url, title in url_to_title.items()]
 
     @staticmethod
     def _clip_multiline_text(text: str, limit: int) -> str:
