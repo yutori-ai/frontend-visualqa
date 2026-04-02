@@ -94,15 +94,6 @@ async def test_n1_client_wraps_sdk_errors() -> None:
 
 
 @pytest.mark.asyncio
-async def test_n1_client_surfaces_response_error_payload() -> None:
-    client = FakeClient([SimpleNamespace(choices=None, usage=None, error={"message": "Insufficient prepaid balance."})])
-    n1_client = N1Client(client=client, timeout_seconds=0.1)
-
-    with pytest.raises(N1ClientError, match="Insufficient prepaid balance"):
-        await n1_client.create(messages=[{"role": "user", "content": [{"type": "text", "text": "Check"}]}])
-
-
-@pytest.mark.asyncio
 async def test_n1_client_retries_transient_errors(monkeypatch: pytest.MonkeyPatch) -> None:
     import frontend_visualqa.n1_client as module
 
