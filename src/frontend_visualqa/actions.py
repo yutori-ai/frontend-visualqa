@@ -263,11 +263,11 @@ class ActionExecutor:
     async def execute_tool_call(self, session: BrowserSession, tool_call: Any) -> ToolExecutionResult | str:
         """Execute a tool call object with ``function.name`` and JSON arguments."""
 
-        arguments = parse_tool_arguments(tool_call)
         action_name = getattr(getattr(tool_call, "function", tool_call), "name", "")
         canonical_name = ACTION_NAME_ALIASES.get(action_name, action_name)
         if canonical_name == EXTRACT_CONTENT_AND_LINKS_TOOL_NAME:
             return await self._execute_extract_content_and_links(session)
+        arguments = parse_tool_arguments(tool_call)
         return await self.execute_action(session=session, action_name=action_name, arguments=arguments)
 
     async def execute_action(
