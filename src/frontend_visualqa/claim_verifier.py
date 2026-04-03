@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, TYPE_CHECKING
 
-from frontend_visualqa.actions import ActionExecutor
+from frontend_visualqa.actions import ActionExecutor, EXTRACT_CONTENT_AND_LINKS_TOOL_NAME
 from frontend_visualqa.artifacts import ArtifactManager, RunArtifacts
 from frontend_visualqa.browser import BrowserManager, BrowserSession, image_bytes_to_data_url
 from frontend_visualqa.errors import BrowserActionError, N1ClientError
@@ -288,7 +288,7 @@ class ClaimVerifier:
                     )
                     current_url = execution.get("current_url", session.page.url) or url
                     progress.url_history.append(current_url)
-                    is_read_only = tool_name == "extract_content_and_links"
+                    is_read_only = tool_name == EXTRACT_CONTENT_AND_LINKS_TOOL_NAME
                     progress.step_count += 1
                     if not is_read_only:
                         non_action_reprompts = 0
@@ -629,19 +629,14 @@ class ClaimVerifier:
         return response_or_message
 
     async def _execute_tool_call(self, session: BrowserSession, tool_call: Any) -> dict[str, Any]:
-        if hasattr(self.action_executor, "execute_tool_call"):
-            result = await self.action_executor.execute_tool_call(session, tool_call)
-            if isinstance(result, str):
-                return {"trace": result, "output_text": None, "current_url": session.page.url}
-            return {
-                "trace": getattr(result, "trace", str(result)),
-                "output_text": getattr(result, "output_text", None),
-                "current_url": getattr(result, "current_url", session.page.url),
-            }
-
-        arguments = parse_tool_arguments(tool_call)
-        trace = await self.action_executor.execute_action(session, tool_call.function.name, arguments)
-        return {"trace": trace, "output_text": None, "current_url": session.page.url}
+        result = await self.action_executor.execute_tool_call(session, tool_call)
+        if isinstance(result, str):
+            return {"trace": result, "output_text": None, "current_url": session.page.url}
+        return {
+            "trace": getattr(result, "trace", str(result)),
+            "output_text": getattr(result, "output_text", None),
+            "current_url": getattr(result, "current_url", None) or session.page.url,
+        }
 
     @staticmethod
     def _extract_structured_verdict(tool_calls: list[Any]) -> tuple[ClaimStatus, str] | None:

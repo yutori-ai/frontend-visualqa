@@ -459,20 +459,16 @@ class ActionExecutor:
 
         sections = []
         if snapshot:
-            sections.extend(
-                [
-                    "Accessible page snapshot:",
-                    self._clip_multiline_text(snapshot, MAX_ACCESSIBLE_SNAPSHOT_CHARS),
-                ]
-            )
+            sections.extend([
+                "Accessible page snapshot:",
+                self._clip_multiline_text(snapshot, MAX_ACCESSIBLE_SNAPSHOT_CHARS),
+            ])
         if links:
             links_text = "\n".join(f"- [{title}]({url})" for title, url in links)
-            sections.extend(
-                [
-                    "Links on the page:",
-                    self._clip_multiline_text(links_text, MAX_ACCESSIBLE_SNAPSHOT_CHARS),
-                ]
-            )
+            sections.extend([
+                "Links on the page:",
+                self._clip_multiline_text(links_text, MAX_ACCESSIBLE_SNAPSHOT_CHARS),
+            ])
         return "\n\n".join(sections)
 
     async def _accessible_page_snapshot(self, page: Any) -> str | None:

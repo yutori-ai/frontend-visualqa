@@ -14,7 +14,7 @@ EXTRACT_CONTENT_AND_LINKS_TOOL: dict[str, Any] = {
             "from the current page. Use this tool to verify copy and arithmetic after you reach the "
             "relevant page state."
         ),
-        "parameters": {"type": "object", "properties": {}, "required": []},
+        "parameters": {"type": "object", "properties": {}},
     },
 }
 
