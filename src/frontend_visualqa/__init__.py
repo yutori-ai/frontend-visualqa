@@ -6,7 +6,7 @@ from importlib import import_module
 from typing import Any
 
 
-__version__ = "0.5.1"
+__version__ = "0.6.0"
 
 _LAZY_EXPORTS = {
     "ActionExecutor": ("frontend_visualqa.actions", "ActionExecutor"),
