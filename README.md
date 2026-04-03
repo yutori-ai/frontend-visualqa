@@ -299,6 +299,25 @@ Persistent session across claims — if different claims need different setup, u
 
 </details>
 
+<details>
+<summary><strong>Visual contradiction examples</strong></summary>
+
+The repo includes additional example pages with intentional visual bugs — cases where text labels contradict the rendered pixels. These test n1's ability to catch discrepancies like a toggle labeled "Enabled" but visually off, a gauge showing 35% fill with a "72%" label, or a disabled-looking button with active text.
+
+See [`examples/CLAIMS.md`](examples/CLAIMS.md) for the full list of pages, claims, and expected results.
+
+```bash
+# Example: device dashboard with gauge, toggle, and camera feed contradictions
+frontend-visualqa verify http://localhost:8000/device_dashboard.html \
+  --claims \
+  'The backup battery gauge fill matches the displayed 72% charge' \
+  'The front door lock toggle position matches the Locked status' \
+  'The garage camera shows a live feed matching its Online status'
+# → all three failed: gauge is ~35%, toggle is OFF, camera shows "No Signal"
+```
+
+</details>
+
 ## MCP tools
 
 | Tool | Description |

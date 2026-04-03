@@ -1,0 +1,338 @@
+<!--
+  Intentional bugs for visual QA testing:
+  1. Tab text shows "Annual Billing" as the heading, but the "Monthly" tab has the active/selected visual styling (highlighted background, bold)
+     → claim "The Annual billing tab is visually selected" should FAIL
+  2. The "Enterprise" plan CTA button says "Contact Sales" but is visually styled as disabled (grayed out, 50% opacity)
+     → claim "The Enterprise plan Contact Sales button appears active and clickable" should FAIL
+  3. The "Pro" plan shows a star rating of "4.8/5" in text but only 3 out of 5 stars are filled
+     → claim "The Pro plan star rating visually matches the 4.8 out of 5 text" should FAIL
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Planwise — Pricing</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #fafbfc;
+      --white: #ffffff;
+      --gray-50: #f8f9fb;
+      --gray-100: #f1f3f5;
+      --gray-200: #e2e5e9;
+      --gray-300: #c8cdd3;
+      --gray-400: #9aa1ab;
+      --gray-500: #6b7280;
+      --gray-700: #374151;
+      --gray-900: #111827;
+      --blue-500: #3b82f6;
+      --blue-600: #2563eb;
+      --blue-50: #eff6ff;
+      --purple-500: #8b5cf6;
+      --purple-600: #7c3aed;
+      --purple-50: #f5f3ff;
+      --green-500: #10b981;
+      --amber-400: #fbbf24;
+      --amber-200: #fde68a;
+      --font: 'Plus Jakarta Sans', sans-serif;
+      --radius: 16px;
+      --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+      --shadow-lg: 0 10px 40px rgba(0,0,0,0.08);
+    }
+
+    html { font-size: 15px; -webkit-font-smoothing: antialiased; }
+    body { font-family: var(--font); background: var(--bg); color: var(--gray-900); min-height: 100vh; }
+
+    /* Nav */
+    .nav {
+      background: var(--white);
+      border-bottom: 1px solid var(--gray-200);
+      padding: 0 40px;
+      height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .nav-brand { font-size: 1.3rem; font-weight: 800; letter-spacing: -0.03em; display: flex; align-items: center; gap: 8px; }
+    .nav-brand-icon { width: 32px; height: 32px; background: linear-gradient(135deg, var(--blue-600), var(--purple-500)); border-radius: 10px; }
+    .nav-links { display: flex; gap: 32px; }
+    .nav-link { font-size: 0.9rem; font-weight: 500; color: var(--gray-500); text-decoration: none; }
+    .nav-link.active { color: var(--gray-900); }
+
+    /* Page */
+    .page { max-width: 1120px; margin: 0 auto; padding: 48px 32px; }
+    .page-header { text-align: center; margin-bottom: 40px; }
+    .page-title { font-size: 2.2rem; font-weight: 800; letter-spacing: -0.04em; line-height: 1.2; }
+    .page-subtitle { color: var(--gray-500); margin-top: 12px; font-size: 1.05rem; max-width: 520px; margin-left: auto; margin-right: auto; line-height: 1.6; }
+
+    /* Billing toggle */
+    .toggle-row { display: flex; justify-content: center; margin-bottom: 40px; }
+    .toggle-group {
+      display: flex;
+      background: var(--gray-100);
+      border-radius: 12px;
+      padding: 4px;
+      gap: 2px;
+    }
+    .toggle-btn {
+      padding: 10px 24px;
+      border-radius: 10px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      color: var(--gray-500);
+      border: none;
+      background: transparent;
+      font-family: var(--font);
+    }
+    /* BUG 1: "Monthly" has the active styling, but the heading says "Annual Billing" */
+    .toggle-btn.active {
+      background: var(--white);
+      color: var(--gray-900);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    .billing-label { text-align: center; margin-bottom: 36px; }
+    .billing-heading { font-size: 1rem; font-weight: 600; color: var(--gray-700); }
+    .billing-save { font-size: 0.85rem; color: var(--green-500); font-weight: 600; margin-top: 4px; }
+
+    /* Plans grid */
+    .plans { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+    .plan {
+      background: var(--white);
+      border: 1px solid var(--gray-200);
+      border-radius: var(--radius);
+      padding: 32px;
+      display: flex;
+      flex-direction: column;
+      transition: all 0.2s;
+      position: relative;
+    }
+    .plan:hover { box-shadow: var(--shadow-lg); }
+    .plan.featured {
+      border-color: var(--purple-500);
+      box-shadow: 0 0 0 1px var(--purple-500), var(--shadow-lg);
+    }
+    .plan-badge {
+      position: absolute;
+      top: -12px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: linear-gradient(135deg, var(--purple-500), var(--blue-500));
+      color: white;
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 4px 16px;
+      border-radius: 20px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .plan-name { font-size: 1.15rem; font-weight: 700; margin-bottom: 8px; }
+    .plan-desc { font-size: 0.85rem; color: var(--gray-500); line-height: 1.5; margin-bottom: 20px; }
+    .plan-price { display: flex; align-items: baseline; gap: 4px; margin-bottom: 4px; }
+    .plan-amount { font-size: 2.5rem; font-weight: 800; letter-spacing: -0.04em; }
+    .plan-period { color: var(--gray-400); font-size: 0.9rem; }
+    .plan-billed { font-size: 0.8rem; color: var(--gray-400); margin-bottom: 24px; }
+
+    /* Rating */
+    .plan-rating { display: flex; align-items: center; gap: 8px; margin-bottom: 20px; }
+    .stars { display: flex; gap: 2px; }
+    .star { font-size: 1rem; }
+    .star.filled { color: var(--amber-400); }
+    .star.empty { color: var(--gray-300); }
+    .rating-text { font-size: 0.8rem; color: var(--gray-500); font-weight: 500; }
+
+    .plan-features { list-style: none; display: flex; flex-direction: column; gap: 12px; margin-bottom: 28px; flex: 1; }
+    .plan-feature { display: flex; align-items: flex-start; gap: 10px; font-size: 0.88rem; color: var(--gray-700); line-height: 1.4; }
+    .check { color: var(--green-500); font-weight: 700; flex-shrink: 0; margin-top: 1px; }
+
+    .plan-cta {
+      width: 100%;
+      padding: 14px;
+      border-radius: 12px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      font-family: var(--font);
+      transition: all 0.15s;
+    }
+    .plan-cta.primary {
+      background: var(--gray-900);
+      color: var(--white);
+    }
+    .plan-cta.primary:hover { background: var(--gray-700); }
+    .plan-cta.featured {
+      background: linear-gradient(135deg, var(--purple-600), var(--blue-600));
+      color: var(--white);
+    }
+    /* BUG 2: "Contact Sales" button is visually disabled (grayed out, low opacity) */
+    .plan-cta.disabled-visual {
+      background: var(--gray-200);
+      color: var(--gray-400);
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .plan-cta.outline {
+      background: var(--white);
+      color: var(--gray-700);
+      border: 1px solid var(--gray-200);
+    }
+
+    /* Comparison link */
+    .comparison-row { text-align: center; margin-top: 36px; }
+    .comparison-link { font-size: 0.9rem; color: var(--blue-600); font-weight: 600; text-decoration: none; }
+
+    /* Trusted by */
+    .trusted { text-align: center; margin-top: 56px; padding-top: 40px; border-top: 1px solid var(--gray-200); }
+    .trusted-label { font-size: 0.8rem; color: var(--gray-400); font-weight: 500; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 20px; }
+    .trusted-logos { display: flex; justify-content: center; gap: 48px; align-items: center; }
+    .trusted-logo { font-size: 1.1rem; font-weight: 700; color: var(--gray-300); letter-spacing: -0.01em; }
+  </style>
+</head>
+<body>
+  <nav class="nav">
+    <div class="nav-brand">
+      <div class="nav-brand-icon"></div>
+      Planwise
+    </div>
+    <div class="nav-links">
+      <a class="nav-link" href="#">Product</a>
+      <a class="nav-link active" href="#">Pricing</a>
+      <a class="nav-link" href="#">Docs</a>
+      <a class="nav-link" href="#">Blog</a>
+    </div>
+  </nav>
+
+  <div class="page">
+    <div class="page-header">
+      <div class="page-title">Simple, transparent pricing</div>
+      <div class="page-subtitle">Start free, scale as you grow. No hidden fees, no surprises. Cancel anytime.</div>
+    </div>
+
+    <div class="toggle-row">
+      <div class="toggle-group">
+        <!-- BUG 1: Monthly has active styling but the heading below says "Annual Billing" -->
+        <button class="toggle-btn active">Monthly</button>
+        <button class="toggle-btn">Annual</button>
+      </div>
+    </div>
+
+    <div class="billing-label">
+      <div class="billing-heading">Annual Billing</div>
+      <div class="billing-save">Save 20% with annual plans</div>
+    </div>
+
+    <div class="plans">
+      <!-- Starter -->
+      <div class="plan">
+        <div class="plan-name">Starter</div>
+        <div class="plan-desc">For individuals and small projects getting started.</div>
+        <div class="plan-price">
+          <span class="plan-amount">$0</span>
+          <span class="plan-period">/month</span>
+        </div>
+        <div class="plan-billed">Free forever</div>
+        <div class="plan-rating">
+          <div class="stars">
+            <span class="star filled">&#9733;</span>
+            <span class="star filled">&#9733;</span>
+            <span class="star filled">&#9733;</span>
+            <span class="star filled">&#9733;</span>
+            <span class="star empty">&#9733;</span>
+          </div>
+          <span class="rating-text">4.2/5</span>
+        </div>
+        <ul class="plan-features">
+          <li class="plan-feature"><span class="check">&#10003;</span> 1,000 API calls/month</li>
+          <li class="plan-feature"><span class="check">&#10003;</span> 1 team member</li>
+          <li class="plan-feature"><span class="check">&#10003;</span> Community support</li>
+          <li class="plan-feature"><span class="check">&#10003;</span> Basic analytics</li>
+        </ul>
+        <button class="plan-cta outline">Get Started Free</button>
+      </div>
+
+      <!-- Pro (featured) -->
+      <div class="plan featured">
+        <div class="plan-badge">Most Popular</div>
+        <div class="plan-name">Pro</div>
+        <div class="plan-desc">For growing teams that need power and flexibility.</div>
+        <div class="plan-price">
+          <span class="plan-amount">$49</span>
+          <span class="plan-period">/month</span>
+        </div>
+        <div class="plan-billed">Billed annually at $588/yr</div>
+        <!-- BUG 3: Text says 4.8/5 but only 3 stars are filled -->
+        <div class="plan-rating">
+          <div class="stars">
+            <span class="star filled">&#9733;</span>
+            <span class="star filled">&#9733;</span>
+            <span class="star filled">&#9733;</span>
+            <span class="star empty">&#9733;</span>
+            <span class="star empty">&#9733;</span>
+          </div>
+          <span class="rating-text">4.8/5</span>
+        </div>
+        <ul class="plan-features">
+          <li class="plan-feature"><span class="check">&#10003;</span> 100,000 API calls/month</li>
+          <li class="plan-feature"><span class="check">&#10003;</span> Up to 10 team members</li>
+          <li class="plan-feature"><span class="check">&#10003;</span> Priority email support</li>
+          <li class="plan-feature"><span class="check">&#10003;</span> Advanced analytics</li>
+          <li class="plan-feature"><span class="check">&#10003;</span> Custom integrations</li>
+        </ul>
+        <button class="plan-cta featured">Start Pro Trial</button>
+      </div>
+
+      <!-- Enterprise -->
+      <div class="plan">
+        <div class="plan-name">Enterprise</div>
+        <div class="plan-desc">For organizations that need dedicated infrastructure and compliance.</div>
+        <div class="plan-price">
+          <span class="plan-amount">Custom</span>
+        </div>
+        <div class="plan-billed">Tailored to your needs</div>
+        <div class="plan-rating">
+          <div class="stars">
+            <span class="star filled">&#9733;</span>
+            <span class="star filled">&#9733;</span>
+            <span class="star filled">&#9733;</span>
+            <span class="star filled">&#9733;</span>
+            <span class="star filled">&#9733;</span>
+          </div>
+          <span class="rating-text">4.9/5</span>
+        </div>
+        <ul class="plan-features">
+          <li class="plan-feature"><span class="check">&#10003;</span> Unlimited API calls</li>
+          <li class="plan-feature"><span class="check">&#10003;</span> Unlimited team members</li>
+          <li class="plan-feature"><span class="check">&#10003;</span> Dedicated support engineer</li>
+          <li class="plan-feature"><span class="check">&#10003;</span> SOC 2 &amp; HIPAA compliance</li>
+          <li class="plan-feature"><span class="check">&#10003;</span> SLA guarantee (99.99%)</li>
+          <li class="plan-feature"><span class="check">&#10003;</span> Custom deployment options</li>
+        </ul>
+        <!-- BUG 2: Says "Contact Sales" but styled as disabled -->
+        <button class="plan-cta disabled-visual">Contact Sales</button>
+      </div>
+    </div>
+
+    <div class="comparison-row">
+      <a class="comparison-link" href="#">Compare all features &rarr;</a>
+    </div>
+
+    <div class="trusted">
+      <div class="trusted-label">Trusted by 2,000+ companies</div>
+      <div class="trusted-logos">
+        <span class="trusted-logo">Vercel</span>
+        <span class="trusted-logo">Linear</span>
+        <span class="trusted-logo">Notion</span>
+        <span class="trusted-logo">Figma</span>
+        <span class="trusted-logo">Stripe</span>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

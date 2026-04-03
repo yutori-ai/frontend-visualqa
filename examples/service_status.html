@@ -1,0 +1,463 @@
+<!--
+  Intentional bugs for visual QA testing:
+  1. "API Gateway" service text says "Healthy" but its status dot is RED (error color)
+     → claim "The API Gateway service shows a healthy status" should FAIL
+  2. "Authentication" service text says "Degraded" but its status dot is GREEN (healthy color)
+     → claim "The Authentication service indicator matches its degraded status label" should FAIL
+  3. The overall system health ring/gauge shows ~25% fill but the center text reads "98.7%"
+     → claim "The system health gauge fill matches the 98.7% label" should FAIL
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Meridian — Service Status</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap');
+
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #0c0e14;
+      --surface: #141720;
+      --surface-raised: #1a1e2a;
+      --border: rgba(255,255,255,0.07);
+      --border-subtle: rgba(255,255,255,0.04);
+      --text: #e8ecf4;
+      --text-secondary: #8892a4;
+      --text-muted: #5a6478;
+      --green: #22c55e;
+      --green-bg: rgba(34,197,94,0.1);
+      --red: #ef4444;
+      --red-bg: rgba(239,68,68,0.1);
+      --amber: #f59e0b;
+      --amber-bg: rgba(245,158,11,0.1);
+      --blue: #3b82f6;
+      --blue-bg: rgba(59,130,246,0.1);
+      --font: 'DM Sans', sans-serif;
+      --mono: 'JetBrains Mono', monospace;
+      --radius: 12px;
+    }
+
+    html { font-size: 15px; -webkit-font-smoothing: antialiased; }
+    body { font-family: var(--font); background: var(--bg); color: var(--text); min-height: 100vh; }
+
+    .layout { display: grid; grid-template-columns: 240px 1fr; min-height: 100vh; }
+
+    /* Sidebar */
+    .sidebar {
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      padding: 24px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .logo {
+      font-size: 1.2rem;
+      font-weight: 700;
+      padding: 8px 12px 20px;
+      letter-spacing: -0.02em;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .logo-mark {
+      width: 28px; height: 28px;
+      background: linear-gradient(135deg, var(--blue), #8b5cf6);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px; font-weight: 700; color: white;
+    }
+    .nav-item {
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      color: var(--text-secondary);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      transition: all 0.15s;
+    }
+    .nav-item:hover { background: var(--surface-raised); color: var(--text); }
+    .nav-item.active { background: var(--surface-raised); color: var(--text); font-weight: 500; }
+    .nav-icon { font-size: 1.1rem; width: 20px; text-align: center; }
+    .nav-divider { height: 1px; background: var(--border); margin: 8px 0; }
+
+    /* Main */
+    .main { padding: 32px 40px; overflow-y: auto; }
+    .page-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 32px;
+    }
+    .page-title { font-size: 1.6rem; font-weight: 700; letter-spacing: -0.03em; }
+    .page-subtitle { color: var(--text-secondary); margin-top: 4px; font-size: 0.9rem; }
+    .header-right { display: flex; gap: 12px; align-items: center; }
+    .badge {
+      padding: 5px 12px;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      font-weight: 500;
+    }
+    .badge-green { background: var(--green-bg); color: var(--green); }
+    .badge-amber { background: var(--amber-bg); color: var(--amber); }
+    .last-check { color: var(--text-muted); font-size: 0.8rem; }
+
+    /* Health gauge */
+    .top-row { display: grid; grid-template-columns: 280px 1fr; gap: 24px; margin-bottom: 28px; }
+    .gauge-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .gauge-container { position: relative; width: 160px; height: 160px; margin-bottom: 16px; }
+    .gauge-svg { width: 160px; height: 160px; transform: rotate(-90deg); }
+    .gauge-bg { fill: none; stroke: var(--surface-raised); stroke-width: 10; }
+    /* BUG: stroke-dasharray shows ~25% fill but center text says 98.7% */
+    .gauge-fill { fill: none; stroke: var(--green); stroke-width: 10; stroke-linecap: round; stroke-dasharray: 80 440; transition: stroke-dasharray 1s ease; }
+    .gauge-text {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+    }
+    .gauge-value { font-size: 2rem; font-weight: 700; letter-spacing: -0.03em; }
+    .gauge-label { font-size: 0.8rem; color: var(--text-secondary); margin-top: 2px; }
+    .gauge-title { font-size: 0.95rem; font-weight: 600; }
+    .gauge-subtitle { font-size: 0.8rem; color: var(--text-secondary); margin-top: 2px; }
+
+    /* Metrics strip */
+    .metrics-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px 28px;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 24px;
+    }
+    .metric { display: flex; flex-direction: column; }
+    .metric-value { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em; }
+    .metric-label { font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px; }
+    .metric-change { font-size: 0.75rem; margin-top: 6px; font-weight: 500; }
+    .metric-change.up { color: var(--green); }
+    .metric-change.down { color: var(--red); }
+
+    /* Services table */
+    .services-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .card-header {
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .card-title { font-size: 1rem; font-weight: 600; }
+    .card-action { font-size: 0.8rem; color: var(--blue); cursor: pointer; }
+
+    table { width: 100%; border-collapse: collapse; }
+    th {
+      text-align: left;
+      padding: 12px 24px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface-raised);
+    }
+    td {
+      padding: 16px 24px;
+      font-size: 0.9rem;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(255,255,255,0.015); }
+
+    .service-name { font-weight: 500; }
+    .service-endpoint { font-family: var(--mono); font-size: 0.8rem; color: var(--text-secondary); }
+
+    .status-cell { display: flex; align-items: center; gap: 8px; }
+    .status-dot {
+      width: 12px; height: 12px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .status-dot.green { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .status-dot.red { background: var(--red); box-shadow: 0 0 6px var(--red); }
+    .status-dot.amber { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
+    .status-text { font-size: 0.85rem; }
+    .status-text.healthy { color: var(--green); }
+    .status-text.degraded { color: var(--amber); }
+
+    .uptime { font-family: var(--mono); font-size: 0.85rem; }
+    .latency { font-family: var(--mono); font-size: 0.85rem; }
+    .latency.warn { color: var(--amber); }
+
+    /* Incident timeline */
+    .incidents-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin-top: 24px;
+    }
+    .incident {
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      gap: 16px;
+    }
+    .incident:last-child { border-bottom: none; }
+    .incident-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      margin-top: 6px;
+      flex-shrink: 0;
+    }
+    .incident-content { flex: 1; }
+    .incident-title { font-size: 0.9rem; font-weight: 500; }
+    .incident-time { font-size: 0.8rem; color: var(--text-muted); margin-top: 2px; }
+    .incident-desc { font-size: 0.85rem; color: var(--text-secondary); margin-top: 6px; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="logo">
+        <div class="logo-mark">M</div>
+        Meridian
+      </div>
+      <div class="nav-item active">
+        <span class="nav-icon">&#9673;</span> Status
+      </div>
+      <div class="nav-item">
+        <span class="nav-icon">&#9632;</span> Services
+      </div>
+      <div class="nav-item">
+        <span class="nav-icon">&#9650;</span> Incidents
+      </div>
+      <div class="nav-item">
+        <span class="nav-icon">&#9670;</span> Monitors
+      </div>
+      <div class="nav-divider"></div>
+      <div class="nav-item">
+        <span class="nav-icon">&#9881;</span> Settings
+      </div>
+      <div class="nav-item">
+        <span class="nav-icon">&#128279;</span> Integrations
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="page-header">
+        <div>
+          <div class="page-title">System Status</div>
+          <div class="page-subtitle">Real-time health monitoring across all services</div>
+        </div>
+        <div class="header-right">
+          <span class="badge badge-green">All Systems Operational</span>
+          <span class="last-check">Last checked 12s ago</span>
+        </div>
+      </div>
+
+      <div class="top-row">
+        <div class="gauge-card">
+          <div class="gauge-container">
+            <svg class="gauge-svg" viewBox="0 0 160 160">
+              <circle class="gauge-bg" cx="80" cy="80" r="70" />
+              <circle class="gauge-fill" cx="80" cy="80" r="70" />
+            </svg>
+            <div class="gauge-text">
+              <div class="gauge-value">98.7%</div>
+              <div class="gauge-label">uptime</div>
+            </div>
+          </div>
+          <div class="gauge-title">System Health</div>
+          <div class="gauge-subtitle">30-day rolling average</div>
+        </div>
+
+        <div class="metrics-card">
+          <div class="metric">
+            <div class="metric-value">2.4M</div>
+            <div class="metric-label">Requests today</div>
+            <div class="metric-change up">+12.3% vs yesterday</div>
+          </div>
+          <div class="metric">
+            <div class="metric-value">142ms</div>
+            <div class="metric-label">Avg response time</div>
+            <div class="metric-change down">+8ms vs yesterday</div>
+          </div>
+          <div class="metric">
+            <div class="metric-value">0.02%</div>
+            <div class="metric-label">Error rate</div>
+            <div class="metric-change up">-0.01% vs yesterday</div>
+          </div>
+          <div class="metric">
+            <div class="metric-value">7</div>
+            <div class="metric-label">Active alerts</div>
+            <div class="metric-change down">+3 vs yesterday</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="services-card">
+        <div class="card-header">
+          <div class="card-title">Service Health</div>
+          <div class="card-action">View all &rarr;</div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Service</th>
+              <th>Status</th>
+              <th>Uptime (30d)</th>
+              <th>Avg Latency</th>
+              <th>Region</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <!-- BUG 1: Text says "Healthy" but dot is RED -->
+              <td>
+                <div class="service-name">API Gateway</div>
+                <div class="service-endpoint">gateway.meridian.io</div>
+              </td>
+              <td>
+                <div class="status-cell">
+                  <div class="status-dot red"></div>
+                  <span class="status-text healthy">Healthy</span>
+                </div>
+              </td>
+              <td class="uptime">99.98%</td>
+              <td class="latency">45ms</td>
+              <td>us-east-1</td>
+            </tr>
+            <tr>
+              <!-- BUG 2: Text says "Degraded" but dot is GREEN -->
+              <td>
+                <div class="service-name">Authentication</div>
+                <div class="service-endpoint">auth.meridian.io</div>
+              </td>
+              <td>
+                <div class="status-cell">
+                  <div class="status-dot green"></div>
+                  <span class="status-text degraded">Degraded</span>
+                </div>
+              </td>
+              <td class="uptime">99.91%</td>
+              <td class="latency warn">312ms</td>
+              <td>us-east-1</td>
+            </tr>
+            <tr>
+              <td>
+                <div class="service-name">Database Cluster</div>
+                <div class="service-endpoint">db.meridian.io</div>
+              </td>
+              <td>
+                <div class="status-cell">
+                  <div class="status-dot green"></div>
+                  <span class="status-text healthy">Healthy</span>
+                </div>
+              </td>
+              <td class="uptime">99.99%</td>
+              <td class="latency">12ms</td>
+              <td>us-east-1</td>
+            </tr>
+            <tr>
+              <td>
+                <div class="service-name">CDN Edge Network</div>
+                <div class="service-endpoint">cdn.meridian.io</div>
+              </td>
+              <td>
+                <div class="status-cell">
+                  <div class="status-dot green"></div>
+                  <span class="status-text healthy">Healthy</span>
+                </div>
+              </td>
+              <td class="uptime">100.00%</td>
+              <td class="latency">8ms</td>
+              <td>Global</td>
+            </tr>
+            <tr>
+              <td>
+                <div class="service-name">Message Queue</div>
+                <div class="service-endpoint">mq.meridian.io</div>
+              </td>
+              <td>
+                <div class="status-cell">
+                  <div class="status-dot amber"></div>
+                  <span class="status-text degraded">Degraded</span>
+                </div>
+              </td>
+              <td class="uptime">99.87%</td>
+              <td class="latency warn">284ms</td>
+              <td>us-west-2</td>
+            </tr>
+            <tr>
+              <td>
+                <div class="service-name">Search Index</div>
+                <div class="service-endpoint">search.meridian.io</div>
+              </td>
+              <td>
+                <div class="status-cell">
+                  <div class="status-dot green"></div>
+                  <span class="status-text healthy">Healthy</span>
+                </div>
+              </td>
+              <td class="uptime">99.95%</td>
+              <td class="latency">67ms</td>
+              <td>us-east-1</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="incidents-card">
+        <div class="card-header">
+          <div class="card-title">Recent Incidents</div>
+          <div class="card-action">View history &rarr;</div>
+        </div>
+        <div class="incident">
+          <div class="incident-dot" style="background: var(--amber);"></div>
+          <div class="incident-content">
+            <div class="incident-title">Elevated latency on Message Queue</div>
+            <div class="incident-time">Ongoing &mdash; started 47 min ago</div>
+            <div class="incident-desc">We are investigating elevated p99 latencies on the us-west-2 message queue cluster. Consumer lag is increasing. No message loss detected.</div>
+          </div>
+        </div>
+        <div class="incident">
+          <div class="incident-dot" style="background: var(--green);"></div>
+          <div class="incident-content">
+            <div class="incident-title">Database failover completed</div>
+            <div class="incident-time">Resolved &mdash; 6 hours ago &mdash; Duration: 3m 22s</div>
+            <div class="incident-desc">Automated failover to secondary replica completed successfully. Brief read-only window during switchover.</div>
+          </div>
+        </div>
+        <div class="incident">
+          <div class="incident-dot" style="background: var(--green);"></div>
+          <div class="incident-content">
+            <div class="incident-title">CDN cache purge delay</div>
+            <div class="incident-time">Resolved &mdash; 2 days ago &mdash; Duration: 12m 05s</div>
+            <div class="incident-desc">Cache invalidation requests were queued due to a configuration deployment. All purge operations completed within SLA.</div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

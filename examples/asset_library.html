@@ -1,0 +1,330 @@
+<!--
+  Intentional bugs for visual QA testing:
+  1. The header says "Grid view selected" but the List view icon has the selected styling
+     → claim "The Grid view option is visually selected" should FAIL
+  2. The first asset says it is "Saved to Brand Favorites" but its heart icon is only outlined
+     → claim "The Riverside campaign asset has a visually filled favorite icon" should FAIL
+  3. The "Publish selected" button label suggests an action, but the button is visually disabled
+     → claim "The Publish selected button appears active and clickable" should FAIL
+  4. The asset count label is accurate and visible
+     → claim "The library shows 128 assets available" should PASS
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cinder — Asset Library</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&display=swap');
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #fbf7ef;
+      --ink: #161616;
+      --muted: #6b675f;
+      --border: rgba(22, 22, 22, 0.12);
+      --card: rgba(255, 255, 255, 0.82);
+      --card-strong: #ffffff;
+      --sand: #efe4cf;
+      --sand-strong: #d7c7a4;
+      --orange: #f97316;
+      --orange-soft: rgba(249, 115, 22, 0.12);
+      --olive: #6b8e23;
+      --olive-soft: rgba(107, 142, 35, 0.12);
+      --shadow: 0 20px 50px rgba(82, 54, 18, 0.12);
+      --font: 'Sora', sans-serif;
+    }
+
+    body {
+      min-height: 100vh;
+      font-family: var(--font);
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top right, rgba(249, 115, 22, 0.14), transparent 22%),
+        linear-gradient(180deg, #fffdf9 0%, var(--bg) 100%);
+      padding: 36px;
+    }
+
+    .shell {
+      max-width: 1180px;
+      margin: 0 auto;
+      background: var(--card);
+      border: 1px solid rgba(255, 255, 255, 0.48);
+      border-radius: 28px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      backdrop-filter: blur(12px);
+    }
+
+    .topbar {
+      padding: 26px 28px 20px;
+      border-bottom: 1px solid rgba(22, 22, 22, 0.08);
+      display: flex;
+      justify-content: space-between;
+      gap: 24px;
+      align-items: center;
+    }
+
+    .title {
+      font-size: 2rem;
+      font-weight: 800;
+      letter-spacing: -0.05em;
+    }
+
+    .subtitle {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 0.92rem;
+      line-height: 1.6;
+    }
+
+    .meta {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .pill {
+      border-radius: 999px;
+      padding: 10px 14px;
+      background: white;
+      border: 1px solid var(--border);
+      font-size: 0.82rem;
+      font-weight: 700;
+    }
+
+    .pill.count {
+      background: var(--olive-soft);
+      color: #56731d;
+      border-color: rgba(107, 142, 35, 0.16);
+    }
+
+    .toolbar {
+      padding: 18px 28px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 18px;
+      border-bottom: 1px solid rgba(22, 22, 22, 0.08);
+      background: rgba(255, 255, 255, 0.52);
+    }
+
+    .view-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .view-summary {
+      font-size: 0.86rem;
+      color: var(--muted);
+      font-weight: 600;
+      margin-right: 6px;
+    }
+
+    .view-button {
+      width: 46px;
+      height: 46px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      background: white;
+      display: grid;
+      place-items: center;
+      color: #71717a;
+      font-size: 1rem;
+    }
+
+    .view-button.selected {
+      background: linear-gradient(135deg, #161616, #3f3f46);
+      color: white;
+      border-color: transparent;
+      box-shadow: 0 12px 24px rgba(22, 22, 22, 0.18);
+    }
+
+    .publish {
+      border: none;
+      border-radius: 16px;
+      padding: 14px 20px;
+      font-family: var(--font);
+      font-size: 0.92rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      background: #d6d3d1;
+      color: #a8a29e;
+      opacity: 0.58;
+      cursor: not-allowed;
+    }
+
+    .grid {
+      padding: 28px;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+    }
+
+    .asset {
+      border-radius: 24px;
+      background: var(--card-strong);
+      border: 1px solid rgba(22, 22, 22, 0.09);
+      overflow: hidden;
+    }
+
+    .asset-preview {
+      height: 180px;
+      padding: 22px;
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      background: linear-gradient(135deg, #0f172a, #1d4ed8);
+      color: white;
+    }
+
+    .asset-preview.alt {
+      background: linear-gradient(135deg, #7c2d12, #f97316);
+    }
+
+    .asset-preview.olive {
+      background: linear-gradient(135deg, #365314, #84cc16);
+    }
+
+    .preview-chip {
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      background: rgba(255, 255, 255, 0.16);
+      backdrop-filter: blur(6px);
+    }
+
+    .asset-body {
+      padding: 18px;
+    }
+
+    .asset-top {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+      margin-bottom: 10px;
+    }
+
+    .asset-name {
+      font-size: 1rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+    }
+
+    .asset-note {
+      color: var(--muted);
+      font-size: 0.82rem;
+      line-height: 1.5;
+    }
+
+    .heart {
+      width: 34px;
+      height: 34px;
+      border-radius: 999px;
+      border: 1px solid rgba(249, 115, 22, 0.16);
+      display: grid;
+      place-items: center;
+      background: white;
+      color: #cbd5e1;
+      font-size: 1.05rem;
+      flex-shrink: 0;
+    }
+
+    .saved-pill {
+      margin-top: 14px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border-radius: 999px;
+      padding: 8px 12px;
+      background: var(--orange-soft);
+      color: #c2410c;
+      font-size: 0.8rem;
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="topbar">
+      <div>
+        <h1 class="title">Brand asset library</h1>
+        <p class="subtitle">Review artwork, toggle between browsing modes, and push approved assets to the publishing queue.</p>
+      </div>
+      <div class="meta">
+        <div class="pill count">128 assets available</div>
+        <div class="pill">Brand Favorites sync on</div>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <div class="view-group">
+        <span class="view-summary">Grid view selected</span>
+        <button class="view-button" aria-label="Grid view">▦</button>
+        <button class="view-button selected" aria-label="List view">☰</button>
+      </div>
+      <button class="publish">Publish selected</button>
+    </div>
+
+    <div class="grid">
+      <article class="asset">
+        <div class="asset-preview">
+          <div class="preview-chip">Riverside campaign</div>
+          <div class="preview-chip">16:9</div>
+        </div>
+        <div class="asset-body">
+          <div class="asset-top">
+            <div>
+              <div class="asset-name">Riverside launch hero</div>
+              <p class="asset-note">Homepage takeover for the spring launch story.</p>
+            </div>
+            <div class="heart" aria-hidden="true">♡</div>
+          </div>
+          <div class="saved-pill">Saved to Brand Favorites</div>
+        </div>
+      </article>
+
+      <article class="asset">
+        <div class="asset-preview alt">
+          <div class="preview-chip">Social kit</div>
+          <div class="preview-chip">1:1</div>
+        </div>
+        <div class="asset-body">
+          <div class="asset-top">
+            <div>
+              <div class="asset-name">Partner spotlight tile</div>
+              <p class="asset-note">Square artwork for paid social placements.</p>
+            </div>
+            <div class="heart" aria-hidden="true">♡</div>
+          </div>
+          <div class="saved-pill" style="background: rgba(107, 142, 35, 0.12); color: #56731d;">Approved for syndication</div>
+        </div>
+      </article>
+
+      <article class="asset">
+        <div class="asset-preview olive">
+          <div class="preview-chip">Email banner</div>
+          <div class="preview-chip">600px</div>
+        </div>
+        <div class="asset-body">
+          <div class="asset-top">
+            <div>
+              <div class="asset-name">Retention offer banner</div>
+              <p class="asset-note">Lifecycle email header with spring palette updates.</p>
+            </div>
+            <div class="heart" aria-hidden="true">♡</div>
+          </div>
+          <div class="saved-pill">Awaiting legal review</div>
+        </div>
+      </article>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,242 @@
+<!--
+  Intentional bugs for visual QA testing:
+  1. The legend says Revenue is blue, but the chart labels the orange line as Revenue
+     -> claim "The Revenue series line matches the blue legend swatch" should FAIL
+  2. The legend says Churn is orange, but the chart labels the blue line as Churn
+     -> claim "The Churn series line matches the orange legend swatch" should FAIL
+  3. The chart title is correct and visible
+     -> claim "The page shows the Monthly funnel health chart title" should PASS
+  4. Each plotted series is explicitly labeled at the line endpoint so the swatch-to-line mapping is visually grounded
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Northstar Metrics — Funnel Health</title>
+  <style>
+    :root {
+      --bg: #eef2f7;
+      --panel: #ffffff;
+      --ink: #152132;
+      --muted: #607089;
+      --line: #d8e0eb;
+      --blue: #2f6fed;
+      --orange: #f97316;
+      --green: #10b981;
+      --grid: #e9eef5;
+      --shadow: 0 18px 36px rgba(25, 40, 70, 0.08);
+      --font: "Inter", "Helvetica Neue", Arial, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: var(--font);
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top right, rgba(47, 111, 237, 0.14), transparent 26%),
+        linear-gradient(180deg, #f8fbff, var(--bg));
+    }
+
+    .page {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 44px 28px 64px;
+    }
+
+    .hero {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 24px;
+      margin-bottom: 28px;
+    }
+
+    .hero h1 {
+      margin: 0;
+      font-size: 2rem;
+      letter-spacing: -0.04em;
+    }
+
+    .hero p {
+      margin: 10px 0 0;
+      max-width: 620px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .pill {
+      padding: 10px 14px;
+      border-radius: 999px;
+      background: rgba(16, 185, 129, 0.12);
+      color: var(--green);
+      font-weight: 700;
+      font-size: 0.84rem;
+      white-space: nowrap;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      box-shadow: var(--shadow);
+      padding: 26px 28px 30px;
+    }
+
+    .card-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 20px;
+      margin-bottom: 22px;
+    }
+
+    .eyebrow {
+      margin-bottom: 8px;
+      font-size: 0.76rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .chart-title {
+      margin: 0;
+      font-size: 1.28rem;
+      letter-spacing: -0.03em;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      justify-content: flex-end;
+    }
+
+    .legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: #f8fafc;
+      border: 1px solid var(--line);
+      color: var(--ink);
+      font-size: 0.88rem;
+      font-weight: 600;
+    }
+
+    .swatch {
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      display: inline-block;
+      flex-shrink: 0;
+    }
+
+    .chart-shell {
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      background:
+        linear-gradient(180deg, rgba(47, 111, 237, 0.04), rgba(255, 255, 255, 0)),
+        #fbfdff;
+      padding: 18px 18px 10px;
+    }
+
+    .axis-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 0 6px;
+      color: var(--muted);
+      font-size: 0.8rem;
+      margin-top: 8px;
+    }
+
+    .axis-label {
+      width: 52px;
+      text-align: center;
+    }
+
+    .series-label {
+      font-family: "Inter", "Helvetica Neue", Arial, sans-serif;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+      fill: var(--ink);
+      paint-order: stroke;
+      stroke: rgba(255, 255, 255, 0.9);
+      stroke-width: 4px;
+      stroke-linejoin: round;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="hero">
+      <div>
+        <h1>Pipeline Insights</h1>
+        <p>Review how revenue, churn, and conversion are trending before the weekly planning call.</p>
+      </div>
+      <div class="pill">Updated 6 min ago</div>
+    </div>
+
+    <div class="card">
+      <div class="card-top">
+        <div>
+          <div class="eyebrow">Forecast</div>
+          <h2 class="chart-title">Monthly funnel health</h2>
+        </div>
+        <div class="legend">
+          <div class="legend-item"><span class="swatch" style="background: var(--blue);"></span>Revenue</div>
+          <div class="legend-item"><span class="swatch" style="background: var(--orange);"></span>Churn</div>
+          <div class="legend-item"><span class="swatch" style="background: var(--green);"></span>Conversion</div>
+        </div>
+      </div>
+
+      <div class="chart-shell">
+        <svg width="100%" height="340" viewBox="0 0 980 340" role="img" aria-label="Monthly funnel health chart">
+          <g stroke="var(--grid)" stroke-width="1">
+            <line x1="54" y1="48" x2="944" y2="48"></line>
+            <line x1="54" y1="112" x2="944" y2="112"></line>
+            <line x1="54" y1="176" x2="944" y2="176"></line>
+            <line x1="54" y1="240" x2="944" y2="240"></line>
+            <line x1="54" y1="304" x2="944" y2="304"></line>
+          </g>
+
+          <g fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="8">
+            <!-- BUG 1: Revenue line is orange even though the legend says blue -->
+            <path stroke="var(--orange)" d="M80 238 C180 208, 240 186, 316 170 S470 134, 552 126 S708 92, 812 78 S892 66, 918 58"></path>
+            <!-- BUG 2: Churn line is blue even though the legend says orange -->
+            <path stroke="var(--blue)" d="M80 118 C170 130, 248 144, 330 160 S490 188, 584 202 S748 222, 848 236 S904 248, 918 254"></path>
+            <path stroke="var(--green)" d="M80 212 C164 204, 248 190, 330 184 S476 170, 572 160 S748 142, 848 126 S904 116, 918 108"></path>
+          </g>
+
+          <g>
+            <text class="series-label" x="860" y="58">Revenue</text>
+            <text class="series-label" x="860" y="258">Churn</text>
+            <text class="series-label" x="846" y="108">Conversion</text>
+          </g>
+
+          <g fill="var(--muted)" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="12">
+            <text x="18" y="52">90</text>
+            <text x="18" y="116">72</text>
+            <text x="18" y="180">54</text>
+            <text x="18" y="244">36</text>
+            <text x="18" y="308">18</text>
+          </g>
+        </svg>
+
+        <div class="axis-row">
+          <div class="axis-label">Jan</div>
+          <div class="axis-label">Feb</div>
+          <div class="axis-label">Mar</div>
+          <div class="axis-label">Apr</div>
+          <div class="axis-label">May</div>
+          <div class="axis-label">Jun</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

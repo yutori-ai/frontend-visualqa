@@ -1,0 +1,367 @@
+<!--
+  Intentional bugs for visual QA testing:
+  1. The summary says "Power Users" is selected, but the "New Signups" chip has the selected styling
+     -> claim "The Power Users audience chip is visually selected" should FAIL
+  2. The "Send test email" button text implies actionability, but the button is visually disabled
+     -> claim "The Send test email button appears active and clickable" should FAIL
+  3. The mobile preview is clipped inside the device frame and the call-to-action at the bottom is cut off
+     -> claim "The mobile email preview is fully visible inside its frame" should FAIL
+  4. The subject line is visible and correct
+     -> claim "The subject line shows Launch Week starts now" should PASS
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Courier Studio - Campaign Editor</title>
+  <style>
+    :root {
+      --bg: #f4f6fb;
+      --panel: #ffffff;
+      --ink: #172033;
+      --muted: #6a7386;
+      --line: #dde3ef;
+      --accent: #4f46e5;
+      --accent-soft: #ecebff;
+      --rose: #d94665;
+      --rose-soft: #fff0f4;
+      --shadow: 0 12px 32px rgba(32, 46, 84, 0.1);
+      --radius: 20px;
+      --font: "Inter", "Helvetica Neue", Arial, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--font);
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top right, rgba(79, 70, 229, 0.12), transparent 28%),
+        linear-gradient(180deg, #f9fbff, var(--bg));
+    }
+
+    .page {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 38px 28px 68px;
+    }
+
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 24px;
+      margin-bottom: 24px;
+    }
+
+    .topbar h1 {
+      margin: 0;
+      font-size: 2rem;
+      letter-spacing: -0.04em;
+    }
+
+    .topbar p {
+      margin: 10px 0 0;
+      color: var(--muted);
+      max-width: 620px;
+      line-height: 1.6;
+    }
+
+    .status-chip {
+      padding: 10px 14px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-weight: 700;
+      font-size: 0.88rem;
+      white-space: nowrap;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 1.2fr 0.9fr;
+      gap: 24px;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .card-body {
+      padding: 24px;
+    }
+
+    .eyebrow {
+      font-size: 0.76rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+
+    .field-label {
+      font-size: 0.84rem;
+      font-weight: 700;
+      color: var(--muted);
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .subject {
+      font-size: 1.15rem;
+      font-weight: 700;
+      padding: 16px 18px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #fbfcff;
+      margin-bottom: 22px;
+    }
+
+    .summary {
+      margin-bottom: 16px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .summary strong {
+      color: var(--ink);
+    }
+
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 24px;
+    }
+
+    .chip {
+      padding: 10px 14px;
+      border-radius: 999px;
+      background: #f3f5fa;
+      color: var(--muted);
+      border: 1px solid transparent;
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+
+    .chip.selected {
+      background: var(--accent-soft);
+      color: var(--accent);
+      border-color: rgba(79, 70, 229, 0.24);
+    }
+
+    .composer {
+      min-height: 250px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 20px;
+      background: linear-gradient(180deg, #ffffff, #f8faff);
+      color: #34405f;
+      line-height: 1.7;
+    }
+
+    .cta-row {
+      display: flex;
+      gap: 12px;
+      margin-top: 20px;
+    }
+
+    .button {
+      border: none;
+      border-radius: 14px;
+      padding: 14px 18px;
+      font-size: 0.95rem;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: var(--font);
+    }
+
+    .button.primary {
+      background: linear-gradient(135deg, #4f46e5, #7c3aed);
+      color: white;
+    }
+
+    .button.disabled-look {
+      background: #ebeef5;
+      color: #99a2b3;
+      opacity: 0.52;
+      cursor: not-allowed;
+      box-shadow: inset 0 0 0 1px rgba(23, 32, 51, 0.06);
+    }
+
+    .preview-shell {
+      padding: 24px;
+      background: linear-gradient(180deg, #f7f8fd, #eef1f9);
+      min-height: 100%;
+    }
+
+    .preview-title {
+      margin: 0 0 14px;
+      font-size: 1.1rem;
+      letter-spacing: -0.02em;
+    }
+
+    .device-frame {
+      width: 290px;
+      height: 520px;
+      margin: 0 auto;
+      background: #121827;
+      border-radius: 34px;
+      padding: 16px 12px;
+      box-shadow: 0 22px 44px rgba(22, 28, 44, 0.2);
+      position: relative;
+    }
+
+    .device-notch {
+      width: 110px;
+      height: 24px;
+      background: #0b0f18;
+      border-radius: 0 0 16px 16px;
+      position: absolute;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+
+    .device-screen {
+      margin-top: 20px;
+      height: 392px;
+      background: white;
+      border-radius: 24px;
+      overflow: hidden;
+      border: 1px solid rgba(18, 24, 39, 0.08);
+      position: relative;
+    }
+
+    .preview-email {
+      position: absolute;
+      inset: 0;
+      padding: 22px 20px 40px;
+      transform: translateY(-68px);
+      background:
+        linear-gradient(180deg, #4f46e5, #7c3aed 46%, #ffffff 46%, #ffffff 100%);
+    }
+
+    .email-pill {
+      width: 92px;
+      height: 10px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.7);
+      margin-bottom: 18px;
+    }
+
+    .email-heading {
+      color: white;
+      font-size: 1.5rem;
+      font-weight: 800;
+      line-height: 1.1;
+      max-width: 180px;
+      margin-bottom: 18px;
+    }
+
+    .email-card {
+      background: white;
+      border-radius: 18px;
+      padding: 16px;
+      box-shadow: 0 10px 20px rgba(29, 31, 61, 0.12);
+    }
+
+    .email-line {
+      height: 10px;
+      border-radius: 999px;
+      background: #dde3ef;
+      margin-bottom: 10px;
+    }
+
+    .email-line.short { width: 58%; }
+    .email-line.medium { width: 74%; }
+    .email-line.long { width: 100%; }
+
+    .email-cta {
+      margin-top: 18px;
+      height: 42px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, #4f46e5, #7c3aed);
+      box-shadow: 0 12px 18px rgba(79, 70, 229, 0.2);
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="topbar">
+      <div>
+        <h1>Campaign Editor</h1>
+        <p>Shape a launch sequence, select your audience, and preview the mobile email before scheduling delivery.</p>
+      </div>
+      <div class="status-chip">Draft saved 2 min ago</div>
+    </div>
+
+    <div class="layout">
+      <div class="card">
+        <div class="card-body">
+          <div class="eyebrow">Compose</div>
+          <div class="field-label">Subject Line</div>
+          <div class="subject">Launch Week starts now</div>
+
+          <div class="field-label">Audience</div>
+          <div class="summary">Selected audience: <strong>Power Users</strong></div>
+          <div class="chips">
+            <div class="chip selected">New Signups</div>
+            <div class="chip">Power Users</div>
+            <div class="chip">Trial Expiring</div>
+            <div class="chip">Enterprise Admins</div>
+          </div>
+
+          <div class="field-label">Body Copy</div>
+          <div class="composer">
+            Hi there,<br><br>
+            We are kicking off Launch Week with product tours, live office hours, and rollout notes from the engineering team.<br><br>
+            Expect daily updates, behind-the-scenes demos, and early access announcements all week long.
+          </div>
+
+          <div class="cta-row">
+            <button class="button disabled-look">Send test email</button>
+            <button class="button primary">Schedule campaign</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="preview-shell">
+          <h2 class="preview-title">Mobile Preview</h2>
+          <div class="device-frame">
+            <div class="device-notch"></div>
+            <div class="device-screen">
+              <div class="preview-email">
+                <div class="email-pill"></div>
+                <div class="email-heading">Launch Week starts now</div>
+                <div class="email-card">
+                  <div class="email-line long"></div>
+                  <div class="email-line medium"></div>
+                  <div class="email-line short"></div>
+                  <div class="email-line long"></div>
+                  <div class="email-line medium"></div>
+                  <div class="email-line short"></div>
+                  <div class="email-line long"></div>
+                  <div class="email-line medium"></div>
+                  <div class="email-line short"></div>
+                  <div class="email-line long"></div>
+                  <div class="email-line medium"></div>
+                  <div class="email-line short"></div>
+                  <div class="email-cta"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
