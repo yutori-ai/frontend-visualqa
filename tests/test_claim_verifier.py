@@ -361,6 +361,92 @@ async def test_claim_verifier_saves_proof_text_for_extract_content_and_links(tmp
 
 
 @pytest.mark.asyncio
+async def test_no_duplicate_tool_results_when_extract_and_rejected_verdict_share_a_turn(tmp_path: Path) -> None:
+    module = _import_claim_verifier_module()
+
+    class ExtractingActionExecutor(FakeActionExecutor):
+        async def execute_tool_call(self, session: FakeSession, tool_call: Any) -> Any:
+            self.calls.append((tool_call.function.name, json.loads(tool_call.function.arguments or "{}")))
+            if tool_call.function.name == "extract_content_and_links":
+                return SimpleNamespace(
+                    trace="extract_content_and_links()",
+                    output_text="Accessible page snapshot:\n- heading \"Products\"",
+                    current_url=session.page.url,
+                    success=True,
+                )
+            return await super().execute_tool_call(session, tool_call)
+
+    verifier, n1_client, action_executor = _build_claim_verifier(
+        module,
+        tmp_path,
+        responses=[
+            # Model sends extract AND verdict in the same turn
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-1",
+                        function=FakeFunction(name="extract_content_and_links", arguments=json.dumps({})),
+                    ),
+                    FakeToolCall(
+                        id="tool-2",
+                        function=FakeFunction(
+                            name="record_claim_result",
+                            arguments=json.dumps({"status": "failed", "finding": "Badge not visible."}),
+                        ),
+                    ),
+                ]
+            ),
+            # After reprompt, model takes a real action and verdicts
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-3",
+                        function=FakeFunction(
+                            name="left_click",
+                            arguments=json.dumps({"coordinates": [500, 500]}),
+                        ),
+                    )
+                ]
+            ),
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-4",
+                        function=FakeFunction(
+                            name="record_claim_result",
+                            arguments=json.dumps({"status": "passed", "finding": "Badge shows 3 items."}),
+                        ),
+                    )
+                ]
+            ),
+        ],
+        action_executor=ExtractingActionExecutor(),
+    )
+
+    result = await _call_verify(
+        verifier,
+        page=FakePage(url="http://fixture.local/products"),
+        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+        claim="The cart badge shows 3 items",
+        url="http://fixture.local/products",
+        navigation_hint="Click Add to Cart before deciding.",
+        max_steps=4,
+    )
+
+    assert _field(result, "status") == "passed"
+    # Check that tool-1 (extract) does NOT have duplicate tool results in messages
+    reprompt_messages = n1_client.calls[1]["messages"]
+    tool_result_ids = [
+        msg["tool_call_id"]
+        for msg in reprompt_messages
+        if msg.get("role") == "tool"
+    ]
+    # tool-1 should appear exactly once (real result), tool-2 once (rejection stub)
+    assert tool_result_ids.count("tool-1") == 1, f"tool-1 appeared {tool_result_ids.count('tool-1')} times, expected 1"
+    assert tool_result_ids.count("tool-2") == 1
+
+
+@pytest.mark.asyncio
 async def test_extract_content_and_links_does_not_bypass_navigation_hint_guard(tmp_path: Path) -> None:
     module = _import_claim_verifier_module()
 

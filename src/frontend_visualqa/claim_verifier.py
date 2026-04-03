@@ -221,6 +221,7 @@ class ClaimVerifier:
                     break
 
                 had_action_in_turn = False
+                responded_tool_ids: set[str] = set()
                 for tool_call in tool_calls:
                     tool_name = getattr(tool_call.function, "name", "")
                     if tool_name == "record_claim_result":
@@ -242,11 +243,12 @@ class ClaimVerifier:
                                 if non_action_reprompts < MAX_NON_ACTION_REPROMPTS:
                                     non_action_reprompts += 1
                                     for tc in tool_calls:
-                                        messages.append({
-                                            "role": "tool",
-                                            "tool_call_id": tc.id,
-                                            "content": [{"type": "text", "text": "Verdict not accepted; see follow-up instructions."}],
-                                        })
+                                        if tc.id not in responded_tool_ids:
+                                            messages.append({
+                                                "role": "tool",
+                                                "tool_call_id": tc.id,
+                                                "content": [{"type": "text", "text": "Verdict not accepted; see follow-up instructions."}],
+                                            })
                                     messages.append(_user_text_message(reprompt_text))
                                     break
                                 result = await self._finalize_result(
@@ -315,6 +317,7 @@ class ClaimVerifier:
                         label=f"step-{progress.step_count:02d}",
                         proof_text=progress.proof_text,
                     )
+                    responded_tool_ids.add(tool_call.id)
                     messages.append(
                         {
                             "role": "tool",
