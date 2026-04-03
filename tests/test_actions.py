@@ -613,6 +613,35 @@ async def test_execute_tool_call_extract_content_and_links_returns_snapshot_and_
 
 
 @pytest.mark.asyncio
+async def test_extract_content_and_links_falls_back_to_dom_links_when_snapshot_has_no_links() -> None:
+    module = _import_actions_module()
+    executor = instantiate_with_supported_kwargs(
+        module.ActionExecutor,
+        navigation_timeout_ms=1_000,
+        settle_delay_seconds=0,
+    )
+    page = FakePage()
+    page.url = "http://fixture.local/overview"
+    page.evaluate_results = [
+        "Overview\nSettings",
+        [
+            ["Support center", "http://fixture.local/support"],
+            ["Account settings", "http://fixture.local/settings"],
+        ],
+    ]
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+
+    result = await _call_execute_tool_call(executor, page, "extract_content_and_links", {}, viewport)
+
+    assert result.current_url == "http://fixture.local/overview"
+    assert "Accessible page snapshot:" in result.output_text
+    assert "Overview\nSettings" in result.output_text
+    assert '- [Support center](http://fixture.local/support)' in result.output_text
+    assert '- [Account settings](http://fixture.local/settings)' in result.output_text
+    assert len(page.evaluate_calls) == 2
+
+
+@pytest.mark.asyncio
 async def test_execute_action_rejects_invalid_scroll_direction() -> None:
     module = _import_actions_module()
     executor = instantiate_with_supported_kwargs(

@@ -538,10 +538,20 @@ class ActionExecutor:
         try:
             raw = await page.evaluate(
                 """() => {
+                    const normalize = (value) => (value || '').replace(/\\s+/g, ' ').trim();
+                    const isVisible = (element) => {
+                        if (!element) return false;
+                        const style = window.getComputedStyle(element);
+                        if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) {
+                            return false;
+                        }
+                        const rect = element.getBoundingClientRect();
+                        return rect.width > 0 && rect.height > 0;
+                    };
                     const links = [];
                     for (const a of document.querySelectorAll('a[href]')) {
-                        if (a.offsetParent === null) continue;
-                        const title = (a.textContent || '').trim().replace(/\\s+/g, ' ');
+                        if (!isVisible(a)) continue;
+                        const title = normalize(a.innerText || a.textContent || a.getAttribute('aria-label') || a.getAttribute('title') || '');
                         const url = a.href;
                         if (title && url) links.push([title, url]);
                     }
