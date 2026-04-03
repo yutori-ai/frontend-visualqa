@@ -128,6 +128,7 @@ class FakePage:
         self.wait_states: list[tuple[str, dict[str, Any]]] = []
         self.evaluate_results: list[Any] = []
         self.evaluate_calls: list[tuple[str, tuple[Any, ...]]] = []
+        self.aria_snapshot_result: str | None = None
 
     async def goto(self, url: str, **kwargs: Any) -> SimpleNamespace:
         self.url = url
@@ -156,6 +157,10 @@ class FakePage:
         if self.evaluate_results:
             return self.evaluate_results.pop(0)
         raise AssertionError("No evaluate result queued")
+
+    def locator(self, selector: str) -> SimpleNamespace:
+        assert selector == "body"
+        return SimpleNamespace(aria_snapshot=AsyncMock(return_value=self.aria_snapshot_result))
 
 
 def _make_overlay_enabled_page(call_order: list[tuple[Any, ...]]) -> FakePage:
@@ -574,6 +579,66 @@ async def test_execute_action_screenshot_is_a_no_op_for_n1_default_tool_calls() 
     assert trace == "screenshot()"
     assert not page.mouse.clicks
     assert not page.keyboard.pressed
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_call_extract_content_and_links_returns_snapshot_and_links() -> None:
+    module = _import_actions_module()
+    executor = instantiate_with_supported_kwargs(
+        module.ActionExecutor,
+        navigation_timeout_ms=1_000,
+        settle_delay_seconds=0,
+    )
+    page = FakePage()
+    page.url = "http://fixture.local/cart"
+    page.aria_snapshot_result = "\n".join(
+        [
+            '- heading "Shopping Cart"',
+            '- link "Wireless Headphones Pro"',
+            "  - /url: http://fixture.local/products/1",
+            '- link "USB-C Hub Pro 2"',
+            "  - /url: http://fixture.local/products/2",
+        ]
+    )
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+
+    result = await _call_execute_tool_call(executor, page, "extract_content_and_links", {}, viewport)
+
+    assert result.trace == "extract_content_and_links()"
+    assert result.current_url == "http://fixture.local/cart"
+    assert "Accessible page snapshot:" in result.output_text
+    assert '- heading "Shopping Cart"' in result.output_text
+    assert '- [Wireless Headphones Pro](http://fixture.local/products/1)' in result.output_text
+    assert '- [USB-C Hub Pro 2](http://fixture.local/products/2)' in result.output_text
+
+
+@pytest.mark.asyncio
+async def test_extract_content_and_links_falls_back_to_dom_links_when_snapshot_has_no_links() -> None:
+    module = _import_actions_module()
+    executor = instantiate_with_supported_kwargs(
+        module.ActionExecutor,
+        navigation_timeout_ms=1_000,
+        settle_delay_seconds=0,
+    )
+    page = FakePage()
+    page.url = "http://fixture.local/overview"
+    page.evaluate_results = [
+        "Overview\nSettings",
+        [
+            ["Support center", "http://fixture.local/support"],
+            ["Account settings", "http://fixture.local/settings"],
+        ],
+    ]
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+
+    result = await _call_execute_tool_call(executor, page, "extract_content_and_links", {}, viewport)
+
+    assert result.current_url == "http://fixture.local/overview"
+    assert "Accessible page snapshot:" in result.output_text
+    assert "Overview\nSettings" in result.output_text
+    assert '- [Support center](http://fixture.local/support)' in result.output_text
+    assert '- [Account settings](http://fixture.local/settings)' in result.output_text
+    assert len(page.evaluate_calls) == 2
 
 
 @pytest.mark.asyncio

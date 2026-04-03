@@ -5,6 +5,20 @@ from __future__ import annotations
 from typing import Any
 
 
+EXTRACT_CONTENT_AND_LINKS_TOOL: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "extract_content_and_links",
+        "description": (
+            "Read exact visible text, headings, buttons, prices, totals, status strings, and hyperlinks "
+            "from the current page. Use this tool to verify copy and arithmetic after you reach the "
+            "relevant page state."
+        ),
+        "parameters": {"type": "object", "properties": {}},
+    },
+}
+
+
 RECORD_CLAIM_RESULT_TOOL: dict[str, Any] = {
     "type": "function",
     "function": {
@@ -53,6 +67,7 @@ def build_verification_task(claim: str, url: str, navigation_hint: str | None = 
         "5. Treat the claim literally: do not substitute similar controls, nearby text, or adjacent UI for the element named in the claim.",
         "6. A pass requires exact grounding in the current screenshot. If the claim references text, title, heading, tab, or button label, verify that exact wording or a direct prefix match is visible.",
         "7. Do not change browser zoom or device scale. Judge the page at the provided viewport.",
+        "8. If reading the page content or visible links would help you orient yourself or verify exact text, you may call the read-only extract_content_and_links tool.",
         "",
         "Use one of these statuses:",
         "- passed: the claim is visually true",
@@ -70,6 +85,33 @@ def build_verification_task(claim: str, url: str, navigation_hint: str | None = 
     ]
     if navigation_hint:
         parts.extend(["", f"Navigation hint: {navigation_hint}"])
+    parts.extend(
+        [
+            "",
+            "Additional guidance:",
+            "Verification checklist:",
+            "1. Reach the relevant page state first.",
+            "2. If the claim mentions exact text, numbers, totals, prices, status labels, endpoints, or URLs, call extract_content_and_links before deciding.",
+            "3. For arithmetic claims, compute the expected value from extracted text step by step, then compare it to the displayed value.",
+            "4. Decompose the target element before judging. For the specific element the claim refers to, write down:",
+            "   - its color (name it: green, red, yellow, gray, teal, blue, etc.)",
+            "   - its position or state (toggle knob left/right, tab highlighted/not, star filled/empty)",
+            "   - its size or proportion (bar ~30% filled, ring ~40% of circumference, badge fully visible/clipped)",
+            "5. Then make two separate assessments:",
+            "   a) Text assessment: based only on extracted text, does the claim hold?",
+            "   b) Visual assessment: based only on your decomposed observations from the screenshot, does the claim hold?",
+            "6. If the text and visual assessments agree, report that verdict. If they disagree, report failed.",
+            "",
+            "You are testing for visual bugs. Bugs are common in these pages. Expect contradictions where:",
+            "- a status dot is a different color than what the text label says",
+            "- a toggle or switch is positioned opposite to what the label claims",
+            "- a gauge, bar, or ring shows a different fill level than the numeric label",
+            "- fewer or more stars or icons are filled than the rating text indicates",
+            "- a button looks disabled or grayed out despite having active text",
+            "- content is clipped or truncated by its container",
+            "Look carefully at the actual pixels of each element before trusting any text label.",
+        ]
+    )
     return "\n".join(parts)
 
 

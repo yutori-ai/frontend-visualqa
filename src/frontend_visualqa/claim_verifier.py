@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, TYPE_CHECKING
 
-from frontend_visualqa.actions import ActionExecutor
+from frontend_visualqa.actions import ActionExecutor, EXTRACT_CONTENT_AND_LINKS_TOOL_NAME
 from frontend_visualqa.artifacts import ArtifactManager, RunArtifacts
 from frontend_visualqa.browser import BrowserManager, BrowserSession, image_bytes_to_data_url
 from frontend_visualqa.errors import BrowserActionError, N1ClientError
@@ -16,6 +16,7 @@ from frontend_visualqa.grounding import capture_grounding_state, ground_claim_ve
 from frontend_visualqa.hook_adapter import VisualQAHookAdapter
 from frontend_visualqa.recovery import wrong_page_recovered
 from frontend_visualqa.prompts import (
+    EXTRACT_CONTENT_AND_LINKS_TOOL,
     RECORD_CLAIM_RESULT_TOOL,
     build_action_or_verdict_prompt,
     build_follow_navigation_hint_prompt,
@@ -88,6 +89,7 @@ class _VerificationProgress:
     screenshot_paths: list[str]
     action_trace: list[str]
     url_history: list[str]
+    has_interacted: bool = False
     proof_text: str | None = None
     proof_text_path: str | None = None
 
@@ -219,6 +221,7 @@ class ClaimVerifier:
                     break
 
                 had_action_in_turn = False
+                responded_tool_ids: set[str] = set()
                 for tool_call in tool_calls:
                     tool_name = getattr(tool_call.function, "name", "")
                     if tool_name == "record_claim_result":
@@ -227,24 +230,25 @@ class ClaimVerifier:
                             reprompt_text: str | None = None
                             force_stop_finding: str | None = None
                             if (
-                                progress.step_count == 0
+                                not progress.has_interacted
                                 and verdict[0] == "inconclusive"
                                 and self._finding_says_action_is_needed(verdict[1])
                             ):
                                 reprompt_text = build_take_action_prompt(claim)
                                 force_stop_finding = "The model kept saying more interaction was needed without taking the next browser action."
-                            elif navigation_hint and progress.step_count == 0 and verdict[0] != "not_testable":
+                            elif navigation_hint and not progress.has_interacted and verdict[0] != "not_testable":
                                 reprompt_text = build_follow_navigation_hint_prompt(claim, navigation_hint)
                                 force_stop_finding = "The model tried to render a verdict before following the navigation hint."
                             if reprompt_text is not None:
                                 if non_action_reprompts < MAX_NON_ACTION_REPROMPTS:
                                     non_action_reprompts += 1
                                     for tc in tool_calls:
-                                        messages.append({
-                                            "role": "tool",
-                                            "tool_call_id": tc.id,
-                                            "content": [{"type": "text", "text": "Verdict not accepted; see follow-up instructions."}],
-                                        })
+                                        if tc.id not in responded_tool_ids:
+                                            messages.append({
+                                                "role": "tool",
+                                                "tool_call_id": tc.id,
+                                                "content": [{"type": "text", "text": "Verdict not accepted; see follow-up instructions."}],
+                                            })
                                     messages.append(_user_text_message(reprompt_text))
                                     break
                                 result = await self._finalize_result(
@@ -286,9 +290,12 @@ class ClaimVerifier:
                     )
                     current_url = execution.get("current_url", session.page.url) or url
                     progress.url_history.append(current_url)
+                    is_read_only = tool_name == EXTRACT_CONTENT_AND_LINKS_TOOL_NAME
                     progress.step_count += 1
-                    non_action_reprompts = 0
-                    had_action_in_turn = True
+                    if not is_read_only:
+                        non_action_reprompts = 0
+                        had_action_in_turn = True
+                        progress.has_interacted = True
                     screenshot_bytes, screenshot_path = await self._capture_evidence_screenshot(
                         session=session,
                         run_artifacts=run_artifacts,
@@ -310,6 +317,7 @@ class ClaimVerifier:
                         label=f"step-{progress.step_count:02d}",
                         proof_text=progress.proof_text,
                     )
+                    responded_tool_ids.add(tool_call.id)
                     messages.append(
                         {
                             "role": "tool",
@@ -513,7 +521,7 @@ class ClaimVerifier:
     def _model_tools() -> list[dict[str, Any]]:
         # n1's built-in browser actions are injected server-side by the Yutori
         # chat completions endpoint. We only need to send truly custom tools.
-        return [RECORD_CLAIM_RESULT_TOOL]
+        return [EXTRACT_CONTENT_AND_LINKS_TOOL, RECORD_CLAIM_RESULT_TOOL]
 
     @staticmethod
     def _build_tool_result_text(trace: str, current_url: str, output_text: str | None = None) -> str:
@@ -624,19 +632,14 @@ class ClaimVerifier:
         return response_or_message
 
     async def _execute_tool_call(self, session: BrowserSession, tool_call: Any) -> dict[str, Any]:
-        if hasattr(self.action_executor, "execute_tool_call"):
-            result = await self.action_executor.execute_tool_call(session, tool_call)
-            if isinstance(result, str):
-                return {"trace": result, "output_text": None, "current_url": session.page.url}
-            return {
-                "trace": getattr(result, "trace", str(result)),
-                "output_text": getattr(result, "output_text", None),
-                "current_url": getattr(result, "current_url", session.page.url),
-            }
-
-        arguments = parse_tool_arguments(tool_call)
-        trace = await self.action_executor.execute_action(session, tool_call.function.name, arguments)
-        return {"trace": trace, "output_text": None, "current_url": session.page.url}
+        result = await self.action_executor.execute_tool_call(session, tool_call)
+        if isinstance(result, str):
+            return {"trace": result, "output_text": None, "current_url": session.page.url}
+        return {
+            "trace": getattr(result, "trace", str(result)),
+            "output_text": getattr(result, "output_text", None),
+            "current_url": getattr(result, "current_url", None) or session.page.url,
+        }
 
     @staticmethod
     def _extract_structured_verdict(tool_calls: list[Any]) -> tuple[ClaimStatus, str] | None:

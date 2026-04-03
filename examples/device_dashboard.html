@@ -1,0 +1,334 @@
+<!--
+  Intentional bugs for visual QA testing:
+  1. "Backup Battery" shows a circular gauge at ~35% fill but the center text reads "72%" and the detail says "Reserve battery charge"
+     → claim "The backup battery gauge fill matches the displayed 72% charge" should FAIL
+  2. "Front Door Lock" shows text "Locked" with a green shield icon but the toggle switch is visually in the OFF/unlocked position
+     → claim "The front door lock toggle position matches the Locked status" should FAIL
+  3. "Garage Camera" text says "Online" but the camera feed area shows a dark/offline placeholder with a red "No Signal" indicator
+     → claim "The garage camera shows a live feed matching its Online status" should FAIL
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Helix Home — Dashboard</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Nunito+Sans:ital,opsz,wght@0,6..12,400;0,6..12,500;0,6..12,600;0,6..12,700;0,6..12,800;1,6..12,400&display=swap');
+
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #0f1117;
+      --surface: #181b24;
+      --surface-light: #1e222e;
+      --border: rgba(255,255,255,0.06);
+      --text: #f0f2f5;
+      --text-sec: #8a92a6;
+      --text-muted: #555d70;
+      --blue: #4e8efa;
+      --blue-dim: rgba(78,142,250,0.15);
+      --green: #34d399;
+      --green-dim: rgba(52,211,153,0.15);
+      --red: #f87171;
+      --red-dim: rgba(248,113,113,0.15);
+      --amber: #fbbf24;
+      --amber-dim: rgba(251,191,36,0.15);
+      --purple: #a78bfa;
+      --font: 'Nunito Sans', sans-serif;
+      --radius: 16px;
+    }
+
+    html { font-size: 15px; -webkit-font-smoothing: antialiased; }
+    body { font-family: var(--font); background: var(--bg); color: var(--text); min-height: 100vh; }
+
+    .layout { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; }
+
+    /* Sidebar */
+    .sidebar { background: var(--surface); border-right: 1px solid var(--border); padding: 20px 14px; }
+    .logo { font-size: 1.15rem; font-weight: 800; padding: 8px 10px 24px; display: flex; align-items: center; gap: 8px; letter-spacing: -0.02em; }
+    .logo-icon { width: 28px; height: 28px; background: linear-gradient(135deg, var(--blue), var(--purple)); border-radius: 9px; }
+    .snav { padding: 8px 12px; border-radius: 10px; font-size: 0.88rem; color: var(--text-sec); cursor: pointer; margin-bottom: 2px; display: flex; align-items: center; gap: 10px; }
+    .snav:hover { background: var(--surface-light); color: var(--text); }
+    .snav.active { background: var(--surface-light); color: var(--text); font-weight: 600; }
+    .snav-icon { width: 18px; text-align: center; font-size: 1rem; }
+    .snav-sep { height: 1px; background: var(--border); margin: 10px 0; }
+
+    /* Main */
+    .main { padding: 28px 36px; overflow-y: auto; }
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 28px; }
+    .greeting { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em; }
+    .subgreeting { color: var(--text-sec); font-size: 0.88rem; margin-top: 2px; }
+    .header-right { display: flex; gap: 12px; align-items: center; }
+    .hbadge { padding: 6px 14px; border-radius: 20px; font-size: 0.78rem; font-weight: 600; }
+    .hbadge-blue { background: var(--blue-dim); color: var(--blue); }
+
+    /* Summary cards */
+    .summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 28px; }
+    .scard { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
+    .scard-label { font-size: 0.78rem; color: var(--text-muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; }
+    .scard-val { font-size: 1.6rem; font-weight: 800; margin-top: 8px; letter-spacing: -0.02em; }
+    .scard-sub { font-size: 0.78rem; color: var(--text-sec); margin-top: 4px; }
+
+    /* Device grid */
+    .devices-title { font-size: 1.1rem; font-weight: 700; margin-bottom: 16px; }
+    .devices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .dcard { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; display: flex; flex-direction: column; }
+    .dcard-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
+    .dcard-name { font-size: 0.95rem; font-weight: 600; }
+    .dcard-room { font-size: 0.78rem; color: var(--text-muted); margin-top: 2px; }
+    .dcard-status { font-size: 0.75rem; font-weight: 600; padding: 3px 10px; border-radius: 12px; }
+    .dcard-status.online { background: var(--green-dim); color: var(--green); }
+    .dcard-status.offline { background: var(--red-dim); color: var(--red); }
+
+    /* Thermostat gauge */
+    .thermo { display: flex; flex-direction: column; align-items: center; padding: 8px 0; }
+    .thermo-gauge { position: relative; width: 120px; height: 120px; }
+    .thermo-svg { width: 120px; height: 120px; transform: rotate(-90deg); }
+    .thermo-bg { fill: none; stroke: var(--surface-light); stroke-width: 8; }
+    /* BUG 1: Gauge shows ~35% fill (dash = 110/314) but the center text says 72% charged */
+    .thermo-fill { fill: none; stroke: var(--amber); stroke-width: 8; stroke-linecap: round; stroke-dasharray: 110 314; }
+    .thermo-center { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; }
+    .thermo-temp { font-size: 1.5rem; font-weight: 800; }
+    .thermo-label { font-size: 0.7rem; color: var(--text-sec); }
+    .thermo-detail { font-size: 0.78rem; color: var(--text-sec); margin-top: 8px; text-align: center; }
+
+    /* Lock card */
+    .lock-row { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; }
+    .lock-status { display: flex; align-items: center; gap: 8px; }
+    .lock-icon { font-size: 1.3rem; }
+    .lock-text { font-size: 0.95rem; font-weight: 600; }
+    /* Toggle switch */
+    .toggle { width: 44px; height: 24px; border-radius: 12px; position: relative; cursor: pointer; transition: background 0.2s; }
+    .toggle-on { background: var(--green); }
+    .toggle-off { background: var(--text-muted); }
+    .toggle-knob {
+      width: 18px; height: 18px; border-radius: 50%; background: white;
+      position: absolute; top: 3px; transition: left 0.2s;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    }
+    .toggle-on .toggle-knob { left: 23px; }
+    .toggle-off .toggle-knob { left: 3px; }
+    .lock-info { font-size: 0.78rem; color: var(--text-sec); margin-top: 12px; }
+
+    /* Camera card */
+    .cam-feed {
+      background: #0a0c10;
+      border-radius: 10px;
+      height: 130px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-top: 12px;
+      position: relative;
+      overflow: hidden;
+    }
+    .cam-offline {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+    }
+    .cam-offline-icon { font-size: 1.5rem; color: var(--red); }
+    .cam-offline-text { font-size: 0.75rem; color: var(--red); font-weight: 600; }
+    .cam-info { font-size: 0.78rem; color: var(--text-sec); margin-top: 10px; }
+
+    /* Light/energy cards */
+    .energy-bar-container { margin-top: 12px; }
+    .energy-bar-label { display: flex; justify-content: space-between; font-size: 0.78rem; color: var(--text-sec); margin-bottom: 6px; }
+    .energy-bar { height: 8px; border-radius: 4px; background: var(--surface-light); overflow: hidden; }
+    .energy-bar-fill { height: 100%; border-radius: 4px; }
+
+    .light-controls { display: flex; gap: 12px; margin-top: 16px; flex-wrap: wrap; }
+    .light-zone { padding: 8px 14px; border-radius: 10px; font-size: 0.8rem; font-weight: 500; background: var(--surface-light); color: var(--text-sec); border: 1px solid var(--border); }
+    .light-zone.on { background: var(--amber-dim); color: var(--amber); border-color: rgba(251,191,36,0.2); }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="logo">
+        <div class="logo-icon"></div>
+        Helix Home
+      </div>
+      <div class="snav active"><span class="snav-icon">&#9673;</span> Dashboard</div>
+      <div class="snav"><span class="snav-icon">&#9632;</span> Devices</div>
+      <div class="snav"><span class="snav-icon">&#9650;</span> Automation</div>
+      <div class="snav"><span class="snav-icon">&#9670;</span> Energy</div>
+      <div class="snav-sep"></div>
+      <div class="snav"><span class="snav-icon">&#9881;</span> Settings</div>
+    </aside>
+
+    <main class="main">
+      <div class="header">
+        <div>
+          <div class="greeting">Good evening, Alex</div>
+          <div class="subgreeting">6 devices online &middot; Home mode active</div>
+        </div>
+        <div class="header-right">
+          <span class="hbadge hbadge-blue">Home Mode</span>
+        </div>
+      </div>
+
+      <div class="summary">
+        <div class="scard">
+          <div class="scard-label">Energy Today</div>
+          <div class="scard-val">14.2 kWh</div>
+          <div class="scard-sub">-8% vs yesterday</div>
+        </div>
+        <div class="scard">
+          <div class="scard-label">Temperature</div>
+          <div class="scard-val">72°F</div>
+          <div class="scard-sub">Heating active</div>
+        </div>
+        <div class="scard">
+          <div class="scard-label">Security</div>
+          <div class="scard-val">Armed</div>
+          <div class="scard-sub">All sensors OK</div>
+        </div>
+        <div class="scard">
+          <div class="scard-label">Devices</div>
+          <div class="scard-val">12</div>
+          <div class="scard-sub">6 active, 6 idle</div>
+        </div>
+      </div>
+
+      <div class="devices-title">Devices</div>
+      <div class="devices">
+        <!-- BUG 1: Battery gauge ~35% but center text says 72% -->
+        <div class="dcard">
+          <div class="dcard-top">
+            <div>
+              <div class="dcard-name">Backup Battery</div>
+              <div class="dcard-room">Utility Closet</div>
+            </div>
+            <div class="dcard-status online">Online</div>
+          </div>
+          <div class="thermo">
+            <div class="thermo-gauge">
+              <svg class="thermo-svg" viewBox="0 0 120 120">
+                <circle class="thermo-bg" cx="60" cy="60" r="50" />
+                <circle class="thermo-fill" cx="60" cy="60" r="50" />
+              </svg>
+              <div class="thermo-center">
+                <div class="thermo-temp">72%</div>
+                <div class="thermo-label">charged</div>
+              </div>
+            </div>
+            <div class="thermo-detail">Reserve battery charge</div>
+          </div>
+        </div>
+
+        <!-- BUG 2: Lock says "Locked" but toggle is OFF -->
+        <div class="dcard">
+          <div class="dcard-top">
+            <div>
+              <div class="dcard-name">Front Door Lock</div>
+              <div class="dcard-room">Entryway</div>
+            </div>
+            <div class="dcard-status online">Online</div>
+          </div>
+          <div class="lock-row">
+            <div class="lock-status">
+              <span class="lock-icon" style="color: var(--green);">&#128274;</span>
+              <span class="lock-text">Locked</span>
+            </div>
+            <!-- BUG: Toggle is in OFF position despite "Locked" status -->
+            <div class="toggle toggle-off">
+              <div class="toggle-knob"></div>
+            </div>
+          </div>
+          <div class="lock-info">Last locked: 2 hours ago by Alex</div>
+          <div style="margin-top: auto; padding-top: 16px;">
+            <div class="energy-bar-label"><span>Battery</span><span>84%</span></div>
+            <div class="energy-bar"><div class="energy-bar-fill" style="width: 84%; background: var(--green);"></div></div>
+          </div>
+        </div>
+
+        <!-- BUG 3: Camera says "Online" but shows No Signal -->
+        <div class="dcard">
+          <div class="dcard-top">
+            <div>
+              <div class="dcard-name">Garage Camera</div>
+              <div class="dcard-room">Garage</div>
+            </div>
+            <!-- BUG: Status says Online but feed shows No Signal -->
+            <div class="dcard-status online">Online</div>
+          </div>
+          <div class="cam-feed">
+            <div class="cam-offline">
+              <div class="cam-offline-icon">&#9888;</div>
+              <div class="cam-offline-text">No Signal</div>
+            </div>
+          </div>
+          <div class="cam-info">Last recording: 3 hours ago</div>
+        </div>
+
+        <!-- Normal cards -->
+        <div class="dcard">
+          <div class="dcard-top">
+            <div>
+              <div class="dcard-name">Living Room Lights</div>
+              <div class="dcard-room">Living Room</div>
+            </div>
+            <div class="dcard-status online">Online</div>
+          </div>
+          <div class="light-controls">
+            <div class="light-zone on">Main &middot; 80%</div>
+            <div class="light-zone on">Accent &middot; 40%</div>
+            <div class="light-zone">Reading &middot; Off</div>
+          </div>
+          <div style="margin-top: auto; padding-top: 16px;">
+            <div class="energy-bar-label"><span>Usage today</span><span>1.8 kWh</span></div>
+            <div class="energy-bar"><div class="energy-bar-fill" style="width: 45%; background: var(--amber);"></div></div>
+          </div>
+        </div>
+
+        <div class="dcard">
+          <div class="dcard-top">
+            <div>
+              <div class="dcard-name">Bedroom Speaker</div>
+              <div class="dcard-room">Bedroom</div>
+            </div>
+            <div class="dcard-status online">Online</div>
+          </div>
+          <div style="padding: 16px 0; text-align: center;">
+            <div style="font-size: 2rem; margin-bottom: 8px;">&#127925;</div>
+            <div style="font-size: 0.88rem; font-weight: 600;">Now Playing</div>
+            <div style="font-size: 0.82rem; color: var(--text-sec); margin-top: 4px;">Clair de Lune &mdash; Debussy</div>
+            <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">Volume: 35%</div>
+          </div>
+        </div>
+
+        <div class="dcard">
+          <div class="dcard-top">
+            <div>
+              <div class="dcard-name">Kitchen Sensor</div>
+              <div class="dcard-room">Kitchen</div>
+            </div>
+            <div class="dcard-status online">Online</div>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px;">
+            <div>
+              <div style="font-size: 0.75rem; color: var(--text-muted);">Temperature</div>
+              <div style="font-size: 1.1rem; font-weight: 700; margin-top: 4px;">68°F</div>
+            </div>
+            <div>
+              <div style="font-size: 0.75rem; color: var(--text-muted);">Humidity</div>
+              <div style="font-size: 1.1rem; font-weight: 700; margin-top: 4px;">42%</div>
+            </div>
+            <div>
+              <div style="font-size: 0.75rem; color: var(--text-muted);">Air Quality</div>
+              <div style="font-size: 1.1rem; font-weight: 700; margin-top: 4px; color: var(--green);">Good</div>
+            </div>
+            <div>
+              <div style="font-size: 0.75rem; color: var(--text-muted);">CO2</div>
+              <div style="font-size: 1.1rem; font-weight: 700; margin-top: 4px;">412 ppm</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

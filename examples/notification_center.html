@@ -1,0 +1,331 @@
+<!--
+  Intentional bugs for visual QA testing:
+  1. The notification bell badge shows "2" visually but the text below says "14 unread notifications"
+     → The badge is actually "24" but the container clips it, showing only "2" (the "4" is cut off)
+     → claim "The notification badge count matches the 14 unread notifications label" should FAIL
+     → claim "The notification badge displays the full count without clipping" should FAIL
+  2. A table column header shows "Newest First" label but the dates are in ascending order (oldest first)
+     → claim "The notifications are sorted newest first as indicated by the header" should FAIL
+  3. The "Mark all read" button text suggests it's actionable, but it is visually disabled (grayed out, low opacity)
+     → claim "The Mark all read button appears active and clickable" should FAIL
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Relay — Notifications</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #f5f6f8;
+      --white: #ffffff;
+      --gray-50: #f9fafb;
+      --gray-100: #f3f4f6;
+      --gray-200: #e5e7eb;
+      --gray-300: #d1d5db;
+      --gray-400: #9ca3af;
+      --gray-500: #6b7280;
+      --gray-600: #4b5563;
+      --gray-800: #1f2937;
+      --gray-900: #111827;
+      --blue-500: #3b82f6;
+      --blue-600: #2563eb;
+      --blue-50: #eff6ff;
+      --red-500: #ef4444;
+      --red-50: #fef2f2;
+      --green-500: #22c55e;
+      --green-50: #f0fdf4;
+      --amber-500: #f59e0b;
+      --amber-50: #fffbeb;
+      --purple-500: #8b5cf6;
+      --font: 'Outfit', sans-serif;
+      --mono: 'IBM Plex Mono', monospace;
+      --radius: 12px;
+      --shadow: 0 1px 3px rgba(0,0,0,0.04);
+      --shadow-md: 0 4px 12px rgba(0,0,0,0.06);
+    }
+
+    html { font-size: 15px; -webkit-font-smoothing: antialiased; }
+    body { font-family: var(--font); background: var(--bg); color: var(--gray-900); min-height: 100vh; }
+
+    /* Top bar */
+    .topbar {
+      background: var(--white);
+      border-bottom: 1px solid var(--gray-200);
+      padding: 0 32px;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .topbar-left { display: flex; align-items: center; gap: 24px; }
+    .brand { font-size: 1.2rem; font-weight: 700; letter-spacing: -0.03em; display: flex; align-items: center; gap: 8px; }
+    .brand-icon { width: 26px; height: 26px; background: var(--blue-600); border-radius: 7px; display: flex; align-items: center; justify-content: center; color: white; font-size: 13px; font-weight: 700; }
+    .topbar-tabs { display: flex; gap: 4px; }
+    .topbar-tab {
+      padding: 6px 14px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--gray-500);
+      cursor: pointer;
+    }
+    .topbar-tab.active { background: var(--gray-100); color: var(--gray-900); }
+    .topbar-right { display: flex; align-items: center; gap: 16px; }
+    .bell-wrapper { position: relative; cursor: pointer; }
+    .bell { font-size: 1.65rem; color: var(--gray-600); }
+    /* BUG 1: Badge shows "24" but the pill is intentionally too narrow, so the "4" is cut off */
+    .bell-badge {
+      position: absolute;
+      top: -8px;
+      right: -8px;
+      background: var(--red-500);
+      color: white;
+      font-size: 0.78rem;
+      font-weight: 700;
+      height: 20px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      padding-left: 4px;
+      width: 14px;
+      overflow: hidden;
+    }
+    .avatar {
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--purple-500), var(--blue-500));
+      display: flex; align-items: center; justify-content: center;
+      color: white; font-size: 0.75rem; font-weight: 600;
+    }
+
+    /* Main */
+    .main { max-width: 960px; margin: 0 auto; padding: 32px 24px; }
+    .main-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+    .main-title { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em; }
+    .unread-label { font-size: 0.9rem; color: var(--gray-500); }
+    .unread-count { font-weight: 600; color: var(--gray-900); }
+    .header-actions { display: flex; gap: 12px; }
+    /* BUG 3: "Mark all read" styled as disabled */
+    .btn {
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-weight: 500;
+      cursor: pointer;
+      border: 1px solid var(--gray-200);
+      background: var(--white);
+      color: var(--gray-700);
+      font-family: var(--font);
+      transition: all 0.15s;
+    }
+    .btn:hover { background: var(--gray-50); }
+    .btn-disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      color: var(--gray-400);
+    }
+    .btn-disabled:hover { background: var(--white); }
+    .btn-primary { background: var(--blue-600); color: white; border-color: var(--blue-600); }
+
+    /* Filters */
+    .filters { display: flex; gap: 8px; margin-bottom: 20px; }
+    .filter-chip {
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      font-weight: 500;
+      background: var(--white);
+      border: 1px solid var(--gray-200);
+      color: var(--gray-500);
+      cursor: pointer;
+    }
+    .filter-chip.active { background: var(--gray-900); color: white; border-color: var(--gray-900); }
+    .filter-count { margin-left: 4px; font-size: 0.7rem; opacity: 0.7; }
+
+    /* Notifications list */
+    .notif-card {
+      background: var(--white);
+      border: 1px solid var(--gray-200);
+      border-radius: var(--radius);
+      overflow: hidden;
+      box-shadow: var(--shadow);
+    }
+    .notif-list-header {
+      display: grid;
+      grid-template-columns: 40px 1fr 120px 100px;
+      gap: 16px;
+      padding: 12px 20px;
+      background: var(--gray-50);
+      border-bottom: 1px solid var(--gray-200);
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: var(--gray-400);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      align-items: center;
+    }
+    /* BUG 2: Header says "Newest First" with down arrow, but data is oldest first */
+    .sort-header { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+    .sort-arrow { font-size: 0.7rem; }
+
+    .notif-item {
+      display: grid;
+      grid-template-columns: 40px 1fr 120px 100px;
+      gap: 16px;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--gray-100);
+      align-items: start;
+      transition: background 0.1s;
+    }
+    .notif-item:last-child { border-bottom: none; }
+    .notif-item:hover { background: var(--gray-50); }
+    .notif-item.unread { background: var(--blue-50); }
+    .notif-item.unread:hover { background: #e8f2ff; }
+
+    .notif-icon {
+      width: 36px; height: 36px;
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1rem;
+      flex-shrink: 0;
+    }
+    .notif-icon.deploy { background: var(--green-50); color: var(--green-500); }
+    .notif-icon.alert { background: var(--red-50); color: var(--red-500); }
+    .notif-icon.info { background: var(--blue-50); color: var(--blue-500); }
+    .notif-icon.warning { background: var(--amber-50); color: var(--amber-500); }
+
+    .notif-content {}
+    .notif-title { font-size: 0.9rem; font-weight: 500; line-height: 1.4; }
+    .notif-desc { font-size: 0.82rem; color: var(--gray-500); margin-top: 3px; line-height: 1.4; }
+    .notif-date { font-size: 0.82rem; color: var(--gray-400); font-family: var(--mono); padding-top: 2px; }
+    .notif-status { font-size: 0.8rem; font-weight: 500; padding-top: 2px; }
+    .notif-status.unread-dot { color: var(--blue-600); display: flex; align-items: center; gap: 6px; }
+    .notif-status.unread-dot::before {
+      content: '';
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--blue-500);
+      flex-shrink: 0;
+    }
+    .notif-status.read { color: var(--gray-400); }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="brand">
+        <div class="brand-icon">R</div>
+        Relay
+      </div>
+      <div class="topbar-tabs">
+        <div class="topbar-tab">Dashboard</div>
+        <div class="topbar-tab">Projects</div>
+        <div class="topbar-tab active">Notifications</div>
+        <div class="topbar-tab">Settings</div>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <div class="bell-wrapper">
+        <span class="bell">&#128276;</span>
+        <!-- BUG 1: "24" is clipped to show "2" due to fixed width -->
+        <span class="bell-badge">24</span>
+      </div>
+      <div class="avatar">JD</div>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="main-header">
+      <div>
+        <div class="main-title">Notifications</div>
+        <div class="unread-label"><span class="unread-count">14</span> unread notifications</div>
+      </div>
+      <div class="header-actions">
+        <!-- BUG 3: "Mark all read" looks disabled -->
+        <button class="btn btn-disabled">Mark all read</button>
+        <button class="btn">Settings</button>
+      </div>
+    </div>
+
+    <div class="filters">
+      <div class="filter-chip active">All<span class="filter-count">24</span></div>
+      <div class="filter-chip">Unread<span class="filter-count">14</span></div>
+      <div class="filter-chip">Deployments<span class="filter-count">8</span></div>
+      <div class="filter-chip">Alerts<span class="filter-count">5</span></div>
+      <div class="filter-chip">System<span class="filter-count">11</span></div>
+    </div>
+
+    <div class="notif-card">
+      <div class="notif-list-header">
+        <div></div>
+        <div>Notification</div>
+        <!-- BUG 2: Says "Newest First" with ↓ but data is oldest first -->
+        <div class="sort-header">Date <span class="sort-arrow">&#9660;</span> Newest First</div>
+        <div>Status</div>
+      </div>
+
+      <!-- Dates go OLDEST first (ascending), contradicting "Newest First" -->
+      <div class="notif-item">
+        <div class="notif-icon deploy">&#9679;</div>
+        <div class="notif-content">
+          <div class="notif-title">Deployment succeeded: frontend-app v2.14.0</div>
+          <div class="notif-desc">Production deployment completed in 2m 34s. All health checks passed.</div>
+        </div>
+        <div class="notif-date">Mar 28</div>
+        <div class="notif-status read">Read</div>
+      </div>
+      <div class="notif-item">
+        <div class="notif-icon alert">&#9888;</div>
+        <div class="notif-content">
+          <div class="notif-title">CPU usage exceeded 90% on worker-3</div>
+          <div class="notif-desc">Auto-scaling triggered. New instance provisioned in us-east-1.</div>
+        </div>
+        <div class="notif-date">Mar 29</div>
+        <div class="notif-status read">Read</div>
+      </div>
+      <div class="notif-item unread">
+        <div class="notif-icon info">&#8505;</div>
+        <div class="notif-content">
+          <div class="notif-title">SSL certificate renewal: api.relay.dev</div>
+          <div class="notif-desc">Certificate renewed automatically via Let's Encrypt. Valid until Jun 30, 2027.</div>
+        </div>
+        <div class="notif-date">Mar 30</div>
+        <div class="notif-status unread-dot">Unread</div>
+      </div>
+      <div class="notif-item unread">
+        <div class="notif-icon warning">&#9888;</div>
+        <div class="notif-content">
+          <div class="notif-title">Database connection pool near limit</div>
+          <div class="notif-desc">87% of max connections in use on db-primary. Consider increasing pool size.</div>
+        </div>
+        <div class="notif-date">Mar 31</div>
+        <div class="notif-status unread-dot">Unread</div>
+      </div>
+      <div class="notif-item unread">
+        <div class="notif-icon deploy">&#9679;</div>
+        <div class="notif-content">
+          <div class="notif-title">Deployment succeeded: api-gateway v3.8.1</div>
+          <div class="notif-desc">Canary deployment promoted to 100%. Rollback window expires in 24h.</div>
+        </div>
+        <div class="notif-date">Apr 1</div>
+        <div class="notif-status unread-dot">Unread</div>
+      </div>
+      <div class="notif-item unread">
+        <div class="notif-icon alert">&#9888;</div>
+        <div class="notif-content">
+          <div class="notif-title">Error rate spike on /api/v2/search</div>
+          <div class="notif-desc">5xx errors increased to 4.2% over the last 15 minutes. Investigating.</div>
+        </div>
+        <div class="notif-date">Apr 2</div>
+        <div class="notif-status unread-dot">Unread</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

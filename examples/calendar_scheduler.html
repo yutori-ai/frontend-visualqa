@@ -1,0 +1,416 @@
+<!--
+  Intentional bugs for visual QA testing:
+  1. The summary says "Selected date: April 18" but the calendar visually highlights April 17
+     → claim "April 18 is visually selected on the calendar" should FAIL
+  2. The summary says "Selected time: 2:30 PM" but the 3:00 PM time chip has the selected styling
+     → claim "The 2:30 PM time slot is visually selected" should FAIL
+  3. The "Join by video" setting says "Enabled" but its toggle is visually OFF
+     → claim "The Join by video toggle visually matches its Enabled label" should FAIL
+  4. The timezone helper text is correct and visible
+     → claim "The scheduler shows Pacific Time (PT) as the timezone" should PASS
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Northstar — Interview Scheduler</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #f2f4f8;
+      --panel: #ffffff;
+      --panel-ink: #0f172a;
+      --panel-muted: #667085;
+      --border: #d8dee9;
+      --subtle: #eef2f7;
+      --navy: #1d4ed8;
+      --navy-soft: #dbeafe;
+      --mint: #14b8a6;
+      --mint-soft: rgba(20, 184, 166, 0.12);
+      --rose: #e11d48;
+      --rose-soft: rgba(225, 29, 72, 0.12);
+      --amber: #f59e0b;
+      --shadow: 0 24px 60px rgba(15, 23, 42, 0.08);
+      --font: 'Manrope', sans-serif;
+    }
+
+    body {
+      min-height: 100vh;
+      font-family: var(--font);
+      background:
+        radial-gradient(circle at top left, rgba(29, 78, 216, 0.1), transparent 32%),
+        linear-gradient(180deg, #f8fafc 0%, var(--bg) 100%);
+      color: var(--panel-ink);
+      padding: 40px;
+    }
+
+    .shell {
+      max-width: 1180px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 24px;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid rgba(15, 23, 42, 0.08);
+      border-radius: 24px;
+      box-shadow: var(--shadow);
+    }
+
+    .summary {
+      padding: 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 22px;
+    }
+
+    .eyebrow {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: #475569;
+      font-weight: 700;
+    }
+
+    .title {
+      font-size: 1.9rem;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      line-height: 1.05;
+    }
+
+    .subtitle {
+      font-size: 0.95rem;
+      color: var(--panel-muted);
+      line-height: 1.6;
+    }
+
+    .summary-grid {
+      display: grid;
+      gap: 14px;
+    }
+
+    .summary-item {
+      border-radius: 18px;
+      padding: 16px 18px;
+      background: var(--subtle);
+    }
+
+    .summary-label {
+      font-size: 0.76rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #64748b;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .summary-value {
+      font-size: 1.1rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+    }
+
+    .summary-note {
+      font-size: 0.82rem;
+      color: var(--panel-muted);
+      margin-top: 4px;
+    }
+
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 16px 18px;
+      border-radius: 18px;
+      background: linear-gradient(135deg, rgba(20, 184, 166, 0.08), rgba(29, 78, 216, 0.08));
+      border: 1px solid rgba(20, 184, 166, 0.14);
+    }
+
+    .toggle-copy strong {
+      display: block;
+      font-size: 0.98rem;
+      margin-bottom: 4px;
+    }
+
+    .toggle-copy span {
+      font-size: 0.86rem;
+      color: var(--mint);
+      font-weight: 700;
+    }
+
+    .toggle {
+      width: 52px;
+      height: 30px;
+      border-radius: 999px;
+      background: #cbd5e1;
+      position: relative;
+      box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.08);
+    }
+
+    .toggle::after {
+      content: "";
+      position: absolute;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: white;
+      top: 4px;
+      left: 4px;
+      box-shadow: 0 2px 8px rgba(15, 23, 42, 0.2);
+    }
+
+    .main {
+      padding: 28px;
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 24px;
+    }
+
+    .section-title {
+      font-size: 1rem;
+      font-weight: 800;
+      margin-bottom: 16px;
+      letter-spacing: -0.02em;
+    }
+
+    .calendar {
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 18px;
+      background: #fbfdff;
+    }
+
+    .calendar-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      font-weight: 800;
+    }
+
+    .calendar-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 8px;
+      font-size: 0.92rem;
+    }
+
+    .weekday {
+      text-align: center;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #94a3b8;
+      font-weight: 700;
+      padding-bottom: 6px;
+    }
+
+    .day {
+      height: 44px;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      color: #0f172a;
+      background: white;
+      border: 1px solid rgba(148, 163, 184, 0.16);
+    }
+
+    .day.muted {
+      color: #94a3b8;
+      background: transparent;
+    }
+
+    .day.selected {
+      background: linear-gradient(135deg, var(--navy), #2563eb);
+      color: white;
+      box-shadow: 0 10px 22px rgba(37, 99, 235, 0.25);
+      border-color: transparent;
+    }
+
+    .side-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .time-panel,
+    .meta-panel {
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 18px;
+      background: #fbfdff;
+    }
+
+    .time-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+    }
+
+    .time-chip {
+      border-radius: 16px;
+      padding: 12px 14px;
+      border: 1px solid var(--border);
+      background: white;
+      font-weight: 700;
+      color: #334155;
+      text-align: center;
+    }
+
+    .time-chip.selected {
+      background: linear-gradient(135deg, #0f172a, #334155);
+      color: white;
+      border-color: transparent;
+      box-shadow: 0 10px 20px rgba(15, 23, 42, 0.18);
+    }
+
+    .meta-item {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 0;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+      font-size: 0.92rem;
+    }
+
+    .meta-item:last-child { border-bottom: none; }
+
+    .meta-label { color: var(--panel-muted); }
+    .meta-value { font-weight: 700; }
+
+    .timezone {
+      margin-top: 8px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: var(--navy-soft);
+      color: var(--navy);
+      font-size: 0.86rem;
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="card summary">
+      <div>
+        <div class="eyebrow">Interview loop</div>
+        <h1 class="title">Schedule the final round</h1>
+        <p class="subtitle">Choose a date and time that works for the panel. The preview updates as the coordinator edits the request.</p>
+      </div>
+
+      <div class="summary-grid">
+        <div class="summary-item">
+          <div class="summary-label">Selected date</div>
+          <div class="summary-value">April 18</div>
+          <div class="summary-note">Friday afternoon interview</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-label">Selected time</div>
+          <div class="summary-value">2:30 PM</div>
+          <div class="summary-note">45 minute panel slot</div>
+        </div>
+      </div>
+
+      <div class="toggle-row">
+        <div class="toggle-copy">
+          <strong>Join by video</strong>
+          <span>Enabled</span>
+        </div>
+        <div class="toggle" aria-hidden="true"></div>
+      </div>
+    </aside>
+
+    <main class="card main">
+      <section>
+        <div class="section-title">April 2026</div>
+        <div class="calendar">
+          <div class="calendar-header">
+            <span>April 2026</span>
+            <span>Fri interviews</span>
+          </div>
+          <div class="calendar-grid">
+            <div class="weekday">Sun</div>
+            <div class="weekday">Mon</div>
+            <div class="weekday">Tue</div>
+            <div class="weekday">Wed</div>
+            <div class="weekday">Thu</div>
+            <div class="weekday">Fri</div>
+            <div class="weekday">Sat</div>
+
+            <div class="day muted">29</div>
+            <div class="day muted">30</div>
+            <div class="day muted">31</div>
+            <div class="day">1</div>
+            <div class="day">2</div>
+            <div class="day">3</div>
+            <div class="day">4</div>
+
+            <div class="day">5</div>
+            <div class="day">6</div>
+            <div class="day">7</div>
+            <div class="day">8</div>
+            <div class="day">9</div>
+            <div class="day">10</div>
+            <div class="day">11</div>
+
+            <div class="day">12</div>
+            <div class="day">13</div>
+            <div class="day">14</div>
+            <div class="day">15</div>
+            <div class="day">16</div>
+            <div class="day selected">17</div>
+            <div class="day">18</div>
+
+            <div class="day">19</div>
+            <div class="day">20</div>
+            <div class="day">21</div>
+            <div class="day">22</div>
+            <div class="day">23</div>
+            <div class="day">24</div>
+            <div class="day">25</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="side-panel">
+        <div class="time-panel">
+          <div class="section-title">Available slots</div>
+          <div class="time-grid">
+            <div class="time-chip">1:30 PM</div>
+            <div class="time-chip">2:30 PM</div>
+            <div class="time-chip selected">3:00 PM</div>
+            <div class="time-chip">4:15 PM</div>
+          </div>
+        </div>
+
+        <div class="meta-panel">
+          <div class="section-title">Meeting details</div>
+          <div class="meta-item">
+            <span class="meta-label">Interviewer</span>
+            <span class="meta-value">Maya Patel</span>
+          </div>
+          <div class="meta-item">
+            <span class="meta-label">Format</span>
+            <span class="meta-value">Video panel</span>
+          </div>
+          <div class="meta-item">
+            <span class="meta-label">Timezone</span>
+            <span class="meta-value">Pacific Time (PT)</span>
+          </div>
+          <div class="timezone">Invites will be sent in Pacific Time (PT).</div>
+        </div>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

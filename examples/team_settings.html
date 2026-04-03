@@ -1,0 +1,401 @@
+<!--
+  Intentional bugs for visual QA testing:
+  1. "Automatic backups" row says "Enabled" but the toggle is visually OFF
+     -> claim "The Automatic backups toggle visually matches its Enabled label" should FAIL
+  2. "Dark" theme is named in the summary, but the Light theme tile has the selected styling
+     -> claim "The Dark theme option is visually selected" should FAIL
+  3. The SSO migration warning text is clipped by overflow/fade
+     -> claim "The SSO migration warning banner is fully visible" should FAIL
+  4. Audit log count is correct and visible
+     -> claim "The Audit log card shows 1,284 events this week" should PASS
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Northstar Admin - Team Settings</title>
+  <style>
+    :root {
+      --bg: #f6f4ee;
+      --panel: #fffdf8;
+      --ink: #1f2a24;
+      --muted: #6d776f;
+      --line: #d9d4c9;
+      --accent: #1f7a5a;
+      --accent-soft: #d9efe5;
+      --warn: #b3562b;
+      --warn-bg: #fff0e6;
+      --shadow: 0 10px 30px rgba(33, 35, 31, 0.08);
+      --radius: 18px;
+      --font: "Inter", "Helvetica Neue", Arial, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--font);
+      background:
+        radial-gradient(circle at top left, rgba(31, 122, 90, 0.08), transparent 32%),
+        linear-gradient(180deg, #faf8f2, var(--bg));
+      color: var(--ink);
+    }
+
+    .page {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 40px 28px 64px;
+    }
+
+    .hero {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 24px;
+      margin-bottom: 28px;
+    }
+
+    .hero h1 {
+      margin: 0;
+      font-size: 2.1rem;
+      letter-spacing: -0.04em;
+    }
+
+    .hero p {
+      margin: 10px 0 0;
+      color: var(--muted);
+      max-width: 560px;
+      line-height: 1.6;
+    }
+
+    .hero-summary {
+      min-width: 280px;
+      background: rgba(255, 255, 255, 0.72);
+      border: 1px solid rgba(31, 42, 36, 0.06);
+      border-radius: var(--radius);
+      padding: 20px 22px;
+      box-shadow: var(--shadow);
+    }
+
+    .hero-summary-label {
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-size: 0.72rem;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    .hero-summary-value {
+      font-size: 1.05rem;
+      font-weight: 700;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 24px;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    .card-body {
+      padding: 24px;
+    }
+
+    .section-title {
+      margin: 0 0 8px;
+      font-size: 1.15rem;
+      letter-spacing: -0.02em;
+    }
+
+    .section-copy {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.6;
+      font-size: 0.94rem;
+    }
+
+    .banner {
+      margin-top: 20px;
+      background: var(--warn-bg);
+      border: 1px solid #f0c9b3;
+      border-radius: 14px;
+      padding: 14px 16px;
+      position: relative;
+      max-width: 360px;
+      overflow: hidden;
+      white-space: nowrap;
+    }
+
+    .banner::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 132px;
+      height: 100%;
+      background: linear-gradient(90deg, rgba(255, 240, 230, 0), rgba(255, 240, 230, 1));
+    }
+
+    .banner-label {
+      font-size: 0.76rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--warn);
+      margin-bottom: 6px;
+    }
+
+    .banner-text {
+      font-size: 0.95rem;
+      font-weight: 600;
+    }
+
+    .setting {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 24px;
+      padding: 18px 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .setting:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+
+    .setting-name {
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .setting-desc {
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .setting-state {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      min-width: 180px;
+      justify-content: flex-end;
+    }
+
+    .state-label {
+      font-weight: 700;
+      color: var(--accent);
+    }
+
+    .switch {
+      width: 56px;
+      height: 32px;
+      border-radius: 999px;
+      background: #c9cec7;
+      position: relative;
+      box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+    }
+
+    .switch::after {
+      content: "";
+      position: absolute;
+      top: 4px;
+      left: 4px;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: white;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+    }
+
+    .themes {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin-top: 22px;
+    }
+
+    .theme-tile {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 14px;
+      background: #fbfaf6;
+    }
+
+    .theme-tile.selected {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(31, 122, 90, 0.12);
+      background: #ffffff;
+    }
+
+    .theme-preview {
+      height: 120px;
+      border-radius: 12px;
+      overflow: hidden;
+      margin-bottom: 12px;
+      border: 1px solid rgba(0, 0, 0, 0.06);
+    }
+
+    .preview-light {
+      background: linear-gradient(180deg, #ffffff, #f2efe8);
+    }
+
+    .preview-dark {
+      background: linear-gradient(180deg, #1d2228, #0d1117);
+    }
+
+    .preview-slate {
+      background: linear-gradient(180deg, #2a3442, #1f2632);
+    }
+
+    .theme-preview::before,
+    .theme-preview::after {
+      content: "";
+      display: block;
+      height: 10px;
+      border-radius: 999px;
+      margin: 14px;
+      background: rgba(255, 255, 255, 0.7);
+    }
+
+    .preview-light::before,
+    .preview-light::after {
+      background: rgba(25, 32, 43, 0.18);
+    }
+
+    .theme-name {
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .theme-note {
+      color: var(--muted);
+      font-size: 0.88rem;
+    }
+
+    .metric-stack {
+      display: grid;
+      gap: 16px;
+    }
+
+    .metric-card {
+      padding: 22px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    .metric-label {
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+
+    .metric-value {
+      font-size: 2rem;
+      font-weight: 800;
+      letter-spacing: -0.05em;
+    }
+
+    .metric-copy {
+      color: var(--muted);
+      margin-top: 8px;
+      line-height: 1.5;
+      font-size: 0.92rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="hero">
+      <div>
+        <h1>Team Settings</h1>
+        <p>Configure policies, backups, sign-on, and workspace appearance for your operations team.</p>
+      </div>
+      <div class="hero-summary">
+        <div class="hero-summary-label">Workspace Summary</div>
+        <div class="hero-summary-value">Dark theme selected</div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <div class="card-body">
+          <h2 class="section-title">Security Policies</h2>
+          <p class="section-copy">Critical team controls should stay aligned with what operators see on screen, not just what a label says.</p>
+
+          <div class="banner">
+            <div class="banner-label">Migration Notice</div>
+            <div class="banner-text">SSO migration required before April 30 or all admin sessions will be locked out automatically for every workspace admin.</div>
+          </div>
+
+          <div class="setting">
+            <div>
+              <div class="setting-name">Automatic backups</div>
+              <div class="setting-desc">Create a nightly encrypted backup of projects and audit data.</div>
+            </div>
+            <div class="setting-state">
+              <div class="state-label">Enabled</div>
+              <div class="switch" aria-hidden="true"></div>
+            </div>
+          </div>
+
+          <div class="setting">
+            <div>
+              <div class="setting-name">Session timeout</div>
+              <div class="setting-desc">Force re-authentication after 8 hours of inactivity.</div>
+            </div>
+            <div class="setting-state">
+              <div class="state-label">Enabled</div>
+              <div class="switch" aria-hidden="true"></div>
+            </div>
+          </div>
+
+          <h2 class="section-title" style="margin-top: 28px;">Theme</h2>
+          <p class="section-copy">Choose the default appearance for your team workspace.</p>
+
+          <div class="themes">
+            <div class="theme-tile selected">
+              <div class="theme-preview preview-light"></div>
+              <div class="theme-name">Light</div>
+              <div class="theme-note">Bright surfaces for daytime work.</div>
+            </div>
+            <div class="theme-tile">
+              <div class="theme-preview preview-dark"></div>
+              <div class="theme-name">Dark</div>
+              <div class="theme-note">Low-glare interface for focused sessions.</div>
+            </div>
+            <div class="theme-tile">
+              <div class="theme-preview preview-slate"></div>
+              <div class="theme-name">Slate</div>
+              <div class="theme-note">Muted contrast with cool neutrals.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="metric-stack">
+        <div class="metric-card">
+          <div class="metric-label">Audit Log</div>
+          <div class="metric-value">1,284</div>
+          <div class="metric-copy">Events recorded this week across security, access, and policy changes.</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Admin Seats</div>
+          <div class="metric-value">14 / 18</div>
+          <div class="metric-copy">Four seats remain before your team reaches its current admin limit.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
