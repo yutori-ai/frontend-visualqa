@@ -4,6 +4,8 @@ Gives coding agents eyes for frontend work — visual QA and verification powere
 
 ![CLI demo](docs/images/cli-demo.gif)
 
+![Skill demo in Claude Code](docs/images/skill-demo.gif)
+
 ## What it does
 
 - Verifies explicit visual claims against a running localhost frontend
