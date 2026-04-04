@@ -327,6 +327,7 @@ frontend-visualqa verify http://localhost:8000/device_dashboard.html \
 | `verify_visual_claims` | Structured pass/fail visual checks with screenshot evidence |
 | `take_screenshot` | Capture current page state |
 | `manage_browser` | Inspect, reset, close, or resize the shared browser session |
+| `extract_content_and_links` | Read exact visible text, headings, prices, status strings, and hyperlinks from the current page |
 
 ### Recommended agent workflow
 
