@@ -4,8 +4,6 @@ Gives coding agents eyes for frontend work — visual QA and verification powere
 
 ![CLI demo](docs/images/cli-demo.gif)
 
-![Skill demo in Claude Code](docs/images/skill-demo.gif)
-
 ## What it does
 
 - Verifies explicit visual claims against a running localhost frontend
@@ -116,6 +114,8 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
    `add-mcp` has no remove command. Delete the `frontend-visualqa` entry from your client's MCP config (e.g. `~/.mcp.json`).
    </details>
+
+![Skill demo in Claude Code](docs/images/skill-demo.gif)
 
 ### Manual per-client setup
 
