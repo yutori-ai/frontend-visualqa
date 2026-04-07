@@ -12,13 +12,13 @@ from typing import Any, TYPE_CHECKING
 from frontend_visualqa.browser import BrowserSession, DEFAULT_NAVIGATION_TIMEOUT_MS as BROWSER_NAVIGATION_TIMEOUT_MS
 from frontend_visualqa.errors import BrowserActionError
 from frontend_visualqa.tool_arguments import parse_tool_arguments
+from yutori.n1 import denormalize_coordinates
 
 if TYPE_CHECKING:
     from frontend_visualqa.overlay import OverlayController
 
 logger = logging.getLogger(__name__)
 
-MODEL_COORDINATE_SCALE = 1000
 DEFAULT_WAIT_SECONDS = 1.0
 EXTRACT_CONTENT_AND_LINKS_TOOL_NAME = "extract_content_and_links"
 MAX_ACCESSIBLE_SNAPSHOT_CHARS = 4_000
@@ -153,20 +153,6 @@ def is_disallowed_zoom_shortcut(key_text: str) -> bool:
     parts = [part for part in key_text.split("+") if part]
     return "ControlOrMeta" in parts and any(part in DISALLOWED_ZOOM_KEYS for part in parts[1:])
 
-
-def scale_coordinates(coordinates: list[int] | tuple[int, int], width: int, height: int) -> tuple[int, int]:
-    """Convert normalized n1 coordinates into viewport pixels."""
-
-    if len(coordinates) != 2:
-        raise BrowserActionError(f"coordinates must have exactly 2 items: {coordinates}")
-
-    raw_x = int(float(coordinates[0]) / MODEL_COORDINATE_SCALE * width)
-    raw_y = int(float(coordinates[1]) / MODEL_COORDINATE_SCALE * height)
-    clamped_x = max(0, min(max(width - 1, 0), raw_x))
-    clamped_y = max(0, min(max(height - 1, 0), raw_y))
-    return clamped_x, clamped_y
-
-
 def render_action_trace(
     action_name: str,
     arguments: dict[str, Any],
@@ -187,20 +173,20 @@ def render_action_trace(
     } and width and height:
         coordinates = arguments.get("coordinates")
         if coordinates is not None:
-            x, y = scale_coordinates(coordinates, width, height)
+            x, y = denormalize_coordinates(coordinates, width=width, height=height)
             return f"{canonical_name}([{x}, {y}])"
 
     if canonical_name == "drag" and width and height:
         start = arguments.get("start_coordinates")
         end = arguments.get("coordinates")
         if start is not None and end is not None:
-            start_x, start_y = scale_coordinates(start, width, height)
-            end_x, end_y = scale_coordinates(end, width, height)
+            start_x, start_y = denormalize_coordinates(start, width=width, height=height)
+            end_x, end_y = denormalize_coordinates(end, width=width, height=height)
             return f"drag([{start_x}, {start_y}], [{end_x}, {end_y}])"
 
     if canonical_name == "scroll" and width and height:
         coordinates = arguments.get("coordinates", [500, 500])
-        x, y = scale_coordinates(coordinates, width, height)
+        x, y = denormalize_coordinates(coordinates, width=width, height=height)
         direction = str(arguments.get("direction", "down")).lower()
         amount = arguments.get("amount", 1)
         return f"scroll([{x}, {y}], direction={direction}, amount={amount})"
@@ -294,7 +280,7 @@ class ActionExecutor:
                 coords = raw_arguments.get("coordinates")
                 if coords is None:
                     raise BrowserActionError("hover requires coordinates")
-                x, y = scale_coordinates(coords, width, height)
+                x, y = denormalize_coordinates(coords, width=width, height=height)
                 # Lead the real page hover with the branded cursor. The cursor
                 # transition delay now sits on the critical path before the DOM
                 # mutation so the headed sequence reads naturally.
@@ -310,7 +296,7 @@ class ActionExecutor:
                 coords = raw_arguments.get("coordinates")
                 if coords is None:
                     raise BrowserActionError(f"{canonical_name} requires coordinates")
-                x, y = scale_coordinates(coords, width, height)
+                x, y = denormalize_coordinates(coords, width=width, height=height)
                 await self._best_effort_overlay_preview_action(
                     action_type=canonical_name,
                     x=x,
@@ -329,8 +315,8 @@ class ActionExecutor:
                 end = raw_arguments.get("coordinates")
                 if start is None or end is None:
                     raise BrowserActionError("drag requires start_coordinates and coordinates")
-                start_x, start_y = scale_coordinates(start, width, height)
-                end_x, end_y = scale_coordinates(end, width, height)
+                start_x, start_y = denormalize_coordinates(start, width=width, height=height)
+                end_x, end_y = denormalize_coordinates(end, width=width, height=height)
                 await self._best_effort_overlay_preview_action(
                     action_type="drag",
                     x=end_x,
@@ -349,7 +335,7 @@ class ActionExecutor:
                 amount = float(raw_arguments.get("amount", 1))
                 if direction not in {"up", "down", "left", "right"}:
                     raise BrowserActionError(f"unsupported scroll direction: {direction}")
-                x, y = scale_coordinates(coords, width, height)
+                x, y = denormalize_coordinates(coords, width=width, height=height)
                 await self._best_effort_overlay_preview_action(action_type="scroll", x=x, y=y, direction=direction)
                 await page.mouse.move(x, y)
                 delta_x = (
