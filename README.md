@@ -1,5 +1,9 @@
 # frontend-visualqa
 
+[![PyPI version](https://img.shields.io/pypi/v/frontend-visualqa)](https://pypi.org/project/frontend-visualqa/)
+[![visual QA](https://img.shields.io/github/actions/workflow/status/yutori-ai/frontend-visualqa/visualqa.yml?label=visual%20QA)](https://github.com/yutori-ai/frontend-visualqa/actions/workflows/visualqa.yml)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+
 Gives coding agents eyes for frontend work — visual QA and verification powered by [Yutori n1](https://yutori.com/api).
 
 ![CLI demo](docs/images/cli-demo.gif)

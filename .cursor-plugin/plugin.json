@@ -1,6 +1,6 @@
 {
   "name": "frontend-visualqa",
-  "version": "1.0.0",
+  "version": "0.6.0",
   "description": "Local visual QA for frontends with Yutori n1 and Playwright",
   "author": {
     "name": "Yutori",
@@ -9,7 +9,7 @@
   },
   "homepage": "https://github.com/yutori-ai/frontend-visualqa",
   "repository": "https://github.com/yutori-ai/frontend-visualqa",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "keywords": ["frontend", "visual-qa", "browser", "playwright", "mcp"],
   "skills": "skills",
   "mcpServers": ".mcp.json"
