@@ -137,7 +137,7 @@ jobs:
 
       - name: Upload visual QA artifacts
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: visualqa-results
           path: |
@@ -148,7 +148,7 @@ jobs:
       # Separate artifact for CI tools that only consume CTRF format
       - name: Upload CTRF reports
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: visualqa-ctrf-reports
           path: artifacts/**/ctrf-report.json
