@@ -102,9 +102,9 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
     npx skills add yutori-ai/frontend-visualqa -g
     ```
 
-    Adds the `frontend-visualqa` skill to your agent.
-
     `-g` installs at user scope. Omit `-g` for project-local install.
+
+    Invoke the skill with `/frontend-visualqa` in Claude Code and `$frontend-visualqa` in Codex CLI. Agents can also auto-invoke.
 
 5. Restart your agent (Codex, Claude Code, etc) so the installs are picked up.
 
