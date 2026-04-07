@@ -102,7 +102,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
     npx skills add yutori-ai/frontend-visualqa -g
     ```
 
-    Adds the `/frontend-visualqa` slash command for claim-based visual QA guidance.
+    Adds the `/frontend-visualqa` slash command.
 
     `-g` installs at user scope. Omit `-g` for project-local install.
 
