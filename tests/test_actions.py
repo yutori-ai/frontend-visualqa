@@ -183,23 +183,10 @@ def _make_overlay_enabled_page(call_order: list[tuple[Any, ...]]) -> FakePage:
     return page
 
 
-def test_scale_coordinates_maps_n1_grid_to_viewport_pixels() -> None:
+def test_render_action_trace_formats_scaled_coordinates() -> None:
     module = _import_actions_module()
-    executor = instantiate_with_supported_kwargs(
-        module.ActionExecutor,
-        navigation_timeout_ms=1_000,
-        settle_delay_seconds=0,
-    )
-    scale_coordinates = getattr(executor, "scale_coordinates", None) or getattr(module, "scale_coordinates", None)
-    assert scale_coordinates is not None, "actions module must expose scale_coordinates(...)"
-
-    signature = inspect.signature(scale_coordinates)
-    if "viewport" in signature.parameters:
-        result = scale_coordinates([500, 250], ViewportConfig(width=1280, height=800, device_scale_factor=1))
-    else:
-        result = scale_coordinates([500, 250], 1280, 800)
-
-    assert result == (640, 200)
+    result = module.render_action_trace("left_click", {"coordinates": [500, 250]}, width=1280, height=800)
+    assert result == "left_click([640, 200])"
 
 
 @pytest.mark.asyncio
