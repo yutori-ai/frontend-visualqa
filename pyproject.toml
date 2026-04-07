@@ -7,7 +7,7 @@ name = "frontend-visualqa"
 dynamic = ["version"]
 description = "Gives coding agents eyes for frontend work — visual QA and verification powered by Yutori n1."
 readme = "README.md"
-license = "MIT"
+license = "Apache-2.0"
 requires-python = ">=3.11"
 authors = [
     { name = "Yutori", email = "support@yutori.com" }
