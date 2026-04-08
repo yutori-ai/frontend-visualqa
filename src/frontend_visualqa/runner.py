@@ -545,7 +545,7 @@ class VisualQARunner:
         try:
             await self.browser_manager.close()
         except Exception:
-            logger.warning("Failed to close existing browser during reconfiguration; proceeding", exc_info=True)
+            logger.error("Failed to close existing browser during reconfiguration; proceeding", exc_info=True)
 
         try:
             new_browser = BrowserManager(config=browser_config)

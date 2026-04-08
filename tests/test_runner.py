@@ -868,6 +868,92 @@ async def test_runner_manage_browser_login_returns_structured_error_when_navigat
     assert "persistent headed mode" in (status.summary or "").lower()
 
 
+@pytest.mark.asyncio
+async def test_runner_manage_browser_login_rolls_back_when_browser_constructor_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """If BrowserManager() constructor fails, the runner should roll back to the old config."""
+    module = _import_runner_module()
+    initial_browser = FakeBrowserManager(ViewportConfig(), config=BrowserConfig())
+    construction_attempts = []
+
+    def _failing_browser_factory(*args: Any, **kwargs: Any) -> FakeBrowserManager:
+        del args
+        construction_attempts.append(kwargs.get("config"))
+        if len(construction_attempts) == 1:
+            raise RuntimeError("Chromium binary not found")
+        return FakeBrowserManager(ViewportConfig(), config=kwargs["config"])
+
+    runner, browser, verifier = _build_runner(
+        module,
+        tmp_path,
+        verifier_results=[],
+        monkeypatch=monkeypatch,
+        browser_manager=initial_browser,
+    )
+    monkeypatch.setattr(module, "BrowserManager", _failing_browser_factory)
+
+    with pytest.raises(RuntimeError, match="Chromium binary not found"):
+        await _call_manage_browser(
+            runner,
+            action="login",
+            session_key="auth",
+            url="http://localhost:3000/sign-in",
+        )
+
+    assert len(construction_attempts) == 2
+    assert construction_attempts[0].mode == BrowserMode.persistent
+    assert construction_attempts[1] == BrowserConfig()
+    assert runner.browser_manager is not browser
+    assert runner.browser_manager.config == BrowserConfig()
+
+
+@pytest.mark.asyncio
+async def test_runner_login_then_take_screenshot_reuses_session(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """After login, take_screenshot on the same session_key should reuse the login browser."""
+    module = _import_runner_module()
+    initial_browser = FakeBrowserManager(ViewportConfig(), config=BrowserConfig())
+    replacement_browsers: list[FakeBrowserManager] = []
+
+    def _browser_factory(*args: Any, **kwargs: Any) -> FakeBrowserManager:
+        del args
+        browser = FakeBrowserManager(ViewportConfig(), config=kwargs["config"])
+        replacement_browsers.append(browser)
+        return browser
+
+    runner, _, _ = _build_runner(
+        module,
+        tmp_path,
+        verifier_results=[],
+        monkeypatch=monkeypatch,
+        browser_manager=initial_browser,
+    )
+    monkeypatch.setattr(module, "BrowserManager", _browser_factory)
+
+    await _call_manage_browser(
+        runner,
+        action="login",
+        session_key="dev",
+        url="http://localhost:8000/yutori_login.html",
+    )
+
+    login_browser = replacement_browsers[0]
+    screenshot_result = await runner.take_screenshot(
+        url="http://localhost:8000/yutori_login.html",
+        session_key="dev",
+        reuse_session=True,
+    )
+
+    assert screenshot_result.status == "completed"
+    assert screenshot_result.session_key == "dev"
+    assert runner.browser_manager is login_browser
+    assert any("dev" in str(call) for call in login_browser.goto_calls)
+
+
 class ResetFailingBrowserManager(FakeBrowserManager):
     async def reset_to_url(self, session: FakeSession, url: str) -> str:
         del session, url
