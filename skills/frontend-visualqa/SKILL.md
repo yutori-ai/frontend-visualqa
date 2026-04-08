@@ -26,9 +26,10 @@ Do not use it for:
 
 1. Make sure the frontend is already running locally.
 2. Prefer the `frontend-visualqa` MCP tools when available. They keep browser state warm across calls.
-3. If the user provides a URL and explicit claims, go straight to `verify_visual_claims` — it captures screenshots internally, so a separate `take_screenshot` is redundant.
-4. Only call `take_screenshot` first when you have no claims yet and need to see the page before writing them.
-5. Fix the frontend, then rerun the same claims until they pass.
+3. If the page is auth-gated and the user can help, call `manage_browser` with `action="login"` and the login URL. That opens a persistent headed browser the user can authenticate in. Reuse the same `session_key` afterward, and call `manage_browser(action="close", ...)` when you are done with the authenticated session.
+4. If the user provides a URL and explicit claims, go straight to `verify_visual_claims` — it captures screenshots internally, so a separate `take_screenshot` is redundant.
+5. Only call `take_screenshot` first when you have no claims yet and need to see the page before writing them.
+6. Fix the frontend, then rerun the same claims until they pass.
 
 ## Claim Discipline
 
@@ -50,7 +51,7 @@ When using MCP, split warm-session verification into successive `verify_visual_c
 
 Use ephemeral mode for public pages and quick checks.
 
-Use persistent mode for auth-gated apps, multi-step flows, or any case where cookies and local storage must survive across runs.
+Use persistent mode for auth-gated apps, multi-step flows, or any case where cookies and local storage must survive across runs. In MCP-driven workflows, bootstrap auth with `manage_browser(action="login", ...)` before running claims.
 
 Setup and client-specific install commands live in `references/install.md`.
 The detailed QA playbook, status meanings, and recovery steps live in `references/protocol.md`.

@@ -57,7 +57,9 @@ INCONCLUSIVE_FINDING_PATTERNS = (
     re.compile(r"""\binconclusive\b""", re.IGNORECASE),
 )
 ACTION_NEEDED_FINDING_PATTERNS = (
-    re.compile(r"""\b(?:i\s+)?need\s+to\s+(?:click|tap|open|navigate|go|scroll|expand|select|hover)\b""", re.IGNORECASE),
+    re.compile(
+        r"""\b(?:i\s+)?need\s+to\s+(?:click|tap|open|navigate|go|scroll|expand|select|hover)\b""", re.IGNORECASE
+    ),
     re.compile(r"""\b(?:i\s+)?should\s+(?:click|tap|open|navigate|go|scroll|expand|select|hover)\b""", re.IGNORECASE),
     re.compile(r"""\bbefore\s+i\s+can\s+(?:verify|determine|confirm|decide)\b""", re.IGNORECASE),
 )
@@ -128,6 +130,21 @@ class ClaimVerifier:
         self._overlay: Any | None = None
         self._hook: VisualQAHookAdapter | None = None
         self._partial_progress: _VerificationProgress | None = None
+
+    def set_browser_manager(self, browser_manager: BrowserManager, *, visualize: bool | None = None) -> None:
+        """Rebind long-lived browser dependencies after the runner reconfigures the browser.
+
+        Clears overlay, hook, and partial progress state tied to the previous browser instance.
+        """
+
+        self.browser_manager = browser_manager
+        self.action_executor.navigation_timeout_ms = getattr(browser_manager, "navigation_timeout_ms", 20_000)
+        self.action_executor.overlay = None
+        self._overlay = None
+        self._hook = None
+        self._partial_progress = None
+        if visualize is not None:
+            self._visualize = visualize
 
     async def verify(
         self,
@@ -211,7 +228,9 @@ class ClaimVerifier:
                     fallback = self._parse_fallback_verdict(getattr(assistant_message, "content", None))
                     if fallback is not None:
                         result = await self._finalize_result(
-                            progress=progress, verdict=fallback, verdict_source=VERDICT_SOURCE_FALLBACK,
+                            progress=progress,
+                            verdict=fallback,
+                            verdict_source=VERDICT_SOURCE_FALLBACK,
                         )
                         return await self._complete_result(result)
                     if non_action_reprompts < MAX_NON_ACTION_REPROMPTS:
@@ -238,17 +257,26 @@ class ClaimVerifier:
                                 force_stop_finding = "The model kept saying more interaction was needed without taking the next browser action."
                             elif navigation_hint and not progress.has_interacted and verdict[0] != "not_testable":
                                 reprompt_text = build_follow_navigation_hint_prompt(claim, navigation_hint)
-                                force_stop_finding = "The model tried to render a verdict before following the navigation hint."
+                                force_stop_finding = (
+                                    "The model tried to render a verdict before following the navigation hint."
+                                )
                             if reprompt_text is not None:
                                 if non_action_reprompts < MAX_NON_ACTION_REPROMPTS:
                                     non_action_reprompts += 1
                                     for tc in tool_calls:
                                         if tc.id not in responded_tool_ids:
-                                            messages.append({
-                                                "role": "tool",
-                                                "tool_call_id": tc.id,
-                                                "content": [{"type": "text", "text": "Verdict not accepted; see follow-up instructions."}],
-                                            })
+                                            messages.append(
+                                                {
+                                                    "role": "tool",
+                                                    "tool_call_id": tc.id,
+                                                    "content": [
+                                                        {
+                                                            "type": "text",
+                                                            "text": "Verdict not accepted; see follow-up instructions.",
+                                                        }
+                                                    ],
+                                                }
+                                            )
                                     messages.append(_user_text_message(reprompt_text))
                                     break
                                 result = await self._finalize_result(
@@ -259,7 +287,9 @@ class ClaimVerifier:
                                 await self._show_post_capture_analysis(had_actions=had_action_in_turn)
                                 return await self._complete_result(result)
                             result = await self._finalize_result(
-                                progress=progress, verdict=verdict, verdict_source=VERDICT_SOURCE_RECORD,
+                                progress=progress,
+                                verdict=verdict,
+                                verdict_source=VERDICT_SOURCE_RECORD,
                             )
                             await self._show_post_capture_analysis(had_actions=had_action_in_turn)
                             return await self._complete_result(result)
@@ -268,7 +298,9 @@ class ClaimVerifier:
                         stop_verdict = self._extract_stop_verdict([tool_call])
                         if stop_verdict is not None:
                             result = await self._finalize_result(
-                                progress=progress, verdict=stop_verdict, verdict_source=VERDICT_SOURCE_LEGACY_STOP,
+                                progress=progress,
+                                verdict=stop_verdict,
+                                verdict_source=VERDICT_SOURCE_LEGACY_STOP,
                             )
                             await self._show_post_capture_analysis(had_actions=had_action_in_turn)
                             return await self._complete_result(result)
@@ -350,8 +382,7 @@ class ClaimVerifier:
             preserve_partial_progress = True
             raise
         except (BrowserActionError, N1ClientError) as exc:
-            result = self._build_result(progress=progress, status="not_testable", finding=str(exc)
-            )
+            result = self._build_result(progress=progress, status="not_testable", finding=str(exc))
             return await self._complete_result(result)
         except Exception as exc:
             logger.warning("Unexpected verifier failure for claim %r", claim, exc_info=True)
@@ -485,7 +516,9 @@ class ClaimVerifier:
             proof = ClaimProof(
                 screenshot_path=progress.screenshot_paths[-1],
                 step=proof_step,
-                after_action=progress.action_trace[proof_step - 1] if proof_step > 0 and len(progress.action_trace) >= proof_step else None,
+                after_action=progress.action_trace[proof_step - 1]
+                if proof_step > 0 and len(progress.action_trace) >= proof_step
+                else None,
                 text=self._build_inline_proof_text(progress.proof_text),
                 text_path=progress.proof_text_path,
             )
@@ -768,12 +801,17 @@ class ClaimVerifier:
             return status, finding
 
         if cls._finding_has_failure_cue(finding) and not cls._claim_is_negative(claim):
-            logger.info("Downgrading pass verdict for claim %r because the finding described contradictory evidence", claim)
+            logger.info(
+                "Downgrading pass verdict for claim %r because the finding described contradictory evidence", claim
+            )
             return "failed", f"Model reported passed, but its own finding described contradictory evidence. {finding}"
 
         if cls._finding_has_inconclusive_cue(finding):
             logger.info("Downgrading pass verdict for claim %r because the finding described uncertainty", claim)
-            return "inconclusive", f"Model reported passed, but its own finding said the evidence was inconclusive. {finding}"
+            return (
+                "inconclusive",
+                f"Model reported passed, but its own finding said the evidence was inconclusive. {finding}",
+            )
 
         return status, finding
 

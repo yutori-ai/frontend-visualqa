@@ -14,7 +14,7 @@ from frontend_visualqa import __version__
 ClaimStatus = Literal["passed", "failed", "inconclusive", "not_testable"]
 OverallStatus = Literal["completed", "not_testable"]
 ScreenshotStatus = Literal["completed", "not_testable"]
-BrowserAction = Literal["status", "restart", "close", "set_viewport"]
+BrowserAction = Literal["status", "restart", "close", "set_viewport", "login"]
 DEFAULT_PERSISTENT_USER_DATA_DIR = Path("~/.cache/frontend-visualqa/browser-profile").expanduser()
 
 
@@ -228,6 +228,7 @@ class BrowserStatusResult(FrontendVisualQABaseModel):
     browser_mode: BrowserMode = BrowserMode.ephemeral
     user_data_dir: str | None = None
     sessions: list[BrowserSessionStatus] = Field(default_factory=list)
+    summary: str | None = None
 
 
 class ManageBrowserInput(FrontendVisualQABaseModel):
@@ -236,6 +237,20 @@ class ManageBrowserInput(FrontendVisualQABaseModel):
     action: BrowserAction
     session_key: str = "default"
     viewport: ViewportConfig | None = None
+    url: str | None = None
+
+    @field_validator("url")
+    @classmethod
+    def validate_optional_url(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return validate_url(value)
+
+    @model_validator(mode="after")
+    def validate_login_inputs(self) -> "ManageBrowserInput":
+        if self.action == "login" and self.url is None:
+            raise ValueError("url is required when action is 'login'")
+        return self
 
 
 class RunArtifactsSummary(FrontendVisualQABaseModel):
