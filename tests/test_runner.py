@@ -51,6 +51,7 @@ class FakeBrowserManager:
         self.config = config or BrowserConfig()
         self.sessions: dict[str, FakeSession] = {}
         self.goto_calls: list[tuple[str, str]] = []
+        self.get_session_calls: list[tuple[str, bool]] = []
         self.restart_calls: list[str] = []
         self.closed_sessions: list[str] = []
         self.closed = False
@@ -62,7 +63,7 @@ class FakeBrowserManager:
         viewport: ViewportConfig | None = None,
         reuse_session: bool = True,
     ) -> FakeSession:
-        del reuse_session
+        self.get_session_calls.append((session_key, reuse_session))
         desired = viewport or self.viewport
         session = self.sessions.get(session_key)
         if session is None:
@@ -712,6 +713,7 @@ async def test_runner_manage_browser_close_restores_base_config_after_login_over
     closed_status = await _call_manage_browser(runner, action="close", session_key="auth")
 
     assert len(replacement_browsers) == 2
+    assert replacement_browsers[0].closed is True
     restored_browser = replacement_browsers[1]
     assert runner.browser_manager is restored_browser
     assert restored_browser.config == BrowserConfig()
@@ -907,6 +909,7 @@ async def test_runner_manage_browser_login_rolls_back_when_browser_constructor_f
     assert construction_attempts[1] == BrowserConfig()
     assert runner.browser_manager is not browser
     assert runner.browser_manager.config == BrowserConfig()
+    assert verifier.browser_manager is runner.browser_manager
 
 
 @pytest.mark.asyncio
@@ -952,6 +955,7 @@ async def test_runner_login_then_take_screenshot_reuses_session(
     assert screenshot_result.session_key == "dev"
     assert runner.browser_manager is login_browser
     assert any("dev" in str(call) for call in login_browser.goto_calls)
+    assert ("dev", True) in login_browser.get_session_calls
 
 
 class ResetFailingBrowserManager(FakeBrowserManager):

@@ -468,10 +468,10 @@ class VisualQARunner:
                 try:
                     restored, restore_note = await self._restore_base_browser_config_after_login_close()
                 except Exception:
-                    self._login_override_active = False
                     logger.error("Failed to restore base browser config after login close", exc_info=True)
                     summary += (
                         " Warning: failed to restore the browser to its original configuration."
+                        " The browser is still in login mode."
                         " Use manage_browser(action='restart') to reset."
                     )
                     return self._status_with_summary(summary)
