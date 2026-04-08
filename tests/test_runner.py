@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from pydantic import ValidationError
 
 from frontend_visualqa.claim_parser import parse_claims_file
 from fakes import FakeArtifactManager, FakeN1Client, instantiate_with_supported_kwargs, is_bootstrap_step_artifact
@@ -819,13 +820,13 @@ async def test_runner_manage_browser_close_skips_restore_when_other_sessions_exi
 
 def test_manage_browser_input_schema_rejects_login_without_url() -> None:
     """Pydantic validation should reject action='login' with no url."""
-    with pytest.raises(Exception, match="url is required when action is 'login'"):
+    with pytest.raises(ValidationError, match="url is required when action is 'login'"):
         ManageBrowserInput(action="login", session_key="auth")
 
 
 def test_manage_browser_input_schema_rejects_login_with_invalid_url() -> None:
     """Pydantic validation should reject action='login' with a non-http url."""
-    with pytest.raises(Exception, match="url must start with http"):
+    with pytest.raises(ValidationError, match="url must start with http"):
         ManageBrowserInput(action="login", session_key="auth", url="ftp://example.com")
 
 
