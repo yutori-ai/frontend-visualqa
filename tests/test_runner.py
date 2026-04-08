@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from pydantic import ValidationError
 
 from frontend_visualqa.claim_parser import parse_claims_file
 from fakes import FakeArtifactManager, FakeN1Client, instantiate_with_supported_kwargs, is_bootstrap_step_artifact
@@ -46,10 +47,12 @@ class FakeSession:
 
 
 class FakeBrowserManager:
-    def __init__(self, viewport: ViewportConfig) -> None:
+    def __init__(self, viewport: ViewportConfig, *, config: BrowserConfig | None = None) -> None:
         self.viewport = viewport
+        self.config = config or BrowserConfig()
         self.sessions: dict[str, FakeSession] = {}
         self.goto_calls: list[tuple[str, str]] = []
+        self.get_session_calls: list[tuple[str, bool]] = []
         self.restart_calls: list[str] = []
         self.closed_sessions: list[str] = []
         self.closed = False
@@ -61,7 +64,7 @@ class FakeBrowserManager:
         viewport: ViewportConfig | None = None,
         reuse_session: bool = True,
     ) -> FakeSession:
-        del reuse_session
+        self.get_session_calls.append((session_key, reuse_session))
         desired = viewport or self.viewport
         session = self.sessions.get(session_key)
         if session is None:
@@ -111,6 +114,8 @@ class FakeBrowserManager:
     def status(self) -> BrowserStatusResult:
         return BrowserStatusResult(
             browser_running=not self.closed,
+            browser_mode=self.config.mode,
+            user_data_dir=self.config.resolved_user_data_dir if self.config.mode == BrowserMode.persistent else None,
             sessions=[
                 {
                     "session_key": session.session_key,
@@ -127,6 +132,20 @@ class FakeClaimVerifier:
     def __init__(self, results: list[ClaimResult]) -> None:
         self.results = list(results)
         self.calls: list[dict[str, Any]] = []
+        self.browser_manager: Any | None = None
+        self._visualize = False
+        self.set_browser_manager_calls: list[dict[str, Any]] = []
+
+    def set_browser_manager(self, browser_manager: Any, *, visualize: bool | None = None) -> None:
+        self.browser_manager = browser_manager
+        self.set_browser_manager_calls.append(
+            {
+                "browser_manager": browser_manager,
+                "visualize": visualize,
+            }
+        )
+        if visualize is not None:
+            self._visualize = visualize
 
     async def verify(self, *args: Any, **kwargs: Any) -> ClaimResult:
         if args:
@@ -175,6 +194,8 @@ def _build_runner(
         "artifacts": artifacts,
     }.items():
         setattr(runner, attribute_name, value)
+    if hasattr(verifier, "browser_manager"):
+        verifier.browser_manager = browser
 
     async def _skip_preflight(url: str) -> None:
         del url
@@ -205,6 +226,7 @@ async def _call_manage_browser(
     action: str,
     session_key: str = "default",
     viewport: ViewportConfig | None = None,
+    url: str | None = None,
 ) -> Any:
     signature = inspect.signature(runner.manage_browser)
     filtered: dict[str, Any] = {}
@@ -215,11 +237,18 @@ async def _call_manage_browser(
         filtered["session_key"] = session_key
     if "viewport" in signature.parameters:
         filtered["viewport"] = viewport
+    if "url" in signature.parameters:
+        filtered["url"] = url
 
     input_names = {"request", "input", "payload", "manage_input"}
     target_name = next((name for name in signature.parameters if name in input_names), None)
     if target_name is not None:
-        filtered[target_name] = ManageBrowserInput(action=action, session_key=session_key, viewport=viewport)
+        filtered[target_name] = ManageBrowserInput(
+            action=action,
+            session_key=session_key,
+            viewport=viewport,
+            url=url,
+        )
 
     return await runner.manage_browser(**filtered)
 
@@ -232,7 +261,7 @@ def _result(name: str, status: str, viewport: ViewportConfig) -> ClaimResult:
         proof={
             "screenshot_path": "artifacts/run-001/claim-01/step-01.webp",
             "step": 1,
-            "after_action": "goto_url(\"http://fixture.local/claim-status\")",
+            "after_action": 'goto_url("http://fixture.local/claim-status")',
             "text": f"{name}: {status}",
             "text_path": "artifacts/run-001/claim-01/step-01.txt",
         },
@@ -244,7 +273,7 @@ def _result(name: str, status: str, viewport: ViewportConfig) -> ClaimResult:
                 "artifacts/run-001/claim-01/step-00.webp",
                 "artifacts/run-001/claim-01/step-01.webp",
             ],
-            "actions": ["goto_url(\"http://fixture.local/claim-status\")"],
+            "actions": ['goto_url("http://fixture.local/claim-status")'],
             "trace_path": "artifacts/run-001/claim-01/trace.json",
         },
     )
@@ -485,7 +514,10 @@ async def test_runner_writes_rerunnable_markdown_report_from_claims_file(
     runner, _, _ = _build_runner(
         module,
         tmp_path,
-        verifier_results=[_result("The heading reads 'Dashboard'", "passed", viewport), _result("The progress bar shows 100%", "failed", viewport)],
+        verifier_results=[
+            _result("The heading reads 'Dashboard'", "passed", viewport),
+            _result("The progress bar shows 100%", "failed", viewport),
+        ],
         monkeypatch=monkeypatch,
         reporters=["markdown"],
     )
@@ -559,17 +591,21 @@ async def test_runner_manage_browser_proxies_status_restart_viewport_and_close(
     status = await _call_manage_browser(runner, action="status", session_key="managed")
     assert status.browser_running is True
     assert status.browser_mode == BrowserMode.ephemeral
+    assert status.summary == "Reported shared browser status."
 
     resized_status = await _call_manage_browser(runner, action="set_viewport", session_key="managed", viewport=viewport)
     assert resized_status.sessions[0].viewport == viewport
+    assert resized_status.summary == "Updated the viewport for shared browser session 'managed'."
 
     restarted_status = await _call_manage_browser(runner, action="restart", session_key="managed", viewport=viewport)
     assert "managed" in browser.restart_calls
     assert restarted_status.sessions[0].session_key == "managed"
+    assert restarted_status.summary == "Restarted shared browser session 'managed'."
 
     closed_status = await _call_manage_browser(runner, action="close", session_key="managed")
     assert "managed" in browser.closed_sessions or browser.closed is True
     assert closed_status.browser_running in {True, False}
+    assert closed_status.summary == "Closed shared browser session 'managed'."
 
 
 @pytest.mark.asyncio
@@ -592,6 +628,335 @@ async def test_runner_manage_browser_request_uses_prevalidated_input(
 
     assert result.browser_running is True
     assert browser.sessions["managed"].viewport == viewport
+
+
+@pytest.mark.asyncio
+async def test_runner_manage_browser_login_reconfigures_to_persistent_headed_mode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _import_runner_module()
+    initial_browser = FakeBrowserManager(ViewportConfig(), config=BrowserConfig())
+    replacement_browsers: list[FakeBrowserManager] = []
+
+    def _browser_factory(*args: Any, **kwargs: Any) -> FakeBrowserManager:
+        del args
+        config = kwargs["config"]
+        browser = FakeBrowserManager(ViewportConfig(), config=config)
+        replacement_browsers.append(browser)
+        return browser
+
+    runner, browser, verifier = _build_runner(
+        module,
+        tmp_path,
+        verifier_results=[],
+        monkeypatch=monkeypatch,
+        browser_manager=initial_browser,
+    )
+    monkeypatch.setattr(module, "BrowserManager", _browser_factory)
+
+    status = await _call_manage_browser(
+        runner,
+        action="login",
+        session_key="auth",
+        url="http://localhost:3000/sign-in",
+    )
+
+    assert browser.closed is True
+    assert len(replacement_browsers) == 1
+    login_browser = replacement_browsers[0]
+    assert login_browser.config.mode == BrowserMode.persistent
+    assert login_browser.config.headless is False
+    assert login_browser.goto_calls == [("auth", "http://localhost:3000/sign-in")]
+    assert status.browser_mode == BrowserMode.persistent
+    assert status.sessions[0].current_url == "http://localhost:3000/sign-in"
+    assert "interactive login" in (status.summary or "")
+    assert runner.browser_manager is login_browser
+    assert verifier.browser_manager is login_browser
+    assert verifier.set_browser_manager_calls == [
+        {
+            "browser_manager": login_browser,
+            "visualize": False,
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_runner_manage_browser_close_restores_base_config_after_login_override(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _import_runner_module()
+    initial_browser = FakeBrowserManager(ViewportConfig(), config=BrowserConfig())
+    replacement_browsers: list[FakeBrowserManager] = []
+
+    def _browser_factory(*args: Any, **kwargs: Any) -> FakeBrowserManager:
+        del args
+        browser = FakeBrowserManager(ViewportConfig(), config=kwargs["config"])
+        replacement_browsers.append(browser)
+        return browser
+
+    runner, _, verifier = _build_runner(
+        module,
+        tmp_path,
+        verifier_results=[],
+        monkeypatch=monkeypatch,
+        browser_manager=initial_browser,
+    )
+    monkeypatch.setattr(module, "BrowserManager", _browser_factory)
+
+    await _call_manage_browser(
+        runner,
+        action="login",
+        session_key="auth",
+        url="http://localhost:3000/sign-in",
+    )
+    closed_status = await _call_manage_browser(runner, action="close", session_key="auth")
+
+    assert len(replacement_browsers) == 2
+    assert replacement_browsers[0].closed is True
+    restored_browser = replacement_browsers[1]
+    assert runner.browser_manager is restored_browser
+    assert restored_browser.config == BrowserConfig()
+    assert closed_status.browser_mode == BrowserMode.ephemeral
+    assert closed_status.summary == (
+        "Closed shared browser session 'auth'. Restored the shared browser to its original configuration."
+    )
+    assert verifier.browser_manager is restored_browser
+
+
+@pytest.mark.asyncio
+async def test_runner_manage_browser_login_rejects_missing_url_even_if_validation_was_bypassed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _import_runner_module()
+    runner, _, _ = _build_runner(
+        module,
+        tmp_path,
+        verifier_results=[],
+        monkeypatch=monkeypatch,
+    )
+
+    with pytest.raises(ValueError, match="url is required when action is 'login'"):
+        await runner.manage_browser_request(
+            ManageBrowserInput.model_construct(action="login", session_key="auth", viewport=None, url=None)
+        )
+
+
+@pytest.mark.asyncio
+async def test_runner_manage_browser_login_skips_reconfiguration_when_already_persistent_headed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Calling login when the browser is already persistent+headed should skip reconfiguration."""
+    module = _import_runner_module()
+    persistent_config = BrowserConfig(mode=BrowserMode.persistent, headless=False)
+    initial_browser = FakeBrowserManager(ViewportConfig(), config=persistent_config)
+
+    runner, browser, _ = _build_runner(
+        module,
+        tmp_path,
+        verifier_results=[],
+        monkeypatch=monkeypatch,
+        browser_manager=initial_browser,
+    )
+
+    status = await _call_manage_browser(
+        runner,
+        action="login",
+        session_key="auth",
+        url="http://localhost:3000/sign-in",
+    )
+
+    assert browser.closed is False
+    assert runner.browser_manager is browser
+    assert browser.goto_calls == [("auth", "http://localhost:3000/sign-in")]
+    assert "interactive login" in (status.summary or "")
+
+
+@pytest.mark.asyncio
+async def test_runner_manage_browser_close_skips_restore_when_other_sessions_exist(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Close should not restore browser config when other sessions are still open."""
+    module = _import_runner_module()
+    initial_browser = FakeBrowserManager(ViewportConfig(), config=BrowserConfig())
+    replacement_browsers: list[FakeBrowserManager] = []
+
+    def _browser_factory(*args: Any, **kwargs: Any) -> FakeBrowserManager:
+        del args
+        browser = FakeBrowserManager(ViewportConfig(), config=kwargs["config"])
+        replacement_browsers.append(browser)
+        return browser
+
+    runner, _, _ = _build_runner(
+        module,
+        tmp_path,
+        verifier_results=[],
+        monkeypatch=monkeypatch,
+        browser_manager=initial_browser,
+    )
+    monkeypatch.setattr(module, "BrowserManager", _browser_factory)
+
+    await _call_manage_browser(
+        runner,
+        action="login",
+        session_key="auth",
+        url="http://localhost:3000/sign-in",
+    )
+
+    login_browser = replacement_browsers[0]
+    await login_browser.get_session("other", viewport=ViewportConfig(), reuse_session=True)
+
+    closed_status = await _call_manage_browser(runner, action="close", session_key="auth")
+
+    assert len(replacement_browsers) == 1
+    assert runner.browser_manager is login_browser
+    assert login_browser.config.mode == BrowserMode.persistent
+    assert "other session(s) are still open" in (closed_status.summary or "")
+
+
+def test_manage_browser_input_schema_rejects_login_without_url() -> None:
+    """Pydantic validation should reject action='login' with no url."""
+    with pytest.raises(ValidationError, match="url is required when action is 'login'"):
+        ManageBrowserInput(action="login", session_key="auth")
+
+
+def test_manage_browser_input_schema_rejects_login_with_invalid_url() -> None:
+    """Pydantic validation should reject action='login' with a non-http url."""
+    with pytest.raises(ValidationError, match="url must start with http"):
+        ManageBrowserInput(action="login", session_key="auth", url="ftp://example.com")
+
+
+class GotoFailingBrowserManager(FakeBrowserManager):
+    """Browser manager whose goto() always raises after the session is created."""
+
+    async def goto(self, session: FakeSession, url: str) -> str:
+        self.goto_calls.append((session.session_key, url))
+        raise RuntimeError("Chromium cannot connect on headless host")
+
+
+@pytest.mark.asyncio
+async def test_runner_manage_browser_login_returns_structured_error_when_navigation_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """If get_session/goto fails after reconfiguration, return a summary instead of crashing."""
+    module = _import_runner_module()
+    initial_browser = FakeBrowserManager(ViewportConfig(), config=BrowserConfig())
+
+    def _browser_factory(*args: Any, **kwargs: Any) -> GotoFailingBrowserManager:
+        del args
+        return GotoFailingBrowserManager(ViewportConfig(), config=kwargs["config"])
+
+    runner, _, _ = _build_runner(
+        module,
+        tmp_path,
+        verifier_results=[],
+        monkeypatch=monkeypatch,
+        browser_manager=initial_browser,
+    )
+    monkeypatch.setattr(module, "BrowserManager", _browser_factory)
+
+    status = await _call_manage_browser(
+        runner,
+        action="login",
+        session_key="auth",
+        url="http://localhost:3000/sign-in",
+    )
+
+    assert "failed to navigate" in (status.summary or "").lower()
+    assert "persistent headed mode" in (status.summary or "").lower()
+
+
+@pytest.mark.asyncio
+async def test_runner_manage_browser_login_rolls_back_when_browser_constructor_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """If BrowserManager() constructor fails, the runner should roll back to the old config."""
+    module = _import_runner_module()
+    initial_browser = FakeBrowserManager(ViewportConfig(), config=BrowserConfig())
+    construction_attempts = []
+
+    def _failing_browser_factory(*args: Any, **kwargs: Any) -> FakeBrowserManager:
+        del args
+        construction_attempts.append(kwargs.get("config"))
+        if len(construction_attempts) == 1:
+            raise RuntimeError("Chromium binary not found")
+        return FakeBrowserManager(ViewportConfig(), config=kwargs["config"])
+
+    runner, browser, verifier = _build_runner(
+        module,
+        tmp_path,
+        verifier_results=[],
+        monkeypatch=monkeypatch,
+        browser_manager=initial_browser,
+    )
+    monkeypatch.setattr(module, "BrowserManager", _failing_browser_factory)
+
+    with pytest.raises(RuntimeError, match="Chromium binary not found"):
+        await _call_manage_browser(
+            runner,
+            action="login",
+            session_key="auth",
+            url="http://localhost:3000/sign-in",
+        )
+
+    assert len(construction_attempts) == 2
+    assert construction_attempts[0].mode == BrowserMode.persistent
+    assert construction_attempts[1] == BrowserConfig()
+    assert runner.browser_manager is not browser
+    assert runner.browser_manager.config == BrowserConfig()
+    assert verifier.browser_manager is runner.browser_manager
+
+
+@pytest.mark.asyncio
+async def test_runner_login_then_take_screenshot_reuses_session(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """After login, take_screenshot on the same session_key should reuse the login browser."""
+    module = _import_runner_module()
+    initial_browser = FakeBrowserManager(ViewportConfig(), config=BrowserConfig())
+    replacement_browsers: list[FakeBrowserManager] = []
+
+    def _browser_factory(*args: Any, **kwargs: Any) -> FakeBrowserManager:
+        del args
+        browser = FakeBrowserManager(ViewportConfig(), config=kwargs["config"])
+        replacement_browsers.append(browser)
+        return browser
+
+    runner, _, _ = _build_runner(
+        module,
+        tmp_path,
+        verifier_results=[],
+        monkeypatch=monkeypatch,
+        browser_manager=initial_browser,
+    )
+    monkeypatch.setattr(module, "BrowserManager", _browser_factory)
+
+    await _call_manage_browser(
+        runner,
+        action="login",
+        session_key="dev",
+        url="http://localhost:8000/yutori_login.html",
+    )
+
+    login_browser = replacement_browsers[0]
+    screenshot_result = await runner.take_screenshot(
+        url="http://localhost:8000/yutori_login.html",
+        session_key="dev",
+        reuse_session=True,
+    )
+
+    assert screenshot_result.status == "completed"
+    assert screenshot_result.session_key == "dev"
+    assert runner.browser_manager is login_browser
+    assert any("dev" in str(call) for call in login_browser.goto_calls)
+    assert ("dev", True) in login_browser.get_session_calls
 
 
 class ResetFailingBrowserManager(FakeBrowserManager):
@@ -956,7 +1321,7 @@ async def test_runner_uses_partial_claim_result_when_verifier_crashes(
         proof={
             "screenshot_path": "artifacts/run-001/claim-01/step-01.webp",
             "step": 1,
-            "after_action": "goto_url(\"http://fixture.local/dashboard\")",
+            "after_action": 'goto_url("http://fixture.local/dashboard")',
             "text": "Visible text included 'Dashboard'.",
             "text_path": "artifacts/run-001/claim-01/step-01.txt",
         },
@@ -968,7 +1333,7 @@ async def test_runner_uses_partial_claim_result_when_verifier_crashes(
                 "artifacts/run-001/claim-01/step-00.webp",
                 "artifacts/run-001/claim-01/step-01.webp",
             ],
-            "actions": ["goto_url(\"http://fixture.local/dashboard\")"],
+            "actions": ['goto_url("http://fixture.local/dashboard")'],
             "trace_path": "artifacts/run-001/claim-01/trace.json",
         },
     )
@@ -999,7 +1364,7 @@ async def test_runner_uses_partial_claim_result_when_verifier_crashes(
 
     assert [item.status for item in result.results] == ["inconclusive"]
     assert result.results[0].proof is not None
-    assert result.results[0].proof.after_action == "goto_url(\"http://fixture.local/dashboard\")"
+    assert result.results[0].proof.after_action == 'goto_url("http://fixture.local/dashboard")'
     assert result.results[0].trace.trace_path == "artifacts/run-001/claim-01/trace.json"
     assert events == [
         ("start", 1, "Claim one", None),
@@ -1065,7 +1430,7 @@ async def test_runner_preserves_partial_claim_result_when_run_timeout_interrupts
         proof={
             "screenshot_path": "artifacts/run-001/claim-01/step-01.webp",
             "step": 1,
-            "after_action": "goto_url(\"http://fixture.local/dashboard\")",
+            "after_action": 'goto_url("http://fixture.local/dashboard")',
             "text": "Visible text included 'Dashboard'.",
             "text_path": "artifacts/run-001/claim-01/step-01.txt",
         },
@@ -1077,7 +1442,7 @@ async def test_runner_preserves_partial_claim_result_when_run_timeout_interrupts
                 "artifacts/run-001/claim-01/step-00.webp",
                 "artifacts/run-001/claim-01/step-01.webp",
             ],
-            "actions": ["goto_url(\"http://fixture.local/dashboard\")"],
+            "actions": ['goto_url("http://fixture.local/dashboard")'],
             "trace_path": "artifacts/run-001/claim-01/trace.json",
         },
     )
@@ -1109,7 +1474,7 @@ async def test_runner_preserves_partial_claim_result_when_run_timeout_interrupts
 
     assert [item.status for item in result.results] == ["inconclusive", "inconclusive"]
     assert result.results[0].proof is not None
-    assert result.results[0].proof.after_action == "goto_url(\"http://fixture.local/dashboard\")"
+    assert result.results[0].proof.after_action == 'goto_url("http://fixture.local/dashboard")'
     assert result.results[0].trace.steps_taken == 1
     assert result.results[1].proof is None
     assert result.results[1].trace.steps_taken == 0
@@ -1275,10 +1640,12 @@ async def test_per_call_visualize_override_does_not_leak_across_requests(
     module = _import_runner_module()
     viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
     browser = FakeBrowserManager(viewport)
-    verifier = FakeClaimVerifier([
-        _result("Claim one", "passed", viewport),
-        _result("Claim two", "passed", viewport),
-    ])
+    verifier = FakeClaimVerifier(
+        [
+            _result("Claim one", "passed", viewport),
+            _result("Claim two", "passed", viewport),
+        ]
+    )
     verifier._visualize = False
     artifacts = FakeArtifactManager(tmp_path, run_id="run-001")
 
@@ -1325,6 +1692,7 @@ async def test_per_call_visualize_override_does_not_leak_across_requests(
 
 class SpyReporter:
     """Test spy that records write() calls."""
+
     def __init__(self) -> None:
         self.write_calls: list[tuple[Any, Path, Any | None]] = []
 
@@ -1376,6 +1744,7 @@ async def test_runner_writes_both_native_and_ctrf_reports(
     module = _import_runner_module()
     viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
     from frontend_visualqa.reporters import get_reporters
+
     reporters = get_reporters(["native", "ctrf"])
     runner, browser, verifier = _build_runner(
         module,
@@ -1403,7 +1772,13 @@ async def test_runner_writes_both_native_and_ctrf_reports(
     assert set(first_result) == {"claim", "status", "finding", "proof", "page", "trace"}
     assert set(first_result["proof"]) == {"screenshot_path", "step", "after_action", "text", "text_path"}
     assert set(first_result["page"]) == {"url", "viewport"}
-    assert set(first_result["trace"]) == {"steps_taken", "wrong_page_recovered", "screenshot_paths", "actions", "trace_path"}
+    assert set(first_result["trace"]) == {
+        "steps_taken",
+        "wrong_page_recovered",
+        "screenshot_paths",
+        "actions",
+        "trace_path",
+    }
     assert first_result["finding"] == "Claim one: passed"
     assert first_result["trace"]["wrong_page_recovered"] is False
     # CTRF report
@@ -1429,6 +1804,7 @@ async def test_runner_ctrf_only_does_not_write_native_report(
     module = _import_runner_module()
     viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
     from frontend_visualqa.reporters import get_reporters
+
     reporters = get_reporters(["ctrf"])
     runner, browser, verifier = _build_runner(
         module,

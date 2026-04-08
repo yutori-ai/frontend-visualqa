@@ -16,6 +16,7 @@ from frontend_visualqa.claim_parser import ParsedClaimsFile
 from frontend_visualqa.reporters import get_reporters
 from frontend_visualqa.schemas import (
     BrowserConfig,
+    BrowserMode,
     BrowserStatusResult,
     ClaimPage,
     ClaimResult,
@@ -76,6 +77,8 @@ class VisualQARunner:
             resolved_browser_config = resolved_browser_config.model_copy(update={"headless": headless})
         configured_visualize = (resolved_browser_config or BrowserConfig()).visualize
         self.browser_manager = browser_manager or BrowserManager(config=resolved_browser_config)
+        self._base_browser_config = self.browser_manager.config.model_copy()
+        self._login_override_active = False
         self.artifact_manager = artifact_manager or ArtifactManager(artifacts_dir)
         if n1_client is None:
             n1_client_class = _load_n1_client_class()
@@ -220,7 +223,11 @@ class VisualQARunner:
                 _safe_on_claim_complete(index, claim, result)
 
             try:
-                timeout_cm = asyncio.timeout(request.run_timeout_seconds) if request.run_timeout_seconds else _null_async_context()
+                timeout_cm = (
+                    asyncio.timeout(request.run_timeout_seconds)
+                    if request.run_timeout_seconds
+                    else _null_async_context()
+                )
                 async with timeout_cm:
                     for index, claim in enumerate(request.claims, start=1):
                         next_claim_index = index
@@ -309,7 +316,9 @@ class VisualQARunner:
 
             summary = self._summarize_results(claim_results)
             overall_status = (
-                "not_testable" if claim_results and all(result.status == "not_testable" for result in claim_results) else "completed"
+                "not_testable"
+                if claim_results and all(result.status == "not_testable" for result in claim_results)
+                else "completed"
             )
             run_result = RunResult(
                 overall_status=overall_status,
@@ -411,11 +420,15 @@ class VisualQARunner:
         action: str,
         session_key: str = "default",
         viewport: ViewportConfig | dict[str, Any] | None = None,
+        url: str | None = None,
     ) -> BrowserStatusResult:
         """Inspect or mutate browser session state."""
 
         request = ManageBrowserInput(
-            action=action, session_key=session_key, viewport=self._coerce_optional_viewport(viewport)
+            action=action,
+            session_key=session_key,
+            viewport=self._coerce_optional_viewport(viewport),
+            url=url,
         )
         return await self.manage_browser_request(request)
 
@@ -424,21 +437,146 @@ class VisualQARunner:
 
         async with self._operation_lock:
             if request.action == "status":
-                return self.browser_manager.status()
+                return self._status_with_summary("Reported shared browser status.")
+            if request.action == "login":
+                if request.url is None:
+                    raise ValueError("url is required when action is 'login'")
+                await self._ensure_login_browser()
+                try:
+                    session = await self.browser_manager.get_session(
+                        request.session_key,
+                        viewport=request.viewport or ViewportConfig(),
+                        reuse_session=True,
+                    )
+                    await self.browser_manager.goto(session, request.url)
+                except Exception as exc:
+                    logger.error("Login browser launched but navigation failed: %s", exc, exc_info=True)
+                    return self._status_with_summary(
+                        f"Opened a persistent headed browser but failed to navigate to {request.url}: {exc}. "
+                        "The browser is in persistent headed mode. "
+                        "Try navigating manually or close the session to restore the original configuration."
+                    )
+                return self._status_with_summary(
+                    "Opened a persistent headed browser for interactive login. "
+                    f"Ask the user to finish authentication at {request.url}, then reuse "
+                    f"session_key '{request.session_key}' with take_screenshot or "
+                    "verify_visual_claims."
+                )
             if request.action == "close":
                 await self.browser_manager.close_session(request.session_key)
-                return self.browser_manager.status()
+                summary = f"Closed shared browser session '{request.session_key}'."
+                try:
+                    restored, restore_note = await self._restore_base_browser_config_after_login_close()
+                except Exception:
+                    logger.error("Failed to restore base browser config after login close", exc_info=True)
+                    summary += (
+                        " Warning: failed to restore the browser to its original configuration."
+                        " The browser is still in login mode."
+                        " Use manage_browser(action='restart') to reset."
+                    )
+                    return self._status_with_summary(summary)
+                if restored:
+                    summary += " Restored the shared browser to its original configuration."
+                elif restore_note:
+                    summary += f" {restore_note}"
+                return self._status_with_summary(summary)
             if request.action == "restart":
                 await self.browser_manager.restart_session(
                     request.session_key,
                     viewport=request.viewport,
                     preserve_url=True,
                 )
-                return self.browser_manager.status()
+                return self._status_with_summary(f"Restarted shared browser session '{request.session_key}'.")
             if request.action == "set_viewport":
                 await self.browser_manager.set_viewport(request.session_key, request.viewport or ViewportConfig())
-                return self.browser_manager.status()
+                return self._status_with_summary(
+                    f"Updated the viewport for shared browser session '{request.session_key}'."
+                )
             raise ValueError(f"Unsupported browser action: {request.action}")
+
+    async def _ensure_login_browser(self) -> None:
+        current_config = self.browser_manager.config
+        desired_config = BrowserConfig.model_validate(
+            {**current_config.model_dump(), "mode": BrowserMode.persistent, "headless": False}
+        )
+
+        if current_config == desired_config:
+            self._login_override_active = desired_config != self._base_browser_config
+            return
+
+        await self._reconfigure_browser_manager(
+            desired_config,
+            login_override_active=desired_config != self._base_browser_config,
+        )
+
+    async def _restore_base_browser_config_after_login_close(self) -> tuple[bool, str | None]:
+        """Attempt to restore the base browser config after a login override.
+
+        Returns (restored, note) where note explains why restoration was skipped.
+        """
+        if not self._login_override_active:
+            return False, None
+        if self.browser_manager.config == self._base_browser_config:
+            self._login_override_active = False
+            return False, None
+        # In persistent mode, close_session tears down the entire persistent context
+        # and clears all sessions, so this guard is currently unreachable in production.
+        # Kept as a safety net in case BrowserManager changes to per-session close.
+        active_sessions = self.browser_manager.status().sessions
+        if active_sessions:
+            logger.info(
+                "Skipping browser config restoration: %d other session(s) still active",
+                len(active_sessions),
+            )
+            return False, (
+                f"The browser remains in login mode because {len(active_sessions)} other session(s) "
+                "are still open. Close them to restore the original configuration."
+            )
+        await self._reconfigure_browser_manager(self._base_browser_config, login_override_active=False)
+        return True, None
+
+    async def _reconfigure_browser_manager(
+        self,
+        browser_config: BrowserConfig,
+        *,
+        login_override_active: bool,
+    ) -> None:
+        old_config = self.browser_manager.config
+        try:
+            await self.browser_manager.close()
+        except Exception:
+            logger.error("Failed to close existing browser during reconfiguration; proceeding", exc_info=True)
+
+        try:
+            new_browser = BrowserManager(config=browser_config)
+        except Exception:
+            logger.error("Failed to create browser with new config; restoring previous config", exc_info=True)
+            self.browser_manager = BrowserManager(config=old_config)
+            self._rebind_claim_verifier(old_config)
+            raise
+
+        self.browser_manager = new_browser
+        self._rebind_claim_verifier(browser_config)
+        self._login_override_active = login_override_active
+
+    def _rebind_claim_verifier(self, browser_config: BrowserConfig) -> None:
+        """Rebind the claim verifier to the current browser manager."""
+        rebind_browser_manager = getattr(self.claim_verifier, "set_browser_manager", None)
+        if callable(rebind_browser_manager):
+            rebind_browser_manager(self.browser_manager, visualize=browser_config.visualize)
+        else:
+            logger.info("claim_verifier lacks set_browser_manager; falling back to manual attribute patching")
+            self.claim_verifier.browser_manager = self.browser_manager
+            action_executor = getattr(self.claim_verifier, "action_executor", None)
+            if action_executor is not None:
+                action_executor.navigation_timeout_ms = self.browser_manager.navigation_timeout_ms
+            if hasattr(self.claim_verifier, "_visualize"):
+                self.claim_verifier._visualize = browser_config.visualize
+
+        self._default_visualize = bool(getattr(self.claim_verifier, "_visualize", browser_config.visualize))
+
+    def _status_with_summary(self, summary: str) -> BrowserStatusResult:
+        return self.browser_manager.status().model_copy(update={"summary": summary})
 
     async def close(self) -> None:
         """Close all long-lived resources."""

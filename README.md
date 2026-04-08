@@ -313,15 +313,16 @@ See [`examples/CLAIMS.md`](examples/CLAIMS.md) for the full list of pages, claim
 |------|-------------|
 | `verify_visual_claims` | Structured pass/fail visual checks with screenshot evidence |
 | `take_screenshot` | Capture current page state |
-| `manage_browser` | Inspect, reset, close, or resize the shared browser session |
+| `manage_browser` | Inspect, restart, close, resize, or open a persistent login session in the shared browser |
 
 ### Recommended agent workflow
 
 1. Ensure the local frontend is running
-2. `take_screenshot` to confirm page state
-3. Write 1–5 concrete visual claims
-4. `verify_visual_claims`
-5. Fix code, rerun claims until they pass
+2. If the page is auth-gated, call `manage_browser` with `action="login"` and the login page URL to open a persistent headed browser the user can sign into
+3. `take_screenshot` to confirm page state
+4. Write 1–5 concrete visual claims
+5. `verify_visual_claims`
+6. Fix code, rerun claims until they pass
 
 ## CLI reference
 
@@ -419,6 +420,8 @@ frontend-visualqa verify http://localhost:3000/dashboard \
   --run-name dashboard-auth \
   --claims 'The user avatar is visible in the header'
 ```
+
+For MCP-driven agent workflows, the equivalent bootstrap step is `manage_browser(action="login", url=...)`, which opens the persistent headed browser and returns immediately so a human can finish authentication. When the authenticated session is no longer needed, call `manage_browser(action="close", session_key=...)` to close it; if login had to switch the shared browser away from its original mode, that close call restores the original configuration (provided no other sessions remain open).
 
 Profile stored at `~/.cache/frontend-visualqa/browser-profile/` by default. Override with `--user-data-dir`:
 

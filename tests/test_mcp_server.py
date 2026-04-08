@@ -255,6 +255,29 @@ async def test_mcp_server_helpers_delegate_to_runner(monkeypatch: pytest.MonkeyP
     assert browser_result["browser_running"] is True
 
 
+@pytest.mark.asyncio
+async def test_mcp_server_manage_browser_login_passes_url_to_runner(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _import_mcp_server_module()
+    fake_runner = FakeRunner()
+    _install_fake_runner(module, fake_runner, monkeypatch)
+
+    await _call_tool(
+        module,
+        "manage_browser",
+        {
+            "action": "login",
+            "session_key": "auth",
+            "url": "http://localhost:3000/sign-in",
+        },
+    )
+
+    assert len(fake_runner.browser_request_calls) == 1
+    request = fake_runner.browser_request_calls[0]
+    assert request.action == "login"
+    assert request.session_key == "auth"
+    assert request.url == "http://localhost:3000/sign-in"
+
+
 def test_close_runners_sync_closes_cached_runners(monkeypatch: pytest.MonkeyPatch) -> None:
     module = _import_mcp_server_module()
     fake_runner = FakeRunner()

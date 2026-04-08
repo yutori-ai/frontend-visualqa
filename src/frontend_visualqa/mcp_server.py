@@ -9,7 +9,13 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from frontend_visualqa.serialization import serialize_result
-from frontend_visualqa.schemas import BrowserConfig, ManageBrowserInput, VerifyVisualClaimsInput, ViewportConfig, validate_url
+from frontend_visualqa.schemas import (
+    BrowserConfig,
+    ManageBrowserInput,
+    VerifyVisualClaimsInput,
+    ViewportConfig,
+    validate_url,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -17,7 +23,8 @@ logger = logging.getLogger(__name__)
 SERVER_INSTRUCTIONS = (
     "Use verify_visual_claims for explicit, observable frontend claims. "
     "Use take_screenshot when you need a quick visual baseline before writing claims. "
-    "Use manage_browser to inspect or reset browser state. "
+    "Use manage_browser to inspect browser state, reset the shared session, or open a persistent headed browser "
+    "for human login on auth-gated apps. "
     "Do not expect this server to start the local frontend for you."
 )
 
@@ -210,20 +217,34 @@ async def take_screenshot(
 
 @mcp.tool(
     name="manage_browser",
-    description="Inspect, resize, restart, or close the shared Playwright browser session.",
+    description=(
+        "Manage the shared Playwright browser session. "
+        "Valid actions: status, restart, close, set_viewport, login. "
+        "Use action='login' with a url to open a persistent headed browser for human authentication on "
+        "auth-gated apps."
+    ),
 )
 async def manage_browser(
     action: str,
     session_key: str = "default",
     viewport: ViewportConfig | None = None,
+    url: str | None = None,
 ) -> dict[str, Any]:
-    """Manage shared browser lifecycle without duplicating runner logic in the adapter."""
+    """Manage shared browser lifecycle.
+
+    Args:
+        action: One of status, restart, close, set_viewport, login.
+        session_key: Named browser session to operate on.
+        viewport: Viewport dimensions (used by set_viewport, restart, login).
+        url: Required when action is 'login'. The URL where the human should complete authentication.
+    """
 
     runner = await _get_runner()
     request = ManageBrowserInput(
         action=action,
         session_key=session_key,
         viewport=_coerce_viewport(viewport) if viewport is not None else None,
+        url=url,
     )
     return serialize_result(await runner.manage_browser_request(request))
 

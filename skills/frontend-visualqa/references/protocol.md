@@ -50,8 +50,9 @@ Use `manage_browser` if:
 - stale cookies or local storage are affecting the result
 - a previous run left the browser in an unexpected state
 - the viewport needs to be changed without restarting the whole client session
+- the page is auth-gated and the user needs to log in interactively (use `action="login"` with the login URL)
 
-For auth-gated flows, prefer persistent mode over repeating manual login on every run.
+For auth-gated flows, bootstrap auth with `manage_browser(action="login", url=...)` before running claims, or use persistent mode to reuse an existing session.
 
 ## Scope Boundaries
 
