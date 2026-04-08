@@ -519,6 +519,9 @@ class VisualQARunner:
         if self.browser_manager.config == self._base_browser_config:
             self._login_override_active = False
             return False, None
+        # In persistent mode, close_session tears down the entire persistent context
+        # and clears all sessions, so this guard is currently unreachable in production.
+        # Kept as a safety net in case BrowserManager changes to per-session close.
         active_sessions = self.browser_manager.status().sessions
         if active_sessions:
             logger.info(
