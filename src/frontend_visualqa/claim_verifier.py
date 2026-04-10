@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Any, TYPE_CHECKING
 
 from frontend_visualqa.actions import ActionExecutor, EXTRACT_CONTENT_AND_LINKS_TOOL_NAME
+from frontend_visualqa.utils import safe_async_method_call
 from frontend_visualqa.artifacts import ArtifactManager, RunArtifacts
 from frontend_visualqa.browser import BrowserManager, BrowserSession, image_bytes_to_data_url
 from frontend_visualqa.errors import BrowserActionError, N1ClientError
@@ -467,28 +468,10 @@ class ClaimVerifier:
             await self._best_effort_overlay_call("show_thought", reasoning)
 
     async def _best_effort_overlay_call(self, method_name: str, *args: Any, **kwargs: Any) -> None:
-        overlay = self._overlay
-        if overlay is None:
-            return
-        method = getattr(overlay, method_name, None)
-        if not callable(method):
-            return
-        try:
-            await method(*args, **kwargs)
-        except Exception:
-            logger.debug("Overlay method %s failed", method_name, exc_info=True)
+        await safe_async_method_call(self._overlay, method_name, *args, label="Overlay", **kwargs)
 
     async def _safe_hook_call(self, method_name: str, **kwargs: Any) -> None:
-        hook = self._hook
-        if hook is None:
-            return
-        method = getattr(hook, method_name, None)
-        if not callable(method):
-            return
-        try:
-            await method(**kwargs)
-        except Exception:
-            logger.debug("Hook method %s failed", method_name, exc_info=True)
+        await safe_async_method_call(self._hook, method_name, label="Hook", **kwargs)
 
     async def _complete_result(self, result: ClaimResult) -> ClaimResult:
         await self._safe_hook_call("on_agent_end", output=result)
