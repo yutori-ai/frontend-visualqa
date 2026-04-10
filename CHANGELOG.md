@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.0] - 2026-04-07
+
+### Added
+- `manage_browser(action="login")` for MCP-driven interactive authentication on auth-gated apps
+- `url` field and validators on `ManageBrowserInput` schema
+- `summary` field on `BrowserStatusResult`
+- `set_browser_manager()` method on `ClaimVerifier` for safe rebinding after browser reconfiguration
+
+### Changed
+- Updated MCP server tool descriptions to enumerate valid `manage_browser` actions
+- Enhanced runner with robust browser reconfiguration and rollback on failure
+
 ## [0.6.0] - 2026-04-01
 
 ### Added
