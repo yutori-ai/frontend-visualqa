@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import Any, Protocol
 
 import httpx
+from tenacity import AsyncRetrying, retry_if_exception, stop_after_attempt, wait_exponential
 from yutori import AsyncYutoriClient
 from yutori.n1 import estimate_messages_size_bytes, trim_images_to_fit
 
@@ -75,29 +75,25 @@ class N1Client:
         if self.temperature is not None:
             kwargs["temperature"] = self.temperature
 
-        last_error: Exception | None = None
-        for attempt in range(self.max_retries + 1):
-            try:
-                response = await client.chat.completions.create(
-                    model=self.model,
-                    messages=prepared_messages,
-                    **kwargs,
-                )
-                break
-            except Exception as exc:  # noqa: PERF203 - retry loop is intentional
-                last_error = exc
-                if attempt >= self.max_retries or not self._is_transient_error(exc):
-                    raise N1ClientError(f"n1 request failed: {exc}") from exc
-                delay = min(self.initial_backoff_seconds * (2**attempt), self.max_backoff_seconds)
-                logger.warning(
-                    "Transient n1 failure on attempt %s/%s; retrying in %.2fs",
-                    attempt + 1,
-                    self.max_retries + 1,
-                    delay,
-                )
-                await asyncio.sleep(delay)
-        else:  # pragma: no cover - defensive, loop always breaks or raises
-            raise N1ClientError(f"n1 request failed: {last_error}")
+        try:
+            async for attempt in AsyncRetrying(
+                stop=stop_after_attempt(self.max_retries + 1),
+                wait=wait_exponential(
+                    multiplier=self.initial_backoff_seconds,
+                    max=self.max_backoff_seconds,
+                ),
+                retry=retry_if_exception(self._is_transient_error),
+                before_sleep=self._log_retry,
+                reraise=True,
+            ):
+                with attempt:
+                    response = await client.chat.completions.create(
+                        model=self.model,
+                        messages=prepared_messages,
+                        **kwargs,
+                    )
+        except Exception as exc:
+            raise N1ClientError(f"n1 request failed: {exc}") from exc
 
         usage = getattr(response, "usage", None)
         if usage is not None:
@@ -151,6 +147,14 @@ class N1Client:
             timeout=self.timeout_seconds,
         )
         return self._client
+
+    def _log_retry(self, retry_state: Any) -> None:
+        logger.warning(
+            "Transient n1 failure on attempt %s/%s; retrying in %.2fs",
+            retry_state.attempt_number,
+            self.max_retries + 1,
+            retry_state.next_action.sleep,
+        )
 
     @staticmethod
     def _is_transient_error(exc: Exception) -> bool:

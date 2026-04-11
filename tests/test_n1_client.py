@@ -94,9 +94,7 @@ async def test_n1_client_wraps_sdk_errors() -> None:
 
 
 @pytest.mark.asyncio
-async def test_n1_client_retries_transient_errors(monkeypatch: pytest.MonkeyPatch) -> None:
-    import frontend_visualqa.n1_client as module
-
+async def test_n1_client_retries_transient_errors() -> None:
     message = SimpleNamespace(
         content="done", tool_calls=None, model_dump=lambda exclude_none=True: {"role": "assistant"}
     )
@@ -111,11 +109,6 @@ async def test_n1_client_retries_transient_errors(monkeypatch: pytest.MonkeyPatc
         initial_backoff_seconds=0.0,
         max_backoff_seconds=0.0,
     )
-
-    async def _noop_sleep(_: float) -> None:
-        return None
-
-    monkeypatch.setattr(module.asyncio, "sleep", _noop_sleep)
 
     result = await n1_client.create(messages=[{"role": "user", "content": [{"type": "text", "text": "Check"}]}])
 
