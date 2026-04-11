@@ -98,9 +98,7 @@ async def test_navigator_client_wraps_sdk_errors() -> None:
 
 
 @pytest.mark.asyncio
-async def test_navigator_client_retries_transient_errors(monkeypatch: pytest.MonkeyPatch) -> None:
-    import frontend_visualqa.navigator_client as module
-
+async def test_navigator_client_retries_transient_errors() -> None:
     message = SimpleNamespace(
         content="done", tool_calls=None, model_dump=lambda exclude_none=True: {"role": "assistant"}
     )
@@ -115,11 +113,6 @@ async def test_navigator_client_retries_transient_errors(monkeypatch: pytest.Mon
         initial_backoff_seconds=0.0,
         max_backoff_seconds=0.0,
     )
-
-    async def _noop_sleep(_: float) -> None:
-        return None
-
-    monkeypatch.setattr(module.asyncio, "sleep", _noop_sleep)
 
     result = await navigator_client.create(messages=[{"role": "user", "content": [{"type": "text", "text": "Check"}]}])
 
