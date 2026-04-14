@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 if not TYPE_CHECKING:
     ClaimVerifier = None  # type: ignore[assignment]
-    N1Client = None  # type: ignore[assignment]
+    NavigatorClient = None  # type: ignore[assignment]
 
 
 def _load_claim_verifier_class() -> Any:
@@ -45,13 +45,13 @@ def _load_claim_verifier_class() -> Any:
     return ClaimVerifier
 
 
-def _load_n1_client_class() -> Any:
-    global N1Client
-    if N1Client is None:
-        from frontend_visualqa.n1_client import N1Client as loaded_n1_client
+def _load_navigator_client_class() -> Any:
+    global NavigatorClient
+    if NavigatorClient is None:
+        from frontend_visualqa.navigator_client import NavigatorClient as loaded_navigator_client
 
-        N1Client = loaded_n1_client  # type: ignore[assignment]
-    return N1Client
+        NavigatorClient = loaded_navigator_client  # type: ignore[assignment]
+    return NavigatorClient
 
 
 class VisualQARunner:
@@ -63,7 +63,7 @@ class VisualQARunner:
         browser_manager: BrowserManager | None = None,
         browser_config: BrowserConfig | None = None,
         artifact_manager: ArtifactManager | None = None,
-        n1_client: N1Client | None = None,
+        navigator_client: NavigatorClient | None = None,
         claim_verifier: ClaimVerifier | None = None,
         artifacts_dir: str = "artifacts",
         headless: bool | None = None,
@@ -80,17 +80,17 @@ class VisualQARunner:
         self._base_browser_config = self.browser_manager.config.model_copy()
         self._login_override_active = False
         self.artifact_manager = artifact_manager or ArtifactManager(artifacts_dir)
-        if n1_client is None:
-            n1_client_class = _load_n1_client_class()
-            self.n1_client = n1_client_class()
+        if navigator_client is None:
+            navigator_client_class = _load_navigator_client_class()
+            self.navigator_client = navigator_client_class()
         else:
-            self.n1_client = n1_client
+            self.navigator_client = navigator_client
         if claim_verifier is None:
             claim_verifier_class = _load_claim_verifier_class()
             self.claim_verifier = claim_verifier_class(
                 browser_manager=self.browser_manager,
                 artifact_manager=self.artifact_manager,
-                n1_client=self.n1_client,
+                navigator_client=self.navigator_client,
                 visualize=configured_visualize,
             )
         else:
@@ -582,7 +582,7 @@ class VisualQARunner:
         """Close all long-lived resources."""
 
         await self.browser_manager.close()
-        await self.n1_client.close()
+        await self.navigator_client.close()
 
     @staticmethod
     def _summarize_results(results: list[ClaimResult]) -> str:

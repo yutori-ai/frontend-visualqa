@@ -10,7 +10,7 @@ import pytest
 from pydantic import ValidationError
 
 from frontend_visualqa.claim_parser import parse_claims_file
-from fakes import FakeArtifactManager, FakeN1Client, instantiate_with_supported_kwargs, is_bootstrap_step_artifact
+from fakes import FakeArtifactManager, FakeNavigatorClient, instantiate_with_supported_kwargs, is_bootstrap_step_artifact
 
 from frontend_visualqa.schemas import (
     BrowserConfig,
@@ -172,7 +172,7 @@ def _build_runner(
     monkeypatch.setattr(module, "BrowserManager", lambda *args, **kwargs: browser, raising=False)
     monkeypatch.setattr(module, "ClaimVerifier", lambda *args, **kwargs: verifier, raising=False)
     monkeypatch.setattr(module, "ArtifactManager", lambda *args, **kwargs: artifacts, raising=False)
-    monkeypatch.setattr(module, "N1Client", lambda *args, **kwargs: FakeN1Client([]), raising=False)
+    monkeypatch.setattr(module, "NavigatorClient", lambda *args, **kwargs: FakeNavigatorClient([]), raising=False)
 
     runner = instantiate_with_supported_kwargs(
         module.VisualQARunner,
@@ -1525,7 +1525,7 @@ def test_runner_passes_browser_config_to_browser_manager(monkeypatch: pytest.Mon
     monkeypatch.setattr(module, "BrowserManager", CapturingBrowserManager, raising=False)
     monkeypatch.setattr(module, "ClaimVerifier", lambda *args, **kwargs: object(), raising=False)
     monkeypatch.setattr(module, "ArtifactManager", lambda *args, **kwargs: artifacts, raising=False)
-    monkeypatch.setattr(module, "N1Client", lambda *args, **kwargs: FakeN1Client([]), raising=False)
+    monkeypatch.setattr(module, "NavigatorClient", lambda *args, **kwargs: FakeNavigatorClient([]), raising=False)
 
     browser_config = BrowserConfig(
         mode=BrowserMode.persistent,
@@ -1557,10 +1557,10 @@ def test_runner_passes_browser_config_visualize_to_default_claim_verifier(
             *,
             browser_manager: Any,
             artifact_manager: Any,
-            n1_client: Any,
+            navigator_client: Any,
             visualize: bool = False,
         ) -> None:
-            del browser_manager, artifact_manager, n1_client
+            del browser_manager, artifact_manager, navigator_client
             captured["visualize"] = visualize
 
         async def verify(self, *args: Any, **kwargs: Any) -> ClaimResult:
@@ -1571,7 +1571,7 @@ def test_runner_passes_browser_config_visualize_to_default_claim_verifier(
     monkeypatch.setattr(module, "BrowserManager", CapturingBrowserManager, raising=False)
     monkeypatch.setattr(module, "ClaimVerifier", CapturingClaimVerifier, raising=False)
     monkeypatch.setattr(module, "ArtifactManager", lambda *args, **kwargs: artifacts, raising=False)
-    monkeypatch.setattr(module, "N1Client", lambda *args, **kwargs: object(), raising=False)
+    monkeypatch.setattr(module, "NavigatorClient", lambda *args, **kwargs: object(), raising=False)
 
     browser_config = BrowserConfig(
         mode=BrowserMode.persistent,
@@ -1606,7 +1606,7 @@ async def test_runner_preserves_injected_claim_verifier_visualize_default(
         artifact_manager=artifacts,
         artifacts=artifacts,
         browser_config=BrowserConfig(visualize=False),
-        n1_client=FakeN1Client([]),
+        navigator_client=FakeNavigatorClient([]),
     )
     runner.browser_manager = browser
     runner.claim_verifier = verifier
@@ -1658,7 +1658,7 @@ async def test_per_call_visualize_override_does_not_leak_across_requests(
         artifact_manager=artifacts,
         artifacts=artifacts,
         browser_config=BrowserConfig(visualize=False),
-        n1_client=FakeN1Client([]),
+        navigator_client=FakeNavigatorClient([]),
     )
     runner.browser_manager = browser
     runner.claim_verifier = verifier

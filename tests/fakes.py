@@ -1,10 +1,10 @@
-"""Shared test fakes for n1 client protocol objects."""
+"""Shared test fakes for Navigator client protocol objects."""
 
 from __future__ import annotations
 
 import inspect
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -63,14 +63,38 @@ class FakeMessage:
         return payload
 
 
-class FakeN1Client:
-    def __init__(self, responses: list[FakeMessage]) -> None:
+@dataclass
+class FakeChoice:
+    message: FakeMessage
+
+
+@dataclass
+class FakeResponse:
+    choices: list[FakeChoice] = field(default_factory=list)
+    parsed_json: dict[str, Any] | None = None
+
+    def __post_init__(self) -> None:
+        if self.choices or self.parsed_json is None:
+            return
+        self.choices = [FakeChoice(message=FakeMessage(content=json.dumps(self.parsed_json)))]
+
+
+class FakeNavigatorClient:
+    def __init__(self, responses: list[FakeMessage | FakeResponse]) -> None:
         self.responses = list(responses)
         self.calls: list[dict[str, Any]] = []
 
-    async def create(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None = None) -> FakeMessage:
+    async def create(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+        json_schema: dict[str, Any] | None = None,
+    ) -> FakeResponse:
         self.calls.append({"messages": messages, "tools": tools or []})
-        return self.responses.pop(0)
+        raw = self.responses.pop(0)
+        if isinstance(raw, FakeResponse):
+            return raw
+        return FakeResponse(choices=[FakeChoice(message=raw)])
 
     def trim_messages(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         return messages

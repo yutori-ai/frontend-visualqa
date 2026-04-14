@@ -13,7 +13,15 @@ import pytest
 from frontend_visualqa.artifacts import RunArtifacts
 from frontend_visualqa.schemas import ViewportConfig
 
-from fakes import FakeArtifactManager, FakeFunction, FakeMessage, FakeN1Client, FakeToolCall, instantiate_with_supported_kwargs
+from fakes import FakeArtifactManager, FakeChoice, FakeFunction, FakeMessage, FakeNavigatorClient, FakeResponse, FakeToolCall, instantiate_with_supported_kwargs
+
+
+def _verdict_response(status: str, finding: str) -> FakeResponse:
+    """Build a FakeResponse with parsed_json for a structured JSON verdict."""
+    return FakeResponse(
+        choices=[FakeChoice(message=FakeMessage(content=json.dumps({"status": status, "finding": finding})))],
+        parsed_json={"status": status, "finding": finding},
+    )
 
 
 def _import_claim_verifier_module():
@@ -91,14 +99,15 @@ class FakeActionExecutor:
             output_text=None,
             current_url=session.page.url,
             success=True,
+            counts_as_interaction=resolved_name not in {"find", "extract_elements"},
         )
 
 
-class BlockingN1Client(FakeN1Client):
-    async def create(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]]) -> FakeMessage:
-        self.calls.append({"messages": messages, "tools": tools})
+class BlockingNavigatorClient(FakeNavigatorClient):
+    async def create(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None = None, json_schema: dict[str, Any] | None = None) -> FakeResponse:
+        self.calls.append({"messages": messages, "tools": tools or []})
         await asyncio.sleep(1.0)
-        raise AssertionError("BlockingN1Client should be cancelled before returning")
+        raise AssertionError("BlockingNavigatorClient should be cancelled before returning")
 
 
 def _build_claim_verifier(
@@ -110,11 +119,11 @@ def _build_claim_verifier(
     action_executor: Any | None = None,
     artifact_manager: Any | None = None,
     visualize: bool = False,
-) -> tuple[Any, FakeN1Client, FakeActionExecutor]:
+) -> tuple[Any, FakeNavigatorClient, FakeActionExecutor]:
     browser = browser_manager or FakeBrowserManager()
     action_executor = action_executor or FakeActionExecutor()
     artifacts = artifact_manager or FakeArtifactManager(tmp_path)
-    n1_client = FakeN1Client(responses)
+    navigator_client = FakeNavigatorClient(responses)
 
     verifier = instantiate_with_supported_kwargs(
         module.ClaimVerifier,
@@ -123,8 +132,8 @@ def _build_claim_verifier(
         action_executor=action_executor,
         artifact_manager=artifacts,
         artifacts=artifacts,
-        n1_client=n1_client,
-        client=n1_client,
+        navigator_client=navigator_client,
+        client=navigator_client,
         visualize=visualize,
     )
 
@@ -134,12 +143,12 @@ def _build_claim_verifier(
         "action_executor": action_executor,
         "artifact_manager": artifacts,
         "artifacts": artifacts,
-        "n1_client": n1_client,
-        "client": n1_client,
+        "navigator_client": navigator_client,
+        "client": navigator_client,
     }.items():
         setattr(verifier, attribute_name, value)
 
-    return verifier, n1_client, action_executor
+    return verifier, navigator_client, action_executor
 
 
 async def _call_verify(
@@ -186,28 +195,13 @@ async def _call_verify(
 
 
 @pytest.mark.asyncio
-async def test_claim_verifier_returns_structured_verdict_from_record_claim_result(tmp_path: Path) -> None:
+async def test_claim_verifier_returns_structured_verdict_from_json_schema(tmp_path: Path) -> None:
     module = _import_claim_verifier_module()
-    verifier, n1_client, action_executor = _build_claim_verifier(
+    verifier, navigator_client, action_executor = _build_claim_verifier(
         module,
         tmp_path,
         responses=[
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-1",
-                        function=FakeFunction(
-                            name="record_claim_result",
-                            arguments=json.dumps(
-                                {
-                                    "status": "passed",
-                                    "finding": "The red button is visible in the hero panel.",
-                                }
-                            ),
-                        ),
-                    )
-                ]
-            )
+            _verdict_response(status="passed", finding="The red button is visible in the hero panel."),
         ],
     )
 
@@ -230,11 +224,8 @@ async def test_claim_verifier_returns_structured_verdict_from_record_claim_resul
     assert _field(result, "proof").text is None
     assert _field(result, "trace").actions == []
     assert action_executor.calls == []
-    assert n1_client.calls
-    assert [tool["function"]["name"] for tool in n1_client.calls[0]["tools"]] == [
-        "extract_content_and_links",
-        "record_claim_result",
-    ]
+    assert navigator_client.calls
+    assert navigator_client.calls[0]["tools"] == []
 
 
 @pytest.mark.asyncio
@@ -255,22 +246,7 @@ async def test_claim_verifier_executes_actions_before_final_verdict(tmp_path: Pa
                     )
                 ]
             ),
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-2",
-                        function=FakeFunction(
-                            name="record_claim_result",
-                            arguments=json.dumps(
-                                {
-                                    "status": "passed",
-                                    "finding": "The modal is now visible and titled Edit Task.",
-                                }
-                            ),
-                        ),
-                    )
-                ]
-            ),
+            _verdict_response(status="passed", finding="The modal is now visible and titled Edit Task."),
         ],
     )
     page = FakePage(url="http://fixture.local/start")
@@ -296,264 +272,15 @@ async def test_claim_verifier_executes_actions_before_final_verdict(tmp_path: Pa
 
 
 @pytest.mark.asyncio
-async def test_claim_verifier_saves_proof_text_for_extract_content_and_links(tmp_path: Path) -> None:
-    module = _import_claim_verifier_module()
-
-    class ExtractingActionExecutor(FakeActionExecutor):
-        async def execute_tool_call(self, session: FakeSession, tool_call: Any) -> Any:
-            self.calls.append((tool_call.function.name, json.loads(tool_call.function.arguments or "{}")))
-            if tool_call.function.name == "extract_content_and_links":
-                return SimpleNamespace(
-                    trace="extract_content_and_links()",
-                    output_text=(
-                        "Accessible page snapshot:\n"
-                        '- heading "Shopping Cart"'
-                    ),
-                    current_url=session.page.url,
-                    success=True,
-                )
-            return await super().execute_tool_call(session, tool_call)
-
-    verifier, _, action_executor = _build_claim_verifier(
-        module,
-        tmp_path,
-        responses=[
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-1",
-                        function=FakeFunction(name="extract_content_and_links", arguments=json.dumps({})),
-                    )
-                ]
-            ),
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-2",
-                        function=FakeFunction(
-                            name="record_claim_result",
-                            arguments=json.dumps({"status": "passed", "finding": "The cart summary is visible."}),
-                        ),
-                    )
-                ]
-            ),
-        ],
-        action_executor=ExtractingActionExecutor(),
-    )
-
-    result = await _call_verify(
-        verifier,
-        page=FakePage(url="http://fixture.local/cart"),
-        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
-        claim="The cart summary is visible",
-        url="http://fixture.local/cart",
-        navigation_hint=None,
-    )
-
-    assert _field(result, "status") == "passed"
-    assert action_executor.calls == [("extract_content_and_links", {})]
-    assert _field(result, "proof").step == 1
-    assert _field(result, "proof").after_action == "extract_content_and_links()"
-    assert _field(result, "proof").text is not None
-    assert "Accessible page snapshot:" in _field(result, "proof").text
-    assert _field(result, "proof").text_path.endswith("step-01.txt")
-    assert "Shopping Cart" in Path(_field(result, "proof").text_path).read_text(encoding="utf-8")
-
-
-@pytest.mark.asyncio
-async def test_no_duplicate_tool_results_when_extract_and_rejected_verdict_share_a_turn(tmp_path: Path) -> None:
-    module = _import_claim_verifier_module()
-
-    class ExtractingActionExecutor(FakeActionExecutor):
-        async def execute_tool_call(self, session: FakeSession, tool_call: Any) -> Any:
-            self.calls.append((tool_call.function.name, json.loads(tool_call.function.arguments or "{}")))
-            if tool_call.function.name == "extract_content_and_links":
-                return SimpleNamespace(
-                    trace="extract_content_and_links()",
-                    output_text="Accessible page snapshot:\n- heading \"Products\"",
-                    current_url=session.page.url,
-                    success=True,
-                )
-            return await super().execute_tool_call(session, tool_call)
-
-    verifier, n1_client, action_executor = _build_claim_verifier(
-        module,
-        tmp_path,
-        responses=[
-            # Model sends extract AND verdict in the same turn
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-1",
-                        function=FakeFunction(name="extract_content_and_links", arguments=json.dumps({})),
-                    ),
-                    FakeToolCall(
-                        id="tool-2",
-                        function=FakeFunction(
-                            name="record_claim_result",
-                            arguments=json.dumps({"status": "failed", "finding": "Badge not visible."}),
-                        ),
-                    ),
-                ]
-            ),
-            # After reprompt, model takes a real action and verdicts
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-3",
-                        function=FakeFunction(
-                            name="left_click",
-                            arguments=json.dumps({"coordinates": [500, 500]}),
-                        ),
-                    )
-                ]
-            ),
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-4",
-                        function=FakeFunction(
-                            name="record_claim_result",
-                            arguments=json.dumps({"status": "passed", "finding": "Badge shows 3 items."}),
-                        ),
-                    )
-                ]
-            ),
-        ],
-        action_executor=ExtractingActionExecutor(),
-    )
-
-    result = await _call_verify(
-        verifier,
-        page=FakePage(url="http://fixture.local/products"),
-        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
-        claim="The cart badge shows 3 items",
-        url="http://fixture.local/products",
-        navigation_hint="Click Add to Cart before deciding.",
-        max_steps=4,
-    )
-
-    assert _field(result, "status") == "passed"
-    # Check that tool-1 (extract) does NOT have duplicate tool results in messages
-    reprompt_messages = n1_client.calls[1]["messages"]
-    tool_result_ids = [
-        msg["tool_call_id"]
-        for msg in reprompt_messages
-        if msg.get("role") == "tool"
-    ]
-    # tool-1 should appear exactly once (real result), tool-2 once (rejection stub)
-    assert tool_result_ids.count("tool-1") == 1, f"tool-1 appeared {tool_result_ids.count('tool-1')} times, expected 1"
-    assert tool_result_ids.count("tool-2") == 1
-
-
-@pytest.mark.asyncio
-async def test_extract_content_and_links_does_not_bypass_navigation_hint_guard(tmp_path: Path) -> None:
-    module = _import_claim_verifier_module()
-
-    class ExtractingActionExecutor(FakeActionExecutor):
-        async def execute_tool_call(self, session: FakeSession, tool_call: Any) -> Any:
-            self.calls.append((tool_call.function.name, json.loads(tool_call.function.arguments or "{}")))
-            if tool_call.function.name == "extract_content_and_links":
-                return SimpleNamespace(
-                    trace="extract_content_and_links()",
-                    output_text="Accessible page snapshot:\n- heading \"Products\"",
-                    current_url=session.page.url,
-                    success=True,
-                )
-            return await super().execute_tool_call(session, tool_call)
-
-    verifier, n1_client, action_executor = _build_claim_verifier(
-        module,
-        tmp_path,
-        responses=[
-            # Model calls extract_content_and_links (read-only), then immediately tries to verdict
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-1",
-                        function=FakeFunction(name="extract_content_and_links", arguments=json.dumps({})),
-                    )
-                ]
-            ),
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-2",
-                        function=FakeFunction(
-                            name="record_claim_result",
-                            arguments=json.dumps({"status": "failed", "finding": "Badge not visible."}),
-                        ),
-                    )
-                ]
-            ),
-            # After reprompt, model takes a real action
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-3",
-                        function=FakeFunction(
-                            name="left_click",
-                            arguments=json.dumps({"coordinates": [500, 500]}),
-                        ),
-                    )
-                ]
-            ),
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-4",
-                        function=FakeFunction(
-                            name="record_claim_result",
-                            arguments=json.dumps({"status": "passed", "finding": "Badge shows 3 items."}),
-                        ),
-                    )
-                ]
-            ),
-        ],
-        action_executor=ExtractingActionExecutor(),
-    )
-
-    result = await _call_verify(
-        verifier,
-        page=FakePage(url="http://fixture.local/products"),
-        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
-        claim="The cart badge shows 3 items",
-        url="http://fixture.local/products",
-        navigation_hint="Click Add to Cart before deciding.",
-        max_steps=4,
-    )
-
-    assert _field(result, "status") == "passed"
-    # The extract_content_and_links call should NOT have satisfied the navigation hint guard
-    assert len(n1_client.calls) == 4
-    reminder_message = next(
-        message
-        for message in reversed(n1_client.calls[2]["messages"])
-        if message.get("role") == "user" and isinstance(message.get("content"), list)
-    )
-    assert "You have not followed the navigation hint yet." in reminder_message["content"][0]["text"]
-
-
-@pytest.mark.asyncio
 async def test_claim_verifier_requires_an_action_before_accepting_a_verdict_with_navigation_hint(
     tmp_path: Path,
 ) -> None:
     module = _import_claim_verifier_module()
-    verifier, n1_client, action_executor = _build_claim_verifier(
+    verifier, navigator_client, action_executor = _build_claim_verifier(
         module,
         tmp_path,
         responses=[
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-1",
-                        function=FakeFunction(
-                            name="record_claim_result",
-                            arguments=json.dumps({"status": "failed", "finding": "The cart badge shows 2 items."}),
-                        ),
-                    )
-                ]
-            ),
+            _verdict_response(status="failed", finding="The cart badge shows 2 items."),
             FakeMessage(
                 tool_calls=[
                     FakeToolCall(
@@ -565,17 +292,7 @@ async def test_claim_verifier_requires_an_action_before_accepting_a_verdict_with
                     )
                 ]
             ),
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-3",
-                        function=FakeFunction(
-                            name="record_claim_result",
-                            arguments=json.dumps({"status": "passed", "finding": "The cart badge now shows 3 items."}),
-                        ),
-                    )
-                ]
-            ),
+            _verdict_response(status="passed", finding="The cart badge now shows 3 items."),
         ],
     )
 
@@ -586,14 +303,75 @@ async def test_claim_verifier_requires_an_action_before_accepting_a_verdict_with
         claim="The cart badge shows 3 items",
         url="http://fixture.local/products",
         navigation_hint="Click Add to Cart before deciding.",
+        max_steps=3,
     )
 
     assert _field(result, "status") == "passed"
     assert action_executor.calls == [("goto_url", {"url": "http://fixture.local/cart"})]
-    assert len(n1_client.calls) == 3
+    assert len(navigator_client.calls) == 3
     reminder_message = next(
         message
-        for message in reversed(n1_client.calls[1]["messages"])
+        for message in reversed(navigator_client.calls[1]["messages"])
+        if message.get("role") == "user" and isinstance(message.get("content"), list)
+    )
+    assert "You have not followed the navigation hint yet." in reminder_message["content"][0]["text"]
+
+
+@pytest.mark.asyncio
+async def test_claim_verifier_does_not_treat_read_only_tools_as_navigation_interaction(
+    tmp_path: Path,
+) -> None:
+    module = _import_claim_verifier_module()
+    verifier, navigator_client, action_executor = _build_claim_verifier(
+        module,
+        tmp_path,
+        responses=[
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-1",
+                        function=FakeFunction(
+                            name="find",
+                            arguments=json.dumps({"text": "Cart"}),
+                        ),
+                    )
+                ]
+            ),
+            _verdict_response(status="failed", finding="The cart badge shows 2 items."),
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-2",
+                        function=FakeFunction(
+                            name="goto_url",
+                            arguments=json.dumps({"url": "http://fixture.local/cart"}),
+                        ),
+                    )
+                ]
+            ),
+            _verdict_response(status="passed", finding="The cart badge now shows 3 items."),
+        ],
+    )
+
+    result = await _call_verify(
+        verifier,
+        page=FakePage(url="http://fixture.local/products"),
+        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+        claim="The cart badge shows 3 items",
+        url="http://fixture.local/products",
+        navigation_hint="Click Add to Cart before deciding.",
+        max_steps=3,
+    )
+
+    assert _field(result, "status") == "passed"
+    assert action_executor.calls == [
+        ("find", {"text": "Cart"}),
+        ("goto_url", {"url": "http://fixture.local/cart"}),
+    ]
+    assert len(navigator_client.calls) == 4
+    reminder_message = next(
+        message
+        for message in reversed(navigator_client.calls[2]["messages"])
         if message.get("role") == "user" and isinstance(message.get("content"), list)
     )
     assert "You have not followed the navigation hint yet." in reminder_message["content"][0]["text"]
@@ -604,25 +382,13 @@ async def test_claim_verifier_reprompts_when_model_says_action_is_needed_but_rec
     tmp_path: Path,
 ) -> None:
     module = _import_claim_verifier_module()
-    verifier, n1_client, action_executor = _build_claim_verifier(
+    verifier, navigator_client, action_executor = _build_claim_verifier(
         module,
         tmp_path,
         responses=[
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-1",
-                        function=FakeFunction(
-                            name="record_claim_result",
-                            arguments=json.dumps(
-                                {
-                                    "status": "inconclusive",
-                                    "finding": "I need to click on the product to open the detail page before I can verify this.",
-                                }
-                            ),
-                        ),
-                    )
-                ]
+            _verdict_response(
+                status="inconclusive",
+                finding="I need to click on the product to open the detail page before I can verify this.",
             ),
             FakeMessage(
                 tool_calls=[
@@ -635,21 +401,9 @@ async def test_claim_verifier_reprompts_when_model_says_action_is_needed_but_rec
                     )
                 ]
             ),
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-3",
-                        function=FakeFunction(
-                            name="record_claim_result",
-                            arguments=json.dumps(
-                                {
-                                    "status": "passed",
-                                    "finding": "The product detail page shows Wireless Headphones Pro priced at $149.99.",
-                                }
-                            ),
-                        ),
-                    )
-                ]
+            _verdict_response(
+                status="passed",
+                finding="The product detail page shows Wireless Headphones Pro priced at $149.99.",
             ),
         ],
     )
@@ -668,7 +422,7 @@ async def test_claim_verifier_reprompts_when_model_says_action_is_needed_but_rec
     assert _field(result, "trace").wrong_page_recovered is True
     reminder_message = next(
         message
-        for message in reversed(n1_client.calls[1]["messages"])
+        for message in reversed(navigator_client.calls[1]["messages"])
         if message.get("role") == "user" and isinstance(message.get("content"), list)
     )
     assert "more browser interaction is needed" in reminder_message["content"][0]["text"]
@@ -679,7 +433,7 @@ def test_claim_verifier_accepts_visualize_flag(tmp_path: Path) -> None:
     verifier = module.ClaimVerifier(
         browser_manager=FakeBrowserManager(),
         artifact_manager=FakeArtifactManager(tmp_path),
-        n1_client=FakeN1Client([]),
+        navigator_client=FakeNavigatorClient([]),
         visualize=True,
     )
 
@@ -733,22 +487,7 @@ async def test_claim_verifier_uses_overlay_lifecycle_when_visualize_enabled(
                     )
                 ]
             ),
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-2",
-                        function=FakeFunction(
-                            name="record_claim_result",
-                            arguments=json.dumps(
-                                {
-                                    "status": "passed",
-                                    "finding": "The modal is now visible and titled Edit Task.",
-                                }
-                            ),
-                        ),
-                    )
-                ]
-            ),
+            _verdict_response(status="passed", finding="The modal is now visible and titled Edit Task."),
         ],
         visualize=True,
     )
@@ -782,7 +521,7 @@ async def test_claim_verifier_uses_overlay_lifecycle_when_visualize_enabled(
 @pytest.mark.asyncio
 async def test_claim_verifier_reprompts_after_plain_text_thought_and_continues(tmp_path: Path) -> None:
     module = _import_claim_verifier_module()
-    verifier, n1_client, action_executor = _build_claim_verifier(
+    verifier, navigator_client, action_executor = _build_claim_verifier(
         module,
         tmp_path,
         responses=[
@@ -798,17 +537,7 @@ async def test_claim_verifier_reprompts_after_plain_text_thought_and_continues(t
                     )
                 ]
             ),
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-2",
-                        function=FakeFunction(
-                            name="record_claim_result",
-                            arguments=json.dumps({"status": "passed", "finding": "The Task Details heading is visible."}),
-                        ),
-                    )
-                ]
-            ),
+            _verdict_response(status="passed", finding="The Task Details heading is visible."),
         ],
     )
 
@@ -823,10 +552,10 @@ async def test_claim_verifier_reprompts_after_plain_text_thought_and_continues(t
 
     assert _field(result, "status") == "passed"
     assert action_executor.calls == [("goto_url", {"url": "http://fixture.local/tasks/123"})]
-    assert len(n1_client.calls) == 3
+    assert len(navigator_client.calls) == 3
     reminder_message = next(
         message
-        for message in reversed(n1_client.calls[1]["messages"])
+        for message in reversed(navigator_client.calls[1]["messages"])
         if message.get("role") == "user" and isinstance(message.get("content"), list)
     )
     reminder_text = reminder_message["content"][0]["text"]
@@ -877,17 +606,7 @@ async def test_claim_verifier_records_reasoning_events_and_shows_thought_for_too
                     )
                 ],
             ),
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-2",
-                        function=FakeFunction(
-                            name="record_claim_result",
-                            arguments=json.dumps({"status": "passed", "finding": "The Save button is visible."}),
-                        ),
-                    )
-                ]
-            ),
+            _verdict_response(status="passed", finding="The Save button is visible."),
         ],
         visualize=True,
     )
@@ -926,7 +645,7 @@ async def test_claim_verifier_records_reasoning_events_and_shows_thought_for_too
     assert action_event.screenshot_path.endswith("step-01.webp")
     assert verdict_event.type == "verdict"
     assert verdict_event.reasoning is None
-    assert verdict_event.verdict_source == "record_claim_result"
+    assert verdict_event.verdict_source == "json_schema"
     assert verdict_event.raw_verdict_status == "passed"
     assert "Save button" in verdict_event.raw_finding
     assert verdict_event.verdict_status == "passed"
@@ -986,17 +705,7 @@ async def test_claim_verifier_shows_post_capture_analysis_ui_after_action_screen
                     )
                 ],
             ),
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-2",
-                        function=FakeFunction(
-                            name="record_claim_result",
-                            arguments=json.dumps({"status": "passed", "finding": "The field is focused."}),
-                        ),
-                    )
-                ]
-            ),
+            _verdict_response(status="passed", finding="The field is focused."),
         ],
         visualize=True,
     )
@@ -1065,17 +774,7 @@ async def test_claim_verifier_does_not_show_thought_for_plain_text_turn_without_
         tmp_path,
         responses=[
             FakeMessage(content="I should inspect the page title before deciding."),
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-1",
-                        function=FakeFunction(
-                            name="record_claim_result",
-                            arguments=json.dumps({"status": "passed", "finding": "The page title reads Dashboard."}),
-                        ),
-                    )
-                ]
-            ),
+            _verdict_response(status="passed", finding="The page title reads Dashboard."),
         ],
         visualize=True,
     )
@@ -1100,7 +799,7 @@ async def test_claim_verifier_does_not_show_thought_for_plain_text_turn_without_
     verdict_event = _field(result, "trace").events[0]
     assert verdict_event.type == "verdict"
     assert verdict_event.reasoning is None
-    assert verdict_event.verdict_source == "record_claim_result"
+    assert verdict_event.verdict_source == "json_schema"
 
 
 @pytest.mark.asyncio
@@ -1108,21 +807,11 @@ async def test_claim_verifier_seeds_first_model_turn_with_current_url_and_screen
     tmp_path: Path,
 ) -> None:
     module = _import_claim_verifier_module()
-    verifier, n1_client, action_executor = _build_claim_verifier(
+    verifier, navigator_client, action_executor = _build_claim_verifier(
         module,
         tmp_path,
         responses=[
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-1",
-                        function=FakeFunction(
-                            name="record_claim_result",
-                            arguments=json.dumps({"status": "passed", "finding": "Seeded."}),
-                        ),
-                    )
-                ]
-            )
+            _verdict_response(status="passed", finding="Seeded."),
         ],
     )
 
@@ -1137,7 +826,7 @@ async def test_claim_verifier_seeds_first_model_turn_with_current_url_and_screen
 
     assert _field(result, "status") == "passed"
     assert action_executor.calls == []
-    first_call_messages = n1_client.calls[0]["messages"]
+    first_call_messages = navigator_client.calls[0]["messages"]
     assert first_call_messages[0]["role"] == "user"
     first_content = first_call_messages[0]["content"]
     assert isinstance(first_content, list)
@@ -1153,39 +842,13 @@ async def test_claim_verifier_seeds_first_model_turn_with_current_url_and_screen
 
 
 @pytest.mark.asyncio
-async def test_claim_verifier_records_fallback_content_verdict_source(tmp_path: Path) -> None:
-    module = _import_claim_verifier_module()
-    verifier, _, _ = _build_claim_verifier(
-        module,
-        tmp_path,
-        responses=[FakeMessage(content="Status: passed\nThe page title reads Dashboard.")],
-    )
-
-    result = await _call_verify(
-        verifier,
-        page=FakePage(url="http://fixture.local/page"),
-        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
-        claim="The page title reads 'Dashboard'",
-        url="http://fixture.local/page",
-        navigation_hint=None,
-    )
-
-    verdict_event = _field(result, "trace").events[0]
-    assert verdict_event.type == "verdict"
-    assert verdict_event.verdict_source == "fallback_content"
-
-
-@pytest.mark.asyncio
-async def test_claim_verifier_records_force_stop_verdict_source_for_plain_text_recovery(tmp_path: Path) -> None:
+async def test_claim_verifier_records_json_schema_verdict_source(tmp_path: Path) -> None:
     module = _import_claim_verifier_module()
     verifier, _, _ = _build_claim_verifier(
         module,
         tmp_path,
         responses=[
-            FakeMessage(content="I should inspect the page."),
-            FakeMessage(content="I still need more time."),
-            FakeMessage(content="I cannot decide yet."),
-            FakeMessage(content="Status: inconclusive\nThe model hit the step limit."),
+            _verdict_response(status="passed", finding="The page title reads Dashboard."),
         ],
     )
 
@@ -1200,7 +863,36 @@ async def test_claim_verifier_records_force_stop_verdict_source_for_plain_text_r
 
     verdict_event = _field(result, "trace").events[0]
     assert verdict_event.type == "verdict"
-    assert verdict_event.verdict_source == "force_stop"
+    assert verdict_event.verdict_source == "json_schema"
+
+
+@pytest.mark.asyncio
+async def test_claim_verifier_recovers_from_plain_text_with_json_verdict(tmp_path: Path) -> None:
+    module = _import_claim_verifier_module()
+    verifier, _, _ = _build_claim_verifier(
+        module,
+        tmp_path,
+        responses=[
+            FakeMessage(content="I should inspect the page."),
+            FakeMessage(content="I still need more time."),
+            FakeMessage(content="I cannot decide yet."),
+            # force_stop path: model finally returns JSON verdict
+            _verdict_response(status="inconclusive", finding="The model hit the step limit."),
+        ],
+    )
+
+    result = await _call_verify(
+        verifier,
+        page=FakePage(url="http://fixture.local/page"),
+        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+        claim="The page title reads 'Dashboard'",
+        url="http://fixture.local/page",
+        navigation_hint=None,
+    )
+
+    verdict_event = _field(result, "trace").events[0]
+    assert verdict_event.type == "verdict"
+    assert verdict_event.verdict_source == "json_schema"
 
 
 @pytest.mark.asyncio
@@ -1248,15 +940,9 @@ async def test_claim_verifier_preserves_tool_call_order_when_action_and_verdict_
                             arguments=json.dumps({"url": "http://fixture.local/modal"}),
                         ),
                     ),
-                    FakeToolCall(
-                        id="tool-3",
-                        function=FakeFunction(
-                            name="record_claim_result",
-                            arguments=json.dumps({"status": "passed", "finding": "The modal is visible."}),
-                        ),
-                    )
                 ]
             ),
+            _verdict_response(status="passed", finding="The modal is visible."),
         ],
         visualize=True,
     )
@@ -1293,22 +979,10 @@ async def test_claim_verifier_downgrades_pass_when_button_grounding_disagrees(tm
         module,
         tmp_path,
         responses=[
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-1",
-                        function=FakeFunction(
-                            name="record_claim_result",
-                            arguments=json.dumps(
-                                {
-                                    "status": "passed",
-                                    "finding": "The Show Save Confirmation button is visible in the header.",
-                                }
-                            ),
-                        ),
-                    )
-                ]
-            )
+            _verdict_response(
+                status="passed",
+                finding="The Show Save Confirmation button is visible in the header.",
+            ),
         ],
     )
 
@@ -1343,22 +1017,10 @@ async def test_claim_verifier_downgrades_pass_when_finding_contradicts_verdict(t
         module,
         tmp_path,
         responses=[
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-1",
-                        function=FakeFunction(
-                            name="record_claim_result",
-                            arguments=json.dumps(
-                                {
-                                    "status": "passed",
-                                    "finding": "The displayed subtotal does not equal the visible sale prices.",
-                                }
-                            ),
-                        ),
-                    )
-                ]
-            )
+            _verdict_response(
+                status="passed",
+                finding="The displayed subtotal does not equal the visible sale prices.",
+            ),
         ],
     )
 
@@ -1390,22 +1052,10 @@ async def test_claim_verifier_downgrades_pass_to_inconclusive_when_finding_is_un
         module,
         tmp_path,
         responses=[
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-1",
-                        function=FakeFunction(
-                            name="record_claim_result",
-                            arguments=json.dumps(
-                                {
-                                    "status": "passed",
-                                    "finding": "The screenshot cannot be definitively verified from the current evidence.",
-                                }
-                            ),
-                        ),
-                    )
-                ]
-            )
+            _verdict_response(
+                status="passed",
+                finding="The screenshot cannot be definitively verified from the current evidence.",
+            ),
         ],
     )
 
@@ -1437,17 +1087,7 @@ async def test_claim_verifier_preserves_pass_for_negative_claims_with_negative_f
         module,
         tmp_path,
         responses=[
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-1",
-                        function=FakeFunction(
-                            name="record_claim_result",
-                            arguments=json.dumps({"status": "passed", "finding": "The Save button is not visible."}),
-                        ),
-                    )
-                ]
-            )
+            _verdict_response(status="passed", finding="The Save button is not visible."),
         ],
     )
 
@@ -1479,19 +1119,10 @@ async def test_claim_verifier_preserves_pass_for_incorrect_claims_with_confirmin
         module,
         tmp_path,
         responses=[
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-1",
-                        function=FakeFunction(
-                            name="record_claim_result",
-                            arguments=json.dumps(
-                                {"status": "passed", "finding": "The price is incorrect — it shows $279.98 instead of $229.98."}
-                            ),
-                        ),
-                    )
-                ]
-            )
+            _verdict_response(
+                status="passed",
+                finding="The price is incorrect — it shows $279.98 instead of $229.98.",
+            ),
         ],
     )
 
@@ -1525,17 +1156,7 @@ async def test_claim_verifier_still_downgrades_positive_error_state_claims_when_
         module,
         tmp_path,
         responses=[
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-1",
-                        function=FakeFunction(
-                            name="record_claim_result",
-                            arguments=json.dumps({"status": "passed", "finding": "The error message is not visible."}),
-                        ),
-                    )
-                ]
-            )
+            _verdict_response(status="passed", finding="The error message is not visible."),
         ],
     )
 
@@ -1567,22 +1188,10 @@ async def test_claim_verifier_does_not_treat_ambiguous_ui_copy_as_inconclusive_e
         module,
         tmp_path,
         responses=[
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-1",
-                        function=FakeFunction(
-                            name="record_claim_result",
-                            arguments=json.dumps(
-                                {
-                                    "status": "passed",
-                                    "finding": 'The label is ambiguous but reads "Total".',
-                                }
-                            ),
-                        ),
-                    )
-                ]
-            )
+            _verdict_response(
+                status="passed",
+                finding='The label is ambiguous but reads "Total".',
+            ),
         ],
     )
 
@@ -1614,22 +1223,10 @@ async def test_claim_verifier_downgrades_partially_filled_progress_bar_claim(tmp
         module,
         tmp_path,
         responses=[
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-1",
-                        function=FakeFunction(
-                            name="record_claim_result",
-                            arguments=json.dumps(
-                                {
-                                    "status": "passed",
-                                    "finding": "The Monthly Quota progress bar appears completely filled.",
-                                }
-                            ),
-                        ),
-                    )
-                ]
-            )
+            _verdict_response(
+                status="passed",
+                finding="The Monthly Quota progress bar appears completely filled.",
+            ),
         ],
     )
 
@@ -1668,22 +1265,10 @@ async def test_claim_verifier_converts_inconclusive_full_visibility_button_claim
         module,
         tmp_path,
         responses=[
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-1",
-                        function=FakeFunction(
-                            name="record_claim_result",
-                            arguments=json.dumps(
-                                {
-                                    "status": "inconclusive",
-                                    "finding": "I could not tell whether the button was fully visible.",
-                                }
-                            ),
-                        ),
-                    )
-                ]
-            )
+            _verdict_response(
+                status="inconclusive",
+                finding="I could not tell whether the button was fully visible.",
+            ),
         ],
     )
 
@@ -1716,17 +1301,7 @@ async def test_claim_verifier_fuzzy_matches_button_with_decorative_chars_and_quo
         module,
         tmp_path,
         responses=[
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-1",
-                        function=FakeFunction(
-                            name="record_claim_result",
-                            arguments=json.dumps({"status": "passed", "finding": "Button visible."}),
-                        ),
-                    )
-                ]
-            )
+            _verdict_response(status="passed", finding="Button visible."),
         ],
     )
 
@@ -1759,17 +1334,7 @@ async def test_claim_verifier_skips_grounding_for_compound_claims(tmp_path: Path
         module,
         tmp_path,
         responses=[
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-1",
-                        function=FakeFunction(
-                            name="record_claim_result",
-                            arguments=json.dumps({"status": "passed", "finding": "Both conditions met."}),
-                        ),
-                    )
-                ]
-            )
+            _verdict_response(status="passed", finding="Both conditions met."),
         ],
     )
 
@@ -1799,7 +1364,7 @@ async def test_claim_verifier_reuses_trimmed_history_across_requests(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     module = _import_claim_verifier_module()
-    verifier, n1_client, _ = _build_claim_verifier(
+    verifier, navigator_client, _ = _build_claim_verifier(
         module,
         tmp_path,
         responses=[
@@ -1814,21 +1379,9 @@ async def test_claim_verifier_reuses_trimmed_history_across_requests(
                     )
                 ]
             ),
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-2",
-                        function=FakeFunction(
-                            name="record_claim_result",
-                            arguments=json.dumps(
-                                {
-                                    "status": "passed",
-                                    "finding": "The modal is now visible and titled Edit Task.",
-                                }
-                            ),
-                        ),
-                    )
-                ]
+            _verdict_response(
+                status="passed",
+                finding="The modal is now visible and titled Edit Task.",
             ),
         ],
     )
@@ -1839,7 +1392,7 @@ async def test_claim_verifier_reuses_trimmed_history_across_requests(
         trim_calls.append({"messages": messages})
         return trimmed_payload
 
-    n1_client.trim_messages = fake_trim_messages  # type: ignore[attr-defined]
+    navigator_client.trim_messages = fake_trim_messages  # type: ignore[attr-defined]
 
     result = await _call_verify(
         verifier,
@@ -1854,28 +1407,21 @@ async def test_claim_verifier_reuses_trimmed_history_across_requests(
     assert len(trim_calls) >= 2
     assert trim_calls[0]["messages"][0]["content"][0]["text"] != "trimmed"
     assert trim_calls[1]["messages"][0]["content"][0]["text"] == "trimmed"
-    assert n1_client.calls[0]["messages"][0]["content"][0]["text"] == "trimmed"
-    assert n1_client.calls[1]["messages"][0]["content"][0]["text"] == "trimmed"
+    assert navigator_client.calls[0]["messages"][0]["content"][0]["text"] == "trimmed"
+    assert navigator_client.calls[1]["messages"][0]["content"][0]["text"] == "trimmed"
 
 
 @pytest.mark.asyncio
-async def test_claim_verifier_treats_stop_tool_call_as_a_final_inconclusive_verdict(tmp_path: Path) -> None:
+async def test_claim_verifier_returns_inconclusive_json_verdict(tmp_path: Path) -> None:
     module = _import_claim_verifier_module()
     verifier, _, action_executor = _build_claim_verifier(
         module,
         tmp_path,
         responses=[
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-1",
-                        function=FakeFunction(
-                            name="stop",
-                            arguments=json.dumps({"reason": "Need a human to decide from this screenshot."}),
-                        ),
-                    )
-                ]
-            )
+            _verdict_response(
+                status="inconclusive",
+                finding="Need a human to decide from this screenshot.",
+            ),
         ],
     )
 
@@ -1893,7 +1439,7 @@ async def test_claim_verifier_treats_stop_tool_call_as_a_final_inconclusive_verd
     assert action_executor.calls == []
     verdict_event = _field(result, "trace").events[0]
     assert verdict_event.type == "verdict"
-    assert verdict_event.verdict_source == "legacy_stop"
+    assert verdict_event.verdict_source == "json_schema"
 
 
 @pytest.mark.asyncio
@@ -1913,17 +1459,7 @@ async def test_claim_verifier_writes_trace_json_with_action_and_verdict_events(t
                     )
                 ],
             ),
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-2",
-                        function=FakeFunction(
-                            name="record_claim_result",
-                            arguments=json.dumps({"status": "passed", "finding": "The Save button is visible."}),
-                        ),
-                    )
-                ]
-            ),
+            _verdict_response(status="passed", finding="The Save button is visible."),
         ],
     )
 
@@ -1941,27 +1477,20 @@ async def test_claim_verifier_writes_trace_json_with_action_and_verdict_events(t
     trace_payload = json.loads(Path(trace_path).read_text())
     assert [event["type"] for event in trace_payload] == ["action", "verdict"]
     assert trace_payload[0]["action"] == "goto_url"
-    assert trace_payload[1]["verdict_source"] == "record_claim_result"
+    assert trace_payload[1]["verdict_source"] == "json_schema"
 
 
 @pytest.mark.asyncio
-async def test_claim_verifier_accepts_stop_finding_field(tmp_path: Path) -> None:
+async def test_claim_verifier_accepts_json_inconclusive_with_finding(tmp_path: Path) -> None:
     module = _import_claim_verifier_module()
     verifier, _, _ = _build_claim_verifier(
         module,
         tmp_path,
         responses=[
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-1",
-                        function=FakeFunction(
-                            name="stop",
-                            arguments=json.dumps({"finding": "The screenshot needs a human judgment."}),
-                        ),
-                    )
-                ]
-            )
+            _verdict_response(
+                status="inconclusive",
+                finding="The screenshot needs a human judgment.",
+            ),
         ],
     )
 
@@ -1978,18 +1507,25 @@ async def test_claim_verifier_accepts_stop_finding_field(tmp_path: Path) -> None
     assert "human judgment" in _field(result, "finding")
 
 
-def test_parse_fallback_verdict_requires_explicit_status_markers() -> None:
+def test_extract_json_verdict_requires_valid_parsed_json() -> None:
     module = _import_claim_verifier_module()
 
-    assert module.ClaimVerifier._parse_fallback_verdict("The screenshot seems verified.") is None
-    assert module.ClaimVerifier._parse_fallback_verdict("Status: passed\nThe header matches.") == (
-        "passed",
-        "Status: passed\nThe header matches.",
-    )
-    assert module.ClaimVerifier._parse_fallback_verdict('{"verdict":"not_testable","summary":"Auth wall"}') == (
-        "not_testable",
-        '{"verdict":"not_testable","summary":"Auth wall"}',
-    )
+    # No parsed_json attribute → None
+    assert module.ClaimVerifier._extract_json_verdict(SimpleNamespace()) is None
+    # parsed_json is not a dict → None
+    assert module.ClaimVerifier._extract_json_verdict(SimpleNamespace(parsed_json="text")) is None
+    # Valid parsed_json → (status, finding)
+    assert module.ClaimVerifier._extract_json_verdict(
+        SimpleNamespace(parsed_json={"status": "passed", "finding": "The header matches."})
+    ) == ("passed", "The header matches.")
+    # Invalid status → None
+    assert module.ClaimVerifier._extract_json_verdict(
+        SimpleNamespace(parsed_json={"status": "unknown", "finding": "Something."})
+    ) is None
+    # Missing finding → default message
+    assert module.ClaimVerifier._extract_json_verdict(
+        SimpleNamespace(parsed_json={"status": "not_testable", "finding": ""})
+    ) == ("not_testable", "No finding provided.")
 
 
 def test_wrong_page_recovered_distinguishes_recovery_from_unrelated_navigation() -> None:
@@ -2039,11 +1575,6 @@ def test_wrong_page_recovered_distinguishes_recovery_from_unrelated_navigation()
         is False
     )
 
-
-def test_extract_structured_verdict_returns_none_for_empty_tool_calls() -> None:
-    module = _import_claim_verifier_module()
-
-    assert module.ClaimVerifier._extract_structured_verdict([]) is None
 
 
 class FailingBrowserManager(FakeBrowserManager):
@@ -2129,7 +1660,7 @@ async def test_claim_verifier_normalizes_post_action_screenshot_failures_to_not_
 async def test_claim_verifier_preserves_partial_result_on_cancellation(tmp_path: Path) -> None:
     module = _import_claim_verifier_module()
     verifier, _, _ = _build_claim_verifier(module, tmp_path, responses=[])
-    verifier.n1_client = BlockingN1Client([])
+    verifier.navigator_client = BlockingNavigatorClient([])
 
     with pytest.raises(TimeoutError):
         async with asyncio.timeout(0.01):
@@ -2156,7 +1687,7 @@ async def test_claim_verifier_preserves_partial_result_on_cancellation(tmp_path:
 
 
 @pytest.mark.asyncio
-async def test_claim_verifier_uses_stop_reason_in_force_stop_path(tmp_path: Path) -> None:
+async def test_claim_verifier_uses_json_verdict_in_force_stop_path(tmp_path: Path) -> None:
     module = _import_claim_verifier_module()
     verifier, _, action_executor = _build_claim_verifier(
         module,
@@ -2173,16 +1704,10 @@ async def test_claim_verifier_uses_stop_reason_in_force_stop_path(tmp_path: Path
                     )
                 ]
             ),
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-2",
-                        function=FakeFunction(
-                            name="stop",
-                            arguments=json.dumps({"reason": "Reached the step limit without enough evidence."}),
-                        ),
-                    )
-                ]
+            # After exhausting steps, the force-stop path asks for a final verdict.
+            _verdict_response(
+                status="inconclusive",
+                finding="Reached the step limit without enough evidence.",
             ),
         ],
     )

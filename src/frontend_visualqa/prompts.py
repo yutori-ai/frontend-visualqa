@@ -5,48 +5,20 @@ from __future__ import annotations
 from typing import Any
 
 
-EXTRACT_CONTENT_AND_LINKS_TOOL: dict[str, Any] = {
-    "type": "function",
-    "function": {
-        "name": "extract_content_and_links",
-        "description": (
-            "Read exact visible text, headings, buttons, prices, totals, status strings, and hyperlinks "
-            "from the current page. Use this tool to verify copy and arithmetic after you reach the "
-            "relevant page state."
-        ),
-        "parameters": {"type": "object", "properties": {}},
-    },
-}
 
-
-RECORD_CLAIM_RESULT_TOOL: dict[str, Any] = {
-    "type": "function",
-    "function": {
-        "name": "record_claim_result",
-        "description": (
-            "Report the verification result for the current claim. Call this once you have enough evidence "
-            "to decide whether the claim is visually true, false, inconclusive, or not testable."
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "status": {
-                    "type": "string",
-                    "enum": ["passed", "failed", "inconclusive", "not_testable"],
-                    "description": (
-                        "passed: the claim is visually true. failed: the claim is visually false. "
-                        "inconclusive: you tried but still cannot determine. "
-                        "not_testable: the environment blocked verification."
-                    ),
-                },
-                "finding": {
-                    "type": "string",
-                    "description": "Brief evidence-backed finding of what you observed.",
-                },
-            },
-            "required": ["status", "finding"],
+VERDICT_JSON_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "status": {
+            "type": "string",
+            "enum": ["passed", "failed", "inconclusive", "not_testable"],
+        },
+        "finding": {
+            "type": "string",
+            "description": "Brief evidence-backed finding of what you observed.",
         },
     },
+    "required": ["status", "finding"],
 }
 
 
@@ -63,11 +35,11 @@ def build_verification_task(claim: str, url: str, navigation_hint: str | None = 
         "1. If you are not already on the correct page state, navigate or interact until you reach it.",
         "2. Assess the page visually from the screenshot after each action.",
         "3. Stop as soon as you have enough evidence to make a determination.",
-        "4. Report your final verdict by calling the record_claim_result tool.",
+        "4. When you have enough evidence, stop taking actions and output your verdict as JSON.",
         "5. Treat the claim literally: do not substitute similar controls, nearby text, or adjacent UI for the element named in the claim.",
         "6. A pass requires exact grounding in the current screenshot. If the claim references text, title, heading, tab, or button label, verify that exact wording or a direct prefix match is visible.",
         "7. Do not change browser zoom or device scale. Judge the page at the provided viewport.",
-        "8. If reading the page content or visible links would help you orient yourself or verify exact text, you may call the read-only extract_content_and_links tool.",
+        "8. Rely on the screenshot to verify exact text, numbers, and labels. Read carefully from the pixels.",
         "",
         "Use one of these statuses:",
         "- passed: the claim is visually true",
@@ -89,27 +61,44 @@ def build_verification_task(claim: str, url: str, navigation_hint: str | None = 
         [
             "",
             "Additional guidance:",
+            "",
+            "IMPORTANT — visual-first verification:",
+            "You are testing for visual bugs. The most common bug type is a text-visual",
+            "contradiction, where a text label says one thing but the pixels show another.",
+            "Text labels are frequently WRONG on these pages. You MUST examine the pixels",
+            "first and treat what you see as the source of truth.",
+            "",
+            "Concrete examples of bugs you should expect to find:",
+            "- A gauge or circular indicator is filled to ~35% but the label next to it says '72%'",
+            "- A toggle switch knob sits on the LEFT (OFF position) but the label says 'Enabled' or 'Locked'",
+            "- A status dot is red or gray but the text beside it says 'Healthy' or 'Active'",
+            "- A progress bar fills only two-thirds of its track but the label says '100%'",
+            "- A star rating shows 4 filled stars but the text says '4.8 out of 5'",
+            "- A button is grayed out and unclickable but the text on it says 'Send' as if it were active",
+            "- A notification badge shows '2' because the rest of the digits are clipped by the container",
+            "",
             "Verification checklist:",
             "1. Reach the relevant page state first.",
-            "2. If the claim mentions exact text, numbers, totals, prices, status labels, endpoints, or URLs, call extract_content_and_links before deciding.",
-            "3. For arithmetic claims, compute the expected value from extracted text step by step, then compare it to the displayed value.",
-            "4. Decompose the target element before judging. For the specific element the claim refers to, write down:",
-            "   - its color (name it: green, red, yellow, gray, teal, blue, etc.)",
-            "   - its position or state (toggle knob left/right, tab highlighted/not, star filled/empty)",
-            "   - its size or proportion (bar ~30% filled, ring ~40% of circumference, badge fully visible/clipped)",
-            "5. Then make two separate assessments:",
-            "   a) Text assessment: based only on extracted text, does the claim hold?",
-            "   b) Visual assessment: based only on your decomposed observations from the screenshot, does the claim hold?",
-            "6. If the text and visual assessments agree, report that verdict. If they disagree, report failed.",
-            "",
-            "You are testing for visual bugs. Bugs are common in these pages. Expect contradictions where:",
-            "- a status dot is a different color than what the text label says",
-            "- a toggle or switch is positioned opposite to what the label claims",
-            "- a gauge, bar, or ring shows a different fill level than the numeric label",
-            "- fewer or more stars or icons are filled than the rating text indicates",
-            "- a button looks disabled or grayed out despite having active text",
-            "- content is clipped or truncated by its container",
-            "Look carefully at the actual pixels of each element before trusting any text label.",
+            "2. If the claim mentions exact text, numbers, totals, prices, status labels, endpoints, or URLs, read them carefully from the screenshot before deciding.",
+            "3. For arithmetic claims, compute the expected value step by step, then compare it to the displayed value digit by digit.",
+            "4. BEFORE reading any text label, decompose the target element from its PIXELS ALONE.",
+            "   For gauges, bars, and rings:",
+            "   - Identify the FULL length/arc of the track (the entire background shape).",
+            "   - Identify the FILLED portion (the colored/highlighted section).",
+            "   - Compare: does the filled portion reach the halfway point of the track? If not, the fill is BELOW 50%.",
+            "   - Estimate the fill as a percentage of the full track. A fill that barely covers a third of the track is ~30-35%, not 70%+.",
+            "   For toggles and switches:",
+            "   - Identify the KNOB (the circle/handle that moves). Ignore the track color.",
+            "   - Is the knob on the LEFT half of the track, or the RIGHT half?",
+            "   - LEFT = OFF/disabled. RIGHT = ON/enabled. This is the standard convention.",
+            "   For all elements:",
+            "   - its color (name it precisely: green, red, yellow, gray, teal, blue, etc.)",
+            "   - its physical state as determined above",
+            "5. Then make two SEPARATE assessments in this order:",
+            "   a) Visual-only assessment: based ONLY on what you see in the pixels (step 4 above), does the claim hold?",
+            "   b) Text assessment: what do the nearby text labels say?",
+            "6. If the visual and text assessments DISAGREE, always report FAILED.",
+            "   The visual state is the ground truth. Do not let a text label override what the pixels show.",
         ]
     )
     return "\n".join(parts)
@@ -123,7 +112,7 @@ def build_force_stop_prompt(claim: str) -> str:
             "You have reached the maximum number of actions for this claim.",
             f'Claim: "{claim}"',
             "Do not take any more browser actions.",
-            "Call record_claim_result now with your best verdict and a short evidence-backed finding.",
+            "Output your verdict as JSON now with your best verdict and a short evidence-backed finding.",
             "Use inconclusive if you truly cannot tell, or not_testable if the environment blocked you.",
         ]
     )
@@ -137,7 +126,7 @@ def build_action_or_verdict_prompt(claim: str) -> str:
             "You have not finished this claim yet.",
             f'Claim: "{claim}"',
             "Do not narrate your intent in plain text.",
-            "Either take exactly one browser action next, or call record_claim_result now if you already have enough evidence.",
+            "Either take exactly one browser action next, or output your verdict as JSON now if you already have enough evidence.",
             "A plain-text response without a tool call will be treated as a failure to follow instructions.",
         ]
     )

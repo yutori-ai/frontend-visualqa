@@ -1,4 +1,4 @@
-"""Thin wrapper around the Yutori SDK for n1 calls."""
+"""Thin wrapper around the Yutori SDK for Navigator model calls."""
 
 from __future__ import annotations
 
@@ -8,9 +8,9 @@ from typing import Any, Protocol
 
 import httpx
 from yutori import AsyncYutoriClient
-from yutori.n1 import estimate_messages_size_bytes, trim_images_to_fit
+from yutori.navigator import N1_5_MODEL, TOOL_SET_CORE, estimate_messages_size_bytes, trim_images_to_fit
 
-from frontend_visualqa.errors import N1ClientError
+from frontend_visualqa.errors import NavigatorClientError
 
 
 logger = logging.getLogger(__name__)
@@ -28,15 +28,17 @@ class SupportsChatCompletionCreate(Protocol):
         """Close any underlying network resources."""
 
 
-class N1Client:
-    """Own the n1 SDK client lifecycle and request dispatch."""
+class NavigatorClient:
+    """Own the Yutori SDK client lifecycle and request dispatch."""
 
     def __init__(
         self,
         *,
         api_key: str | None = None,
         base_url: str = "https://api.yutori.com/v1",
-        model: str = "n1-latest",
+        model: str = N1_5_MODEL,
+        tool_set: str | None = TOOL_SET_CORE,
+        disable_tools: list[str] | None = None,
         temperature: float = 0.3,
         timeout_seconds: float = 60.0,
         max_request_bytes: int = DEFAULT_MAX_REQUEST_BYTES,
@@ -49,6 +51,8 @@ class N1Client:
         self.api_key = api_key
         self.base_url = base_url
         self.model = model
+        self.tool_set = tool_set
+        self.disable_tools = list(disable_tools) if disable_tools else None
         self.temperature = temperature
         self.timeout_seconds = timeout_seconds
         self.max_request_bytes = max_request_bytes
@@ -64,14 +68,27 @@ class N1Client:
         messages: list[dict[str, Any]],
         *,
         tools: list[dict[str, Any]] | None = None,
+        json_schema: dict[str, Any] | None = None,
     ) -> Any:
-        """Call n1 and return the assistant message for the next step."""
+        """Call the Navigator model and return the full response.
+
+        When *json_schema* is provided and the model emits structured JSON
+        (instead of tool calls), the parsed result is available on
+        ``response.parsed_json``.
+        """
 
         client = await self._ensure_client()
         prepared_messages = self.trim_messages(messages)
         kwargs: dict[str, Any] = {}
         if tools:
             kwargs["tools"] = tools
+        if json_schema is not None:
+            kwargs["json_schema"] = json_schema
+        if self._supports_tool_set():
+            if self.tool_set is not None:
+                kwargs["tool_set"] = self.tool_set
+            if self.disable_tools:
+                kwargs["disable_tools"] = self.disable_tools
         if self.temperature is not None:
             kwargs["temperature"] = self.temperature
 
@@ -87,30 +104,27 @@ class N1Client:
             except Exception as exc:  # noqa: PERF203 - retry loop is intentional
                 last_error = exc
                 if attempt >= self.max_retries or not self._is_transient_error(exc):
-                    raise N1ClientError(f"n1 request failed: {exc}") from exc
+                    raise NavigatorClientError(f"Navigator request failed: {exc}") from exc
                 delay = min(self.initial_backoff_seconds * (2**attempt), self.max_backoff_seconds)
                 logger.warning(
-                    "Transient n1 failure on attempt %s/%s; retrying in %.2fs",
+                    "Transient Navigator failure on attempt %s/%s; retrying in %.2fs",
                     attempt + 1,
                     self.max_retries + 1,
                     delay,
                 )
                 await asyncio.sleep(delay)
         else:  # pragma: no cover - defensive, loop always breaks or raises
-            raise N1ClientError(f"n1 request failed: {last_error}")
+            raise NavigatorClientError(f"Navigator request failed: {last_error}")
 
         usage = getattr(response, "usage", None)
         if usage is not None:
             logger.info(
-                "n1 usage prompt=%s completion=%s total=%s",
+                "Navigator usage prompt=%s completion=%s total=%s",
                 getattr(usage, "prompt_tokens", "?"),
                 getattr(usage, "completion_tokens", "?"),
                 getattr(usage, "total_tokens", "?"),
             )
-        try:
-            return response.choices[0].message
-        except Exception as exc:
-            raise N1ClientError(f"n1 response did not contain a message choice: {exc}") from exc
+        return response
 
     def trim_messages(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Trim oversized image payloads while preserving recent screenshots."""
@@ -160,3 +174,10 @@ class N1Client:
         response = getattr(exc, "response", None)
         status_code = getattr(response, "status_code", None) or getattr(exc, "status_code", None)
         return status_code in {408, 409, 425, 429, 500, 502, 503, 504}
+
+    def _supports_tool_set(self) -> bool:
+        # tool_set is supported by n1.5+ models. Legacy n1 (and n1-experimental)
+        # models do not accept it. Rather than maintaining a prefix list, reject
+        # only the known-legacy patterns.
+        m = str(self.model).strip().lower()
+        return not (m.startswith("n1-") or m == "n1")

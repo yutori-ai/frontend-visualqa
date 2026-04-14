@@ -12,8 +12,8 @@ class ConfigurationError(FrontendVisualQAError):
 
 
 class BrowserActionError(FrontendVisualQAError):
-    """Raised when an n1 tool call cannot be executed against Playwright."""
+    """Raised when a Navigator tool call cannot be executed against Playwright."""
 
 
-class N1ClientError(FrontendVisualQAError):
-    """Raised when the n1 client cannot complete a request."""
+class NavigatorClientError(FrontendVisualQAError):
+    """Raised when the Navigator client cannot complete a request."""

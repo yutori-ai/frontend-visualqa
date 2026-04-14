@@ -76,7 +76,7 @@ class TraceEvent(FrontendVisualQABaseModel):
     raw_verdict_status: ClaimStatus | None = None
     raw_finding: str | None = None
     verdict_status: ClaimStatus | None = None
-    verdict_source: Literal["record_claim_result", "fallback_content", "force_stop", "legacy_stop"] | None = None
+    verdict_source: Literal["json_schema", "force_stop"] | None = None
     finding: str | None = None
     timestamp_ms: int = Field(default_factory=lambda: int(time.time() * 1000))
 

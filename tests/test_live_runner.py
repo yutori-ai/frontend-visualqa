@@ -16,7 +16,7 @@ from frontend_visualqa.claim_verifier import ClaimVerifier
 from frontend_visualqa.runner import VisualQARunner
 from frontend_visualqa.schemas import ViewportConfig
 
-from fakes import FakeFunction, FakeMessage, FakeN1Client, FakeToolCall
+from fakes import FakeChoice, FakeFunction, FakeMessage, FakeNavigatorClient, FakeResponse, FakeToolCall
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
@@ -126,7 +126,7 @@ async def test_live_runner_executes_real_browser_flow_and_passes_modal_claim(
     tmp_path: Path,
 ) -> None:
     browser_manager = BrowserManager(headless=True, settle_delay_seconds=0)
-    n1_client = FakeN1Client(
+    navigator_client = FakeNavigatorClient(
         responses=[
             FakeMessage(
                 tool_calls=[
@@ -139,29 +139,19 @@ async def test_live_runner_executes_real_browser_flow_and_passes_modal_claim(
                     )
                 ]
             ),
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-2",
-                        function=FakeFunction(
-                            name="record_claim_result",
-                            arguments=json.dumps({"status": "passed", "finding": "The modal title reads Edit Task."}),
-                        ),
-                    )
-                ]
-            ),
+            FakeResponse(parsed_json={"status": "passed", "finding": "The modal title reads Edit Task."}),
         ]
     )
     artifact_manager = ArtifactManager(tmp_path / "artifacts")
     claim_verifier = ClaimVerifier(
         browser_manager=browser_manager,
         artifact_manager=artifact_manager,
-        n1_client=n1_client,
+        navigator_client=navigator_client,
     )
     runner = VisualQARunner(
         browser_manager=browser_manager,
         artifact_manager=artifact_manager,
-        n1_client=n1_client,
+        navigator_client=navigator_client,
         claim_verifier=claim_verifier,
     )
 
@@ -178,14 +168,14 @@ async def test_live_runner_executes_real_browser_flow_and_passes_modal_claim(
     assert result.overall_status == "completed"
     assert [item.status for item in result.results] == ["passed"]
     assert "Visible dialog title matched" in result.results[0].finding
-    assert result.results[0].trace.actions == ["left_click([419, 348])"]
+    assert result.results[0].trace.actions == ["left_click([420, 348])"]
     assert result.results[0].trace.steps_taken == 1
     assert all(Path(path).exists() for path in result.results[0].trace.screenshot_paths)
     assert result.results[0].proof is not None
     assert result.results[0].proof.step == 1
     assert result.results[0].proof.text is None
     assert Path(result.results[0].proof.screenshot_path).exists()
-    assert result.results[0].proof.after_action == "left_click([419, 348])"
+    assert result.results[0].proof.after_action == "left_click([420, 348])"
     assert result.results[0].page.url == f"{example_server}/test_page.html"
 
 
@@ -195,36 +185,21 @@ async def test_live_runner_downgrades_false_positive_button_claim_with_grounding
     tmp_path: Path,
 ) -> None:
     browser_manager = BrowserManager(headless=True, settle_delay_seconds=0)
-    n1_client = FakeN1Client(
+    navigator_client = FakeNavigatorClient(
         responses=[
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-1",
-                        function=FakeFunction(
-                            name="record_claim_result",
-                            arguments=json.dumps(
-                                {
-                                    "status": "passed",
-                                    "finding": "The Show Save Confirmation button is visible without scrolling.",
-                                }
-                            ),
-                        ),
-                    )
-                ]
-            )
+            FakeResponse(parsed_json={ "status": "passed", "finding": "The Show Save Confirmation button is visible without scrolling.", })
         ]
     )
     artifact_manager = ArtifactManager(tmp_path / "artifacts")
     claim_verifier = ClaimVerifier(
         browser_manager=browser_manager,
         artifact_manager=artifact_manager,
-        n1_client=n1_client,
+        navigator_client=navigator_client,
     )
     runner = VisualQARunner(
         browser_manager=browser_manager,
         artifact_manager=artifact_manager,
-        n1_client=n1_client,
+        navigator_client=navigator_client,
         claim_verifier=claim_verifier,
     )
 
@@ -253,7 +228,7 @@ async def test_live_runner_headed_overlay_hides_restores_and_cleans_up(
     from frontend_visualqa.overlay import OverlayController
 
     browser_manager = BrowserManager(headless=False, settle_delay_seconds=0)
-    n1_client = FakeN1Client(
+    navigator_client = FakeNavigatorClient(
         responses=[
             FakeMessage(
                 tool_calls=[
@@ -266,31 +241,19 @@ async def test_live_runner_headed_overlay_hides_restores_and_cleans_up(
                     )
                 ]
             ),
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-2",
-                        function=FakeFunction(
-                            name="record_claim_result",
-                            arguments=json.dumps(
-                                {"status": "passed", "finding": "The modal title reads Edit Task."}
-                            ),
-                        ),
-                    )
-                ]
-            ),
+            FakeResponse(parsed_json={"status": "passed", "finding": "The modal title reads Edit Task."}),
         ]
     )
     artifact_manager = ArtifactManager(tmp_path / "artifacts")
     claim_verifier = ClaimVerifier(
         browser_manager=browser_manager,
         artifact_manager=artifact_manager,
-        n1_client=n1_client,
+        navigator_client=navigator_client,
     )
     runner = VisualQARunner(
         browser_manager=browser_manager,
         artifact_manager=artifact_manager,
-        n1_client=n1_client,
+        navigator_client=navigator_client,
         claim_verifier=claim_verifier,
     )
 
@@ -306,7 +269,7 @@ async def test_live_runner_headed_overlay_hides_restores_and_cleans_up(
         assert result.overall_status == "completed"
         assert [item.status for item in result.results] == ["passed"]
         assert "Visible dialog title matched" in result.results[0].finding
-        assert result.results[0].trace.actions == ["left_click([419, 348])"]
+        assert result.results[0].trace.actions == ["left_click([420, 348])"]
         assert result.results[0].trace.steps_taken == 1
         assert all(Path(path).exists() for path in result.results[0].trace.screenshot_paths)
 
@@ -388,36 +351,21 @@ async def test_live_runner_headed_overlay_zero_action_path_skips_hide_restore(
     from frontend_visualqa.overlay import OverlayController
 
     browser_manager = BrowserManager(headless=False, settle_delay_seconds=0)
-    n1_client = FakeN1Client(
+    navigator_client = FakeNavigatorClient(
         responses=[
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-1",
-                        function=FakeFunction(
-                            name="record_claim_result",
-                            arguments=json.dumps(
-                                {
-                                    "status": "passed",
-                                    "finding": "The page title reads Frontend Visual QA Playground.",
-                                }
-                            ),
-                        ),
-                    )
-                ]
-            )
+            FakeResponse(parsed_json={ "status": "passed", "finding": "The page title reads Frontend Visual QA Playground.", })
         ]
     )
     artifact_manager = ArtifactManager(tmp_path / "artifacts")
     claim_verifier = ClaimVerifier(
         browser_manager=browser_manager,
         artifact_manager=artifact_manager,
-        n1_client=n1_client,
+        navigator_client=navigator_client,
     )
     runner = VisualQARunner(
         browser_manager=browser_manager,
         artifact_manager=artifact_manager,
-        n1_client=n1_client,
+        navigator_client=navigator_client,
         claim_verifier=claim_verifier,
     )
 
