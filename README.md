@@ -21,7 +21,7 @@ Does not start your dev server. If the URL is unreachable, claims return `not_te
 
 Playwright MCP can click, type, and assert against the DOM — but it cannot *see* the page. It can run cleanly on the wrong page, assert `modal.isVisible()` on a modal rendered off-screen, or miss a layout that broke on mobile.
 
-Navigator (powered by n1.5) is a pixels-to-actions model trained with RL on live websites. Two capabilities matter here:
+Navigator is an AI agent powered by a computer-use model (n1.5) that perceives a webpage via a screenshot and predicts actions to take in a browser. Two capabilities matter here:
 
 - **Self-correcting navigation** — Point the agent at the product catalog instead of a specific product page and Navigator recognizes the wrong page, clicks through to the right one, and reports `trace.wrong_page_recovered: true`. Playwright MCP would run assertions on the wrong page and silently pass — garbage in, garbage out.
 
