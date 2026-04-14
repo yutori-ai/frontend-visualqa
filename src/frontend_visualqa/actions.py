@@ -574,7 +574,7 @@ class ActionExecutor:
             if result.get("success"):
                 resolved_coordinates = result.get("coordinates")
                 if isinstance(resolved_coordinates, (list, tuple)) and len(resolved_coordinates) == 2:
-                    return int(round(float(resolved_coordinates[0]))), int(round(float(resolved_coordinates[1])))
+                    return round(float(resolved_coordinates[0])), round(float(resolved_coordinates[1]))
             if not has_coordinates:
                 message = result.get("message", "Unknown error")
                 raise BrowserActionError(f"{action_name} ref resolution failed for {ref}: {message}")

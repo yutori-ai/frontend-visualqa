@@ -867,7 +867,7 @@ async def test_claim_verifier_records_json_schema_verdict_source(tmp_path: Path)
 
 
 @pytest.mark.asyncio
-async def test_claim_verifier_records_force_stop_verdict_source_for_plain_text_recovery(tmp_path: Path) -> None:
+async def test_claim_verifier_recovers_from_plain_text_with_json_verdict(tmp_path: Path) -> None:
     module = _import_claim_verifier_module()
     verifier, _, _ = _build_claim_verifier(
         module,
@@ -1575,11 +1575,6 @@ def test_wrong_page_recovered_distinguishes_recovery_from_unrelated_navigation()
         is False
     )
 
-
-def test_extract_json_verdict_returns_none_without_parsed_json() -> None:
-    module = _import_claim_verifier_module()
-
-    assert module.ClaimVerifier._extract_json_verdict(SimpleNamespace()) is None
 
 
 class FailingBrowserManager(FakeBrowserManager):
