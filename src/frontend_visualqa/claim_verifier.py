@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, TYPE_CHECKING
 
-from frontend_visualqa.actions import ActionExecutor, EXTRACT_CONTENT_AND_LINKS_TOOL_NAME
+from frontend_visualqa.actions import ActionExecutor
 from frontend_visualqa.artifacts import ArtifactManager, RunArtifacts
 from frontend_visualqa.browser import BrowserManager, BrowserSession, image_bytes_to_data_url
 from frontend_visualqa.errors import BrowserActionError, NavigatorClientError
@@ -16,7 +16,6 @@ from frontend_visualqa.grounding import capture_grounding_state, ground_claim_ve
 from frontend_visualqa.hook_adapter import VisualQAHookAdapter
 from frontend_visualqa.recovery import wrong_page_recovered
 from frontend_visualqa.prompts import (
-    EXTRACT_CONTENT_AND_LINKS_TOOL,
     RECORD_CLAIM_RESULT_TOOL,
     build_action_or_verdict_prompt,
     build_follow_navigation_hint_prompt,
@@ -326,12 +325,10 @@ class ClaimVerifier:
                     )
                     current_url = execution.get("current_url", session.page.url) or url
                     progress.url_history.append(current_url)
-                    is_read_only = tool_name == EXTRACT_CONTENT_AND_LINKS_TOOL_NAME
                     progress.step_count += 1
-                    if not is_read_only:
-                        non_action_reprompts = 0
-                        had_action_in_turn = True
-                        progress.has_interacted = True
+                    non_action_reprompts = 0
+                    had_action_in_turn = True
+                    progress.has_interacted = True
                     screenshot_bytes, screenshot_path = await self._capture_evidence_screenshot(
                         session=session,
                         run_artifacts=run_artifacts,
@@ -559,7 +556,7 @@ class ClaimVerifier:
         # Navigator's built-in browser actions are injected server-side by the
         # Yutori chat completions endpoint. We only need to send truly custom
         # tools here.
-        return [EXTRACT_CONTENT_AND_LINKS_TOOL, RECORD_CLAIM_RESULT_TOOL]
+        return [RECORD_CLAIM_RESULT_TOOL]
 
     @staticmethod
     def _build_tool_result_text(trace: str, current_url: str, output_text: str | None = None) -> str:

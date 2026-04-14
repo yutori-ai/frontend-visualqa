@@ -5,19 +5,6 @@ from __future__ import annotations
 from typing import Any
 
 
-EXTRACT_CONTENT_AND_LINKS_TOOL: dict[str, Any] = {
-    "type": "function",
-    "function": {
-        "name": "extract_content_and_links",
-        "description": (
-            "Read exact visible text, headings, buttons, prices, totals, status strings, and hyperlinks "
-            "from the current page. Use this tool to verify copy and arithmetic after you reach the "
-            "relevant page state."
-        ),
-        "parameters": {"type": "object", "properties": {}},
-    },
-}
-
 
 RECORD_CLAIM_RESULT_TOOL: dict[str, Any] = {
     "type": "function",
@@ -67,7 +54,7 @@ def build_verification_task(claim: str, url: str, navigation_hint: str | None = 
         "5. Treat the claim literally: do not substitute similar controls, nearby text, or adjacent UI for the element named in the claim.",
         "6. A pass requires exact grounding in the current screenshot. If the claim references text, title, heading, tab, or button label, verify that exact wording or a direct prefix match is visible.",
         "7. Do not change browser zoom or device scale. Judge the page at the provided viewport.",
-        "8. If reading the page content or visible links would help you orient yourself or verify exact text, you may call the read-only extract_content_and_links tool.",
+        "8. Rely on the screenshot to verify exact text, numbers, and labels. Read carefully from the pixels.",
         "",
         "Use one of these statuses:",
         "- passed: the claim is visually true",
@@ -91,7 +78,7 @@ def build_verification_task(claim: str, url: str, navigation_hint: str | None = 
             "Additional guidance:",
             "Verification checklist:",
             "1. Reach the relevant page state first.",
-            "2. If the claim mentions exact text, numbers, totals, prices, status labels, endpoints, or URLs, call extract_content_and_links before deciding.",
+            "2. If the claim mentions exact text, numbers, totals, prices, status labels, endpoints, or URLs, read them carefully from the screenshot before deciding.",
             "3. For arithmetic claims, compute the expected value from extracted text step by step, then compare it to the displayed value.",
             "4. Decompose the target element before judging. For the specific element the claim refers to, write down:",
             "   - its color (name it: green, red, yellow, gray, teal, blue, etc.)",

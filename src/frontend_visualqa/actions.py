@@ -30,10 +30,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 DEFAULT_WAIT_SECONDS = 1.0
-EXTRACT_CONTENT_AND_LINKS_TOOL_NAME = "extract_content_and_links"
-MAX_ACCESSIBLE_SNAPSHOT_CHARS = 4_000
-_ARIA_LINK_PATTERN = re.compile(r'- link "([^"]*)"')
-_ARIA_URL_PATTERN = re.compile(r"- /url: (.+)")
 
 CLICK_ACTIONS = {
     "left_click",
@@ -239,9 +235,6 @@ class ActionExecutor:
         """Execute a tool call object with ``function.name`` and JSON arguments."""
 
         action_name = getattr(getattr(tool_call, "function", tool_call), "name", "")
-        canonical_name = ACTION_NAME_ALIASES.get(action_name, action_name)
-        if canonical_name == EXTRACT_CONTENT_AND_LINKS_TOOL_NAME:
-            return await self._execute_extract_content_and_links(session)
         arguments = parse_tool_arguments(tool_call)
         return await self.execute_action(session=session, action_name=action_name, arguments=arguments)
 
@@ -470,139 +463,6 @@ class ActionExecutor:
             await self._best_effort_wait_for_domcontentloaded(page)
             await asyncio.sleep(self._post_action_delay(canonical_name))
         return trace
-
-    async def _execute_extract_content_and_links(self, session: BrowserSession) -> ToolExecutionResult:
-        await self._best_effort_overlay_set_status("Reading page")
-        output_text = await self._extract_content_and_links(session.page)
-        return ToolExecutionResult(
-            trace=f"{EXTRACT_CONTENT_AND_LINKS_TOOL_NAME}()",
-            output_text=output_text,
-            current_url=session.page.url,
-        )
-
-    async def _extract_content_and_links(self, page: Any) -> str:
-        snapshot = await self._accessible_page_snapshot(page)
-        links = self._extract_links_from_snapshot(snapshot) if snapshot else []
-        if not links:
-            links = await self._extract_links_from_dom(page)
-
-        sections = []
-        if snapshot:
-            sections.extend([
-                "Accessible page snapshot:",
-                self._clip_multiline_text(snapshot, MAX_ACCESSIBLE_SNAPSHOT_CHARS),
-            ])
-        if links:
-            links_text = "\n".join(f"- [{title}]({url})" for title, url in links)
-            sections.extend([
-                "Links on the page:",
-                self._clip_multiline_text(links_text, MAX_ACCESSIBLE_SNAPSHOT_CHARS),
-            ])
-        return "\n\n".join(sections)
-
-    async def _accessible_page_snapshot(self, page: Any) -> str | None:
-        locator = getattr(page, "locator", None)
-        if callable(locator):
-            try:
-                body = locator("body")
-                aria_snapshot = getattr(body, "aria_snapshot", None)
-                if callable(aria_snapshot):
-                    snapshot = await aria_snapshot()
-                    if snapshot:
-                        return str(snapshot).strip() or None
-            except Exception:
-                logger.debug("body aria_snapshot failed; falling back to innerText", exc_info=True)
-
-        try:
-            snapshot = await page.evaluate(
-                """() => {
-                    const text = (document.body?.innerText || "").replace(/\\n{3,}/g, "\\n\\n").trim();
-                    return text || null;
-                }"""
-            )
-        except Exception:
-            logger.debug("innerText fallback failed for extract_content_and_links", exc_info=True)
-            return None
-        if not snapshot:
-            return None
-        return str(snapshot).strip() or None
-
-    @staticmethod
-    def _extract_links_from_snapshot(snapshot: str) -> list[tuple[str, str]]:
-        url_to_title: dict[str, str] = {}
-        lines = snapshot.splitlines()
-        for index, line in enumerate(lines):
-            link_match = _ARIA_LINK_PATTERN.search(line)
-            if link_match is None:
-                continue
-            title = link_match.group(1).strip()
-            if not title:
-                continue
-
-            url: str | None = None
-            child_indent = len(line) - len(line.lstrip()) + 2
-            for next_line in lines[index + 1 :]:
-                if next_line.strip() and not next_line.startswith(" " * child_indent):
-                    break
-                url_match = _ARIA_URL_PATTERN.search(next_line)
-                if url_match is not None:
-                    url = url_match.group(1).strip()
-                    break
-
-            if not url:
-                continue
-
-            existing_title = url_to_title.get(url)
-            if existing_title is None or len(title) > len(existing_title):
-                url_to_title[url] = title
-
-        return [(title, url) for url, title in url_to_title.items()]
-
-    @staticmethod
-    async def _extract_links_from_dom(page: Any) -> list[tuple[str, str]]:
-        try:
-            raw = await page.evaluate(
-                """() => {
-                    const normalize = (value) => (value || '').replace(/\\s+/g, ' ').trim();
-                    const isVisible = (element) => {
-                        if (!element) return false;
-                        const style = window.getComputedStyle(element);
-                        if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) {
-                            return false;
-                        }
-                        const rect = element.getBoundingClientRect();
-                        return rect.width > 0 && rect.height > 0;
-                    };
-                    const links = [];
-                    for (const a of document.querySelectorAll('a[href]')) {
-                        if (!isVisible(a)) continue;
-                        const title = normalize(a.innerText || a.textContent || a.getAttribute('aria-label') || a.getAttribute('title') || '');
-                        const url = a.href;
-                        if (title && url) links.push([title, url]);
-                    }
-                    return links;
-                }"""
-            )
-        except Exception:
-            return []
-        if not raw or not isinstance(raw, list):
-            return []
-        url_to_title: dict[str, str] = {}
-        for pair in raw:
-            if isinstance(pair, (list, tuple)) and len(pair) == 2:
-                title, url = str(pair[0]).strip(), str(pair[1]).strip()
-                if title and url:
-                    existing = url_to_title.get(url)
-                    if existing is None or len(title) > len(existing):
-                        url_to_title[url] = title
-        return [(title, url) for url, title in url_to_title.items()]
-
-    @staticmethod
-    def _clip_multiline_text(text: str, limit: int) -> str:
-        normalized = text.strip()
-        if len(normalized) <= limit:
-            return normalized
-        return normalized[: max(limit - 3, 0)].rstrip() + "..."
 
     async def _best_effort_wait_for_domcontentloaded(self, page: Any) -> None:
         try:
