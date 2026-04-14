@@ -470,7 +470,10 @@ class ActionExecutor:
 
             elif canonical_name == "wait":
                 await self._best_effort_overlay_set_status("Waiting")
-                await asyncio.sleep(float(raw_arguments.get("duration") or raw_arguments.get("seconds", DEFAULT_WAIT_SECONDS)))
+                duration = raw_arguments.get("duration")
+                if duration is None:
+                    duration = raw_arguments.get("seconds", DEFAULT_WAIT_SECONDS)
+                await asyncio.sleep(float(duration))
 
             else:
                 raise BrowserActionError(f"unsupported action: {canonical_name}")

@@ -672,7 +672,7 @@ async def test_execute_action_rejects_invalid_scroll_direction() -> None:
     page = FakePage()
     viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
 
-    with pytest.raises(Exception):
+    with pytest.raises(module.BrowserActionError, match="unsupported scroll direction"):
         await _call_execute_action(
             executor,
             page,
