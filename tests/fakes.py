@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import inspect
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -70,8 +70,13 @@ class FakeChoice:
 
 @dataclass
 class FakeResponse:
-    choices: list[FakeChoice]
+    choices: list[FakeChoice] = field(default_factory=list)
     parsed_json: dict[str, Any] | None = None
+
+    def __post_init__(self) -> None:
+        if self.choices or self.parsed_json is None:
+            return
+        self.choices = [FakeChoice(message=FakeMessage(content=json.dumps(self.parsed_json)))]
 
 
 class FakeNavigatorClient:

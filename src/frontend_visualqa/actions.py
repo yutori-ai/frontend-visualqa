@@ -22,7 +22,14 @@ from yutori.navigator import (
     map_keys_individual,
 )
 from yutori.navigator.page_ready import PageReadyChecker
-from yutori.navigator.tools import GET_ELEMENT_BY_REF_SCRIPT, evaluate_tool_script
+from yutori.navigator.tools import (
+    EXECUTE_JS_SCRIPT,
+    EXTRACT_ELEMENTS_SCRIPT,
+    FIND_SCRIPT,
+    GET_ELEMENT_BY_REF_SCRIPT,
+    SET_ELEMENT_VALUE_SCRIPT,
+    evaluate_tool_script,
+)
 
 if TYPE_CHECKING:
     from frontend_visualqa.overlay import OverlayController
@@ -30,6 +37,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 DEFAULT_WAIT_SECONDS = 1.0
+EXPANDED_TOOL_NAMES = {"extract_elements", "find", "set_element_value", "execute_js"}
 
 CLICK_ACTIONS = {
     "left_click",
@@ -235,6 +243,9 @@ class ActionExecutor:
         """Execute a tool call object with ``function.name`` and JSON arguments."""
 
         action_name = getattr(getattr(tool_call, "function", tool_call), "name", "")
+        if action_name in EXPANDED_TOOL_NAMES:
+            arguments = parse_tool_arguments(tool_call)
+            return await self._execute_expanded_tool(session, action_name, arguments)
         arguments = parse_tool_arguments(tool_call)
         return await self.execute_action(session=session, action_name=action_name, arguments=arguments)
 
@@ -463,6 +474,60 @@ class ActionExecutor:
             await self._best_effort_wait_for_domcontentloaded(page)
             await asyncio.sleep(self._post_action_delay(canonical_name))
         return trace
+
+    async def _execute_expanded_tool(
+        self,
+        session: BrowserSession,
+        action_name: str,
+        arguments: dict[str, Any],
+    ) -> ToolExecutionResult:
+        """Execute an n1.5 expanded-tool-set action via the SDK's packaged JS."""
+
+        page = session.page
+        await self._best_effort_overlay_set_status(f"Running {action_name}")
+
+        if action_name == "extract_elements":
+            filter_type = str(arguments.get("filter", "visible"))
+            result = await evaluate_tool_script(page, EXTRACT_ELEMENTS_SCRIPT, filter_type)
+            output = result.get("pageContent", "")
+
+        elif action_name == "find":
+            text = str(arguments.get("text", ""))
+            result = await evaluate_tool_script(page, FIND_SCRIPT, text)
+            if not result.get("success", False):
+                output = f'[ERROR] {result.get("message", "find failed")}'
+            else:
+                matches = result.get("matches", [])
+                total = int(result.get("totalMatches", len(matches)))
+                if total:
+                    output = f'Found {total} element(s) matching "{text}":\n' + "\n".join(matches[:20])
+                else:
+                    output = f'No elements matching "{text}" found on the page.'
+
+        elif action_name == "set_element_value":
+            ref = str(arguments.get("ref", ""))
+            value = str(arguments.get("value", ""))
+            result = await evaluate_tool_script(page, SET_ELEMENT_VALUE_SCRIPT, ref, value)
+            output = result.get("message", "set_element_value completed")
+
+        elif action_name == "execute_js":
+            js_code = str(arguments.get("text", ""))
+            result = await evaluate_tool_script(page, EXECUTE_JS_SCRIPT, js_code)
+            if not result.get("success", False):
+                output = f'[ERROR] {result.get("message", "execute_js failed")}'
+            elif not result.get("hasResult"):
+                output = "undefined"
+            else:
+                output = str(result.get("result"))
+
+        else:
+            output = f"[ERROR] Unknown expanded tool: {action_name}"
+
+        return ToolExecutionResult(
+            trace=f"{action_name}({', '.join(f'{k}={v!r}' for k, v in arguments.items())})",
+            output_text=output,
+            current_url=session.page.url,
+        )
 
     async def _best_effort_wait_for_domcontentloaded(self, page: Any) -> None:
         try:
