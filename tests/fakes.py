@@ -63,7 +63,7 @@ class FakeMessage:
         return payload
 
 
-class FakeN1Client:
+class FakeNavigatorClient:
     def __init__(self, responses: list[FakeMessage]) -> None:
         self.responses = list(responses)
         self.calls: list[dict[str, Any]] = []

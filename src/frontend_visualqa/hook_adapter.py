@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from yutori.n1 import RunHooksBase, extract_text_content
+from yutori.navigator import RunHooksBase, extract_text_content
 
 from frontend_visualqa.schemas import ClaimStatus, TraceEvent
 

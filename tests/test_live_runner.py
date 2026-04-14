@@ -16,7 +16,7 @@ from frontend_visualqa.claim_verifier import ClaimVerifier
 from frontend_visualqa.runner import VisualQARunner
 from frontend_visualqa.schemas import ViewportConfig
 
-from fakes import FakeFunction, FakeMessage, FakeN1Client, FakeToolCall
+from fakes import FakeFunction, FakeMessage, FakeNavigatorClient, FakeToolCall
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
@@ -126,7 +126,7 @@ async def test_live_runner_executes_real_browser_flow_and_passes_modal_claim(
     tmp_path: Path,
 ) -> None:
     browser_manager = BrowserManager(headless=True, settle_delay_seconds=0)
-    n1_client = FakeN1Client(
+    navigator_client = FakeNavigatorClient(
         responses=[
             FakeMessage(
                 tool_calls=[
@@ -156,12 +156,12 @@ async def test_live_runner_executes_real_browser_flow_and_passes_modal_claim(
     claim_verifier = ClaimVerifier(
         browser_manager=browser_manager,
         artifact_manager=artifact_manager,
-        n1_client=n1_client,
+        navigator_client=navigator_client,
     )
     runner = VisualQARunner(
         browser_manager=browser_manager,
         artifact_manager=artifact_manager,
-        n1_client=n1_client,
+        navigator_client=navigator_client,
         claim_verifier=claim_verifier,
     )
 
@@ -195,7 +195,7 @@ async def test_live_runner_downgrades_false_positive_button_claim_with_grounding
     tmp_path: Path,
 ) -> None:
     browser_manager = BrowserManager(headless=True, settle_delay_seconds=0)
-    n1_client = FakeN1Client(
+    navigator_client = FakeNavigatorClient(
         responses=[
             FakeMessage(
                 tool_calls=[
@@ -219,12 +219,12 @@ async def test_live_runner_downgrades_false_positive_button_claim_with_grounding
     claim_verifier = ClaimVerifier(
         browser_manager=browser_manager,
         artifact_manager=artifact_manager,
-        n1_client=n1_client,
+        navigator_client=navigator_client,
     )
     runner = VisualQARunner(
         browser_manager=browser_manager,
         artifact_manager=artifact_manager,
-        n1_client=n1_client,
+        navigator_client=navigator_client,
         claim_verifier=claim_verifier,
     )
 
@@ -253,7 +253,7 @@ async def test_live_runner_headed_overlay_hides_restores_and_cleans_up(
     from frontend_visualqa.overlay import OverlayController
 
     browser_manager = BrowserManager(headless=False, settle_delay_seconds=0)
-    n1_client = FakeN1Client(
+    navigator_client = FakeNavigatorClient(
         responses=[
             FakeMessage(
                 tool_calls=[
@@ -285,12 +285,12 @@ async def test_live_runner_headed_overlay_hides_restores_and_cleans_up(
     claim_verifier = ClaimVerifier(
         browser_manager=browser_manager,
         artifact_manager=artifact_manager,
-        n1_client=n1_client,
+        navigator_client=navigator_client,
     )
     runner = VisualQARunner(
         browser_manager=browser_manager,
         artifact_manager=artifact_manager,
-        n1_client=n1_client,
+        navigator_client=navigator_client,
         claim_verifier=claim_verifier,
     )
 
@@ -388,7 +388,7 @@ async def test_live_runner_headed_overlay_zero_action_path_skips_hide_restore(
     from frontend_visualqa.overlay import OverlayController
 
     browser_manager = BrowserManager(headless=False, settle_delay_seconds=0)
-    n1_client = FakeN1Client(
+    navigator_client = FakeNavigatorClient(
         responses=[
             FakeMessage(
                 tool_calls=[
@@ -412,12 +412,12 @@ async def test_live_runner_headed_overlay_zero_action_path_skips_hide_restore(
     claim_verifier = ClaimVerifier(
         browser_manager=browser_manager,
         artifact_manager=artifact_manager,
-        n1_client=n1_client,
+        navigator_client=navigator_client,
     )
     runner = VisualQARunner(
         browser_manager=browser_manager,
         artifact_manager=artifact_manager,
-        n1_client=n1_client,
+        navigator_client=navigator_client,
         claim_verifier=claim_verifier,
     )
 

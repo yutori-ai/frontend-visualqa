@@ -13,7 +13,7 @@ import pytest
 from frontend_visualqa.artifacts import RunArtifacts
 from frontend_visualqa.schemas import ViewportConfig
 
-from fakes import FakeArtifactManager, FakeFunction, FakeMessage, FakeN1Client, FakeToolCall, instantiate_with_supported_kwargs
+from fakes import FakeArtifactManager, FakeFunction, FakeMessage, FakeNavigatorClient, FakeToolCall, instantiate_with_supported_kwargs
 
 
 def _import_claim_verifier_module():
@@ -94,11 +94,11 @@ class FakeActionExecutor:
         )
 
 
-class BlockingN1Client(FakeN1Client):
+class BlockingNavigatorClient(FakeNavigatorClient):
     async def create(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]]) -> FakeMessage:
         self.calls.append({"messages": messages, "tools": tools})
         await asyncio.sleep(1.0)
-        raise AssertionError("BlockingN1Client should be cancelled before returning")
+        raise AssertionError("BlockingNavigatorClient should be cancelled before returning")
 
 
 def _build_claim_verifier(
@@ -110,11 +110,11 @@ def _build_claim_verifier(
     action_executor: Any | None = None,
     artifact_manager: Any | None = None,
     visualize: bool = False,
-) -> tuple[Any, FakeN1Client, FakeActionExecutor]:
+) -> tuple[Any, FakeNavigatorClient, FakeActionExecutor]:
     browser = browser_manager or FakeBrowserManager()
     action_executor = action_executor or FakeActionExecutor()
     artifacts = artifact_manager or FakeArtifactManager(tmp_path)
-    n1_client = FakeN1Client(responses)
+    navigator_client = FakeNavigatorClient(responses)
 
     verifier = instantiate_with_supported_kwargs(
         module.ClaimVerifier,
@@ -123,8 +123,8 @@ def _build_claim_verifier(
         action_executor=action_executor,
         artifact_manager=artifacts,
         artifacts=artifacts,
-        n1_client=n1_client,
-        client=n1_client,
+        navigator_client=navigator_client,
+        client=navigator_client,
         visualize=visualize,
     )
 
@@ -134,12 +134,12 @@ def _build_claim_verifier(
         "action_executor": action_executor,
         "artifact_manager": artifacts,
         "artifacts": artifacts,
-        "n1_client": n1_client,
-        "client": n1_client,
+        "navigator_client": navigator_client,
+        "client": navigator_client,
     }.items():
         setattr(verifier, attribute_name, value)
 
-    return verifier, n1_client, action_executor
+    return verifier, navigator_client, action_executor
 
 
 async def _call_verify(
@@ -188,7 +188,7 @@ async def _call_verify(
 @pytest.mark.asyncio
 async def test_claim_verifier_returns_structured_verdict_from_record_claim_result(tmp_path: Path) -> None:
     module = _import_claim_verifier_module()
-    verifier, n1_client, action_executor = _build_claim_verifier(
+    verifier, navigator_client, action_executor = _build_claim_verifier(
         module,
         tmp_path,
         responses=[
@@ -230,8 +230,8 @@ async def test_claim_verifier_returns_structured_verdict_from_record_claim_resul
     assert _field(result, "proof").text is None
     assert _field(result, "trace").actions == []
     assert action_executor.calls == []
-    assert n1_client.calls
-    assert [tool["function"]["name"] for tool in n1_client.calls[0]["tools"]] == [
+    assert navigator_client.calls
+    assert [tool["function"]["name"] for tool in navigator_client.calls[0]["tools"]] == [
         "extract_content_and_links",
         "record_claim_result",
     ]
@@ -376,7 +376,7 @@ async def test_no_duplicate_tool_results_when_extract_and_rejected_verdict_share
                 )
             return await super().execute_tool_call(session, tool_call)
 
-    verifier, n1_client, action_executor = _build_claim_verifier(
+    verifier, navigator_client, action_executor = _build_claim_verifier(
         module,
         tmp_path,
         responses=[
@@ -435,7 +435,7 @@ async def test_no_duplicate_tool_results_when_extract_and_rejected_verdict_share
 
     assert _field(result, "status") == "passed"
     # Check that tool-1 (extract) does NOT have duplicate tool results in messages
-    reprompt_messages = n1_client.calls[1]["messages"]
+    reprompt_messages = navigator_client.calls[1]["messages"]
     tool_result_ids = [
         msg["tool_call_id"]
         for msg in reprompt_messages
@@ -462,7 +462,7 @@ async def test_extract_content_and_links_does_not_bypass_navigation_hint_guard(t
                 )
             return await super().execute_tool_call(session, tool_call)
 
-    verifier, n1_client, action_executor = _build_claim_verifier(
+    verifier, navigator_client, action_executor = _build_claim_verifier(
         module,
         tmp_path,
         responses=[
@@ -525,10 +525,10 @@ async def test_extract_content_and_links_does_not_bypass_navigation_hint_guard(t
 
     assert _field(result, "status") == "passed"
     # The extract_content_and_links call should NOT have satisfied the navigation hint guard
-    assert len(n1_client.calls) == 4
+    assert len(navigator_client.calls) == 4
     reminder_message = next(
         message
-        for message in reversed(n1_client.calls[2]["messages"])
+        for message in reversed(navigator_client.calls[2]["messages"])
         if message.get("role") == "user" and isinstance(message.get("content"), list)
     )
     assert "You have not followed the navigation hint yet." in reminder_message["content"][0]["text"]
@@ -539,7 +539,7 @@ async def test_claim_verifier_requires_an_action_before_accepting_a_verdict_with
     tmp_path: Path,
 ) -> None:
     module = _import_claim_verifier_module()
-    verifier, n1_client, action_executor = _build_claim_verifier(
+    verifier, navigator_client, action_executor = _build_claim_verifier(
         module,
         tmp_path,
         responses=[
@@ -590,10 +590,10 @@ async def test_claim_verifier_requires_an_action_before_accepting_a_verdict_with
 
     assert _field(result, "status") == "passed"
     assert action_executor.calls == [("goto_url", {"url": "http://fixture.local/cart"})]
-    assert len(n1_client.calls) == 3
+    assert len(navigator_client.calls) == 3
     reminder_message = next(
         message
-        for message in reversed(n1_client.calls[1]["messages"])
+        for message in reversed(navigator_client.calls[1]["messages"])
         if message.get("role") == "user" and isinstance(message.get("content"), list)
     )
     assert "You have not followed the navigation hint yet." in reminder_message["content"][0]["text"]
@@ -604,7 +604,7 @@ async def test_claim_verifier_reprompts_when_model_says_action_is_needed_but_rec
     tmp_path: Path,
 ) -> None:
     module = _import_claim_verifier_module()
-    verifier, n1_client, action_executor = _build_claim_verifier(
+    verifier, navigator_client, action_executor = _build_claim_verifier(
         module,
         tmp_path,
         responses=[
@@ -668,7 +668,7 @@ async def test_claim_verifier_reprompts_when_model_says_action_is_needed_but_rec
     assert _field(result, "trace").wrong_page_recovered is True
     reminder_message = next(
         message
-        for message in reversed(n1_client.calls[1]["messages"])
+        for message in reversed(navigator_client.calls[1]["messages"])
         if message.get("role") == "user" and isinstance(message.get("content"), list)
     )
     assert "more browser interaction is needed" in reminder_message["content"][0]["text"]
@@ -679,7 +679,7 @@ def test_claim_verifier_accepts_visualize_flag(tmp_path: Path) -> None:
     verifier = module.ClaimVerifier(
         browser_manager=FakeBrowserManager(),
         artifact_manager=FakeArtifactManager(tmp_path),
-        n1_client=FakeN1Client([]),
+        navigator_client=FakeNavigatorClient([]),
         visualize=True,
     )
 
@@ -782,7 +782,7 @@ async def test_claim_verifier_uses_overlay_lifecycle_when_visualize_enabled(
 @pytest.mark.asyncio
 async def test_claim_verifier_reprompts_after_plain_text_thought_and_continues(tmp_path: Path) -> None:
     module = _import_claim_verifier_module()
-    verifier, n1_client, action_executor = _build_claim_verifier(
+    verifier, navigator_client, action_executor = _build_claim_verifier(
         module,
         tmp_path,
         responses=[
@@ -823,10 +823,10 @@ async def test_claim_verifier_reprompts_after_plain_text_thought_and_continues(t
 
     assert _field(result, "status") == "passed"
     assert action_executor.calls == [("goto_url", {"url": "http://fixture.local/tasks/123"})]
-    assert len(n1_client.calls) == 3
+    assert len(navigator_client.calls) == 3
     reminder_message = next(
         message
-        for message in reversed(n1_client.calls[1]["messages"])
+        for message in reversed(navigator_client.calls[1]["messages"])
         if message.get("role") == "user" and isinstance(message.get("content"), list)
     )
     reminder_text = reminder_message["content"][0]["text"]
@@ -1108,7 +1108,7 @@ async def test_claim_verifier_seeds_first_model_turn_with_current_url_and_screen
     tmp_path: Path,
 ) -> None:
     module = _import_claim_verifier_module()
-    verifier, n1_client, action_executor = _build_claim_verifier(
+    verifier, navigator_client, action_executor = _build_claim_verifier(
         module,
         tmp_path,
         responses=[
@@ -1137,7 +1137,7 @@ async def test_claim_verifier_seeds_first_model_turn_with_current_url_and_screen
 
     assert _field(result, "status") == "passed"
     assert action_executor.calls == []
-    first_call_messages = n1_client.calls[0]["messages"]
+    first_call_messages = navigator_client.calls[0]["messages"]
     assert first_call_messages[0]["role"] == "user"
     first_content = first_call_messages[0]["content"]
     assert isinstance(first_content, list)
@@ -1799,7 +1799,7 @@ async def test_claim_verifier_reuses_trimmed_history_across_requests(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     module = _import_claim_verifier_module()
-    verifier, n1_client, _ = _build_claim_verifier(
+    verifier, navigator_client, _ = _build_claim_verifier(
         module,
         tmp_path,
         responses=[
@@ -1839,7 +1839,7 @@ async def test_claim_verifier_reuses_trimmed_history_across_requests(
         trim_calls.append({"messages": messages})
         return trimmed_payload
 
-    n1_client.trim_messages = fake_trim_messages  # type: ignore[attr-defined]
+    navigator_client.trim_messages = fake_trim_messages  # type: ignore[attr-defined]
 
     result = await _call_verify(
         verifier,
@@ -1854,8 +1854,8 @@ async def test_claim_verifier_reuses_trimmed_history_across_requests(
     assert len(trim_calls) >= 2
     assert trim_calls[0]["messages"][0]["content"][0]["text"] != "trimmed"
     assert trim_calls[1]["messages"][0]["content"][0]["text"] == "trimmed"
-    assert n1_client.calls[0]["messages"][0]["content"][0]["text"] == "trimmed"
-    assert n1_client.calls[1]["messages"][0]["content"][0]["text"] == "trimmed"
+    assert navigator_client.calls[0]["messages"][0]["content"][0]["text"] == "trimmed"
+    assert navigator_client.calls[1]["messages"][0]["content"][0]["text"] == "trimmed"
 
 
 @pytest.mark.asyncio
@@ -2129,7 +2129,7 @@ async def test_claim_verifier_normalizes_post_action_screenshot_failures_to_not_
 async def test_claim_verifier_preserves_partial_result_on_cancellation(tmp_path: Path) -> None:
     module = _import_claim_verifier_module()
     verifier, _, _ = _build_claim_verifier(module, tmp_path, responses=[])
-    verifier.n1_client = BlockingN1Client([])
+    verifier.navigator_client = BlockingNavigatorClient([])
 
     with pytest.raises(TimeoutError):
         async with asyncio.timeout(0.01):

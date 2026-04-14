@@ -11,7 +11,7 @@ from typing import Any, TYPE_CHECKING
 from frontend_visualqa.actions import ActionExecutor, EXTRACT_CONTENT_AND_LINKS_TOOL_NAME
 from frontend_visualqa.artifacts import ArtifactManager, RunArtifacts
 from frontend_visualqa.browser import BrowserManager, BrowserSession, image_bytes_to_data_url
-from frontend_visualqa.errors import BrowserActionError, N1ClientError
+from frontend_visualqa.errors import BrowserActionError, NavigatorClientError
 from frontend_visualqa.grounding import capture_grounding_state, ground_claim_verdict
 from frontend_visualqa.hook_adapter import VisualQAHookAdapter
 from frontend_visualqa.recovery import wrong_page_recovered
@@ -29,7 +29,7 @@ from frontend_visualqa.text_utils import clip_text
 from frontend_visualqa.tool_arguments import parse_tool_arguments
 
 if TYPE_CHECKING:
-    from frontend_visualqa.n1_client import N1Client
+    from frontend_visualqa.navigator_client import NavigatorClient
 
 
 FALLBACK_VERDICT_PATTERN = re.compile(
@@ -109,20 +109,20 @@ def _create_overlay_controller(page: Any) -> Any | None:
 
 
 class ClaimVerifier:
-    """Run the n1 observe-think-act loop for a single claim."""
+    """Run the Navigator observe-think-act loop for a single claim."""
 
     def __init__(
         self,
         *,
         browser_manager: BrowserManager,
         artifact_manager: ArtifactManager,
-        n1_client: N1Client,
+        navigator_client: NavigatorClient,
         action_executor: ActionExecutor | None = None,
         visualize: bool = False,
     ) -> None:
         self.browser_manager = browser_manager
         self.artifact_manager = artifact_manager
-        self.n1_client = n1_client
+        self.navigator_client = navigator_client
         self.action_executor = action_executor or ActionExecutor(
             navigation_timeout_ms=getattr(browser_manager, "navigation_timeout_ms", 20_000)
         )
@@ -218,7 +218,7 @@ class ClaimVerifier:
                 model_tools = self._model_tools()
                 await self._safe_hook_call("on_llm_start", messages=messages, tools=model_tools)
                 await self._best_effort_overlay_call("set_status", "Analyzing")
-                response = await self.n1_client.create(messages, tools=model_tools)
+                response = await self.navigator_client.create(messages, tools=model_tools)
                 assistant_message = self._coerce_assistant_message(response)
                 await self._safe_hook_call("on_llm_end", response=assistant_message)
                 messages.append(self._message_to_dict(assistant_message))
@@ -381,7 +381,7 @@ class ClaimVerifier:
             # _partial_progress and collected by consume_partial_result.
             preserve_partial_progress = True
             raise
-        except (BrowserActionError, N1ClientError) as exc:
+        except (BrowserActionError, NavigatorClientError) as exc:
             result = self._build_result(progress=progress, status="not_testable", finding=str(exc))
             return await self._complete_result(result)
         except Exception as exc:
@@ -436,7 +436,7 @@ class ClaimVerifier:
         model_tools = self._model_tools()
         await self._safe_hook_call("on_llm_start", messages=messages, tools=model_tools)
         await self._best_effort_overlay_call("set_status", "Analyzing")
-        response = await self.n1_client.create(messages, tools=model_tools)
+        response = await self.navigator_client.create(messages, tools=model_tools)
         assistant_message = self._coerce_assistant_message(response)
         await self._safe_hook_call("on_llm_end", response=assistant_message)
         messages.append(self._message_to_dict(assistant_message))
@@ -548,7 +548,7 @@ class ClaimVerifier:
         return result
 
     def _prepare_messages_for_request(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        return self.n1_client.trim_messages(messages)
+        return self.navigator_client.trim_messages(messages)
 
     @staticmethod
     def _model_tools() -> list[dict[str, Any]]:

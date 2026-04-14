@@ -6,10 +6,10 @@ from typing import Any
 import httpx
 import pytest
 
-from frontend_visualqa.errors import N1ClientError
+from frontend_visualqa.errors import NavigatorClientError
 
 try:
-    from frontend_visualqa.n1_client import AsyncYutoriClient, N1Client
+    from frontend_visualqa.navigator_client import AsyncYutoriClient, NavigatorClient
 except ModuleNotFoundError:
     pytestmark = pytest.mark.skip(reason="yutori SDK not installed")
 
@@ -37,12 +37,12 @@ class FakeClient:
         self.closed = True
 
 
-def test_n1_client_imports_async_yutori_client_from_sdk() -> None:
+def test_navigator_client_imports_async_yutori_client_from_sdk() -> None:
     assert AsyncYutoriClient.__name__ == "AsyncYutoriClient"
 
 
 @pytest.mark.asyncio
-async def test_n1_client_calls_sdk_with_provided_messages() -> None:
+async def test_navigator_client_calls_sdk_with_provided_messages() -> None:
     message = SimpleNamespace(
         content="done", tool_calls=None, model_dump=lambda exclude_none=True: {"role": "assistant"}
     )
@@ -51,23 +51,23 @@ async def test_n1_client_calls_sdk_with_provided_messages() -> None:
         usage=SimpleNamespace(prompt_tokens=1, completion_tokens=1, total_tokens=2),
     )
     client = FakeClient([response])
-    n1_client = N1Client(client=client)
+    navigator_client = NavigatorClient(client=client)
     messages = [{"role": "user", "content": [{"type": "text", "text": "Check"}]}]
 
-    result = await n1_client.create(messages=messages)
+    result = await navigator_client.create(messages=messages)
 
     assert result is message
     assert client.completions.calls == [
         {
             "messages": messages,
-            "model": n1_client.model,
-            "temperature": n1_client.temperature,
+            "model": navigator_client.model,
+            "temperature": navigator_client.temperature,
         }
     ]
 
 
 @pytest.mark.asyncio
-async def test_n1_client_calls_sdk_once_and_returns_message() -> None:
+async def test_navigator_client_calls_sdk_once_and_returns_message() -> None:
     message = SimpleNamespace(
         content="done", tool_calls=None, model_dump=lambda exclude_none=True: {"role": "assistant"}
     )
@@ -76,26 +76,26 @@ async def test_n1_client_calls_sdk_once_and_returns_message() -> None:
         usage=SimpleNamespace(prompt_tokens=1, completion_tokens=1, total_tokens=2),
     )
     client = FakeClient([response])
-    n1_client = N1Client(client=client, timeout_seconds=0.1)
+    navigator_client = NavigatorClient(client=client, timeout_seconds=0.1)
 
-    result = await n1_client.create(messages=[{"role": "user", "content": [{"type": "text", "text": "Check"}]}])
+    result = await navigator_client.create(messages=[{"role": "user", "content": [{"type": "text", "text": "Check"}]}])
 
     assert result is message
     assert len(client.completions.calls) == 1
 
 
 @pytest.mark.asyncio
-async def test_n1_client_wraps_sdk_errors() -> None:
+async def test_navigator_client_wraps_sdk_errors() -> None:
     client = FakeClient([RuntimeError("still failing")])
-    n1_client = N1Client(client=client, timeout_seconds=0.1)
+    navigator_client = NavigatorClient(client=client, timeout_seconds=0.1)
 
-    with pytest.raises(N1ClientError):
-        await n1_client.create(messages=[{"role": "user", "content": [{"type": "text", "text": "Check"}]}])
+    with pytest.raises(NavigatorClientError):
+        await navigator_client.create(messages=[{"role": "user", "content": [{"type": "text", "text": "Check"}]}])
 
 
 @pytest.mark.asyncio
-async def test_n1_client_retries_transient_errors(monkeypatch: pytest.MonkeyPatch) -> None:
-    import frontend_visualqa.n1_client as module
+async def test_navigator_client_retries_transient_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    import frontend_visualqa.navigator_client as module
 
     message = SimpleNamespace(
         content="done", tool_calls=None, model_dump=lambda exclude_none=True: {"role": "assistant"}
@@ -105,7 +105,7 @@ async def test_n1_client_retries_transient_errors(monkeypatch: pytest.MonkeyPatc
         usage=SimpleNamespace(prompt_tokens=1, completion_tokens=1, total_tokens=2),
     )
     client = FakeClient([httpx.ReadTimeout("slow"), response])
-    n1_client = N1Client(
+    navigator_client = NavigatorClient(
         client=client,
         max_retries=1,
         initial_backoff_seconds=0.0,
@@ -117,17 +117,17 @@ async def test_n1_client_retries_transient_errors(monkeypatch: pytest.MonkeyPatc
 
     monkeypatch.setattr(module.asyncio, "sleep", _noop_sleep)
 
-    result = await n1_client.create(messages=[{"role": "user", "content": [{"type": "text", "text": "Check"}]}])
+    result = await navigator_client.create(messages=[{"role": "user", "content": [{"type": "text", "text": "Check"}]}])
 
     assert result is message
     assert len(client.completions.calls) == 2
 
 
-def test_n1_client_trim_messages_uses_sdk_compatibility_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
-    import frontend_visualqa.n1_client as module
+def test_navigator_client_trim_messages_uses_sdk_compatibility_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    import frontend_visualqa.navigator_client as module
 
     messages = [{"role": "user", "content": [{"type": "text", "text": "Check"}]}]
-    n1_client = N1Client(client=FakeClient([]), max_request_bytes=10)
+    navigator_client = NavigatorClient(client=FakeClient([]), max_request_bytes=10)
     trim_calls: list[dict[str, Any]] = []
 
     monkeypatch.setattr(module, "estimate_messages_size_bytes", lambda _: 1_000_000)
@@ -139,7 +139,7 @@ def test_n1_client_trim_messages_uses_sdk_compatibility_fallback(monkeypatch: py
 
     monkeypatch.setattr(module, "trim_images_to_fit", fake_trim_images_to_fit)
 
-    trimmed_messages = n1_client.trim_messages(messages)
+    trimmed_messages = navigator_client.trim_messages(messages)
 
     assert trim_calls
     assert trimmed_messages[0]["content"][0]["text"] == "trimmed"

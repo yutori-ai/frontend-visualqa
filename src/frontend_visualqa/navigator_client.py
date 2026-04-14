@@ -1,4 +1,4 @@
-"""Thin wrapper around the Yutori SDK for n1 calls."""
+"""Thin wrapper around the Yutori SDK for Navigator model calls."""
 
 from __future__ import annotations
 
@@ -8,9 +8,9 @@ from typing import Any, Protocol
 
 import httpx
 from yutori import AsyncYutoriClient
-from yutori.n1 import estimate_messages_size_bytes, trim_images_to_fit
+from yutori.navigator import estimate_messages_size_bytes, trim_images_to_fit
 
-from frontend_visualqa.errors import N1ClientError
+from frontend_visualqa.errors import NavigatorClientError
 
 
 logger = logging.getLogger(__name__)
@@ -28,15 +28,15 @@ class SupportsChatCompletionCreate(Protocol):
         """Close any underlying network resources."""
 
 
-class N1Client:
-    """Own the n1 SDK client lifecycle and request dispatch."""
+class NavigatorClient:
+    """Own the Yutori SDK client lifecycle and request dispatch."""
 
     def __init__(
         self,
         *,
         api_key: str | None = None,
         base_url: str = "https://api.yutori.com/v1",
-        model: str = "n1-latest",
+        model: str = "n1.5-latest",
         temperature: float = 0.3,
         timeout_seconds: float = 60.0,
         max_request_bytes: int = DEFAULT_MAX_REQUEST_BYTES,
@@ -65,7 +65,7 @@ class N1Client:
         *,
         tools: list[dict[str, Any]] | None = None,
     ) -> Any:
-        """Call n1 and return the assistant message for the next step."""
+        """Call the Navigator model and return the assistant message for the next step."""
 
         client = await self._ensure_client()
         prepared_messages = self.trim_messages(messages)
@@ -87,22 +87,22 @@ class N1Client:
             except Exception as exc:  # noqa: PERF203 - retry loop is intentional
                 last_error = exc
                 if attempt >= self.max_retries or not self._is_transient_error(exc):
-                    raise N1ClientError(f"n1 request failed: {exc}") from exc
+                    raise NavigatorClientError(f"Navigator request failed: {exc}") from exc
                 delay = min(self.initial_backoff_seconds * (2**attempt), self.max_backoff_seconds)
                 logger.warning(
-                    "Transient n1 failure on attempt %s/%s; retrying in %.2fs",
+                    "Transient Navigator failure on attempt %s/%s; retrying in %.2fs",
                     attempt + 1,
                     self.max_retries + 1,
                     delay,
                 )
                 await asyncio.sleep(delay)
         else:  # pragma: no cover - defensive, loop always breaks or raises
-            raise N1ClientError(f"n1 request failed: {last_error}")
+            raise NavigatorClientError(f"Navigator request failed: {last_error}")
 
         usage = getattr(response, "usage", None)
         if usage is not None:
             logger.info(
-                "n1 usage prompt=%s completion=%s total=%s",
+                "Navigator usage prompt=%s completion=%s total=%s",
                 getattr(usage, "prompt_tokens", "?"),
                 getattr(usage, "completion_tokens", "?"),
                 getattr(usage, "total_tokens", "?"),
@@ -110,7 +110,7 @@ class N1Client:
         try:
             return response.choices[0].message
         except Exception as exc:
-            raise N1ClientError(f"n1 response did not contain a message choice: {exc}") from exc
+            raise NavigatorClientError(f"Navigator response did not contain a message choice: {exc}") from exc
 
     def trim_messages(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Trim oversized image payloads while preserving recent screenshots."""

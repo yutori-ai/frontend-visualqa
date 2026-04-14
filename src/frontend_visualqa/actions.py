@@ -1,4 +1,4 @@
-"""n1 browser action execution against Playwright."""
+"""Navigator browser action execution against Playwright."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from typing import Any, TYPE_CHECKING
 from frontend_visualqa.browser import BrowserSession, DEFAULT_NAVIGATION_TIMEOUT_MS as BROWSER_NAVIGATION_TIMEOUT_MS
 from frontend_visualqa.errors import BrowserActionError
 from frontend_visualqa.tool_arguments import parse_tool_arguments
-from yutori.n1 import denormalize_coordinates
+from yutori.navigator import denormalize_coordinates
 
 if TYPE_CHECKING:
     from frontend_visualqa.overlay import OverlayController
@@ -47,6 +47,7 @@ ACTION_NAME_ALIASES: dict[str, str] = {
     "back": "go_back",
     "goto": "goto_url",
     "key": "key_press",
+    "mouse_move": "hover",  # n1.5 emits mouse_move; n1 emitted hover
 }
 
 KEY_MAP: dict[str, str] = {
@@ -226,7 +227,7 @@ class ToolExecutionResult:
 
 
 class ActionExecutor:
-    """Execute n1 browser action tool calls against a Playwright page."""
+    """Execute Navigator browser action tool calls against a Playwright page."""
 
     def __init__(
         self,
