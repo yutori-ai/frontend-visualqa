@@ -107,12 +107,20 @@ class FakeKeyboard:
     def __init__(self) -> None:
         self.typed: list[str] = []
         self.pressed: list[str] = []
+        self.downs: list[str] = []
+        self.ups: list[str] = []
 
     async def type(self, text: str) -> None:
         self.typed.append(text)
 
     async def press(self, key: str) -> None:
         self.pressed.append(key)
+
+    async def down(self, key: str) -> None:
+        self.downs.append(key)
+
+    async def up(self, key: str) -> None:
+        self.ups.append(key)
 
 
 class FakePage:
@@ -154,6 +162,8 @@ class FakePage:
 
     async def evaluate(self, script: str, *args: Any) -> Any:
         self.evaluate_calls.append((script, args))
+        if "document.readyState !== 'complete'" in script:
+            return True
         if self.evaluate_results:
             return self.evaluate_results.pop(0)
         raise AssertionError("No evaluate result queued")
@@ -287,12 +297,16 @@ async def test_execute_action_supports_hover_drag_and_multi_click_variants() -> 
         viewport,
     )
     await _call_execute_action(executor, page, "triple_click", {"coordinates": [500, 250]}, viewport)
+    await _call_execute_action(executor, page, "middle_click", {"coordinates": [500, 250]}, viewport)
     await _call_execute_action(executor, page, "right_click", {"coordinates": [500, 250]}, viewport)
+    await _call_execute_action(executor, page, "mouse_down", {"coordinates": [500, 250]}, viewport)
+    await _call_execute_action(executor, page, "mouse_up", {"coordinates": [500, 250]}, viewport)
 
     assert page.mouse.moves[0] == (320, 400)
-    assert page.mouse.down_count == 1
-    assert page.mouse.up_count == 1
-    assert page.mouse.click_counts[-2:] == [3, 1]
+    assert page.mouse.down_count == 2
+    assert page.mouse.up_count == 2
+    assert page.mouse.click_counts[-3:] == [3, 1, 1]
+    assert page.mouse.clicks[-2] == (640, 200, "middle")
     assert page.mouse.clicks[-1] == (640, 200, "right")
 
 
@@ -445,6 +459,50 @@ async def test_execute_action_hover_previews_before_mouse_move() -> None:
 
 
 @pytest.mark.asyncio
+async def test_execute_action_mouse_move_and_ref_resolution_use_sdk_tool_helpers() -> None:
+    module = _import_actions_module()
+    executor = instantiate_with_supported_kwargs(
+        module.ActionExecutor,
+        navigation_timeout_ms=1_000,
+        settle_delay_seconds=0,
+    )
+    page = FakePage()
+    page.evaluate_results = [{"success": True, "coordinates": [301, 199]}]
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+
+    trace = await _call_execute_action(executor, page, "mouse_move", {"ref": "hero-button"}, viewport)
+
+    assert trace == "mouse_move(ref='hero-button')"
+    assert page.mouse.moves[-1] == (301, 199)
+    assert page.evaluate_calls[0][1] == ()
+
+
+@pytest.mark.asyncio
+async def test_execute_action_click_modifier_holds_and_releases_keys() -> None:
+    module = _import_actions_module()
+    executor = instantiate_with_supported_kwargs(
+        module.ActionExecutor,
+        navigation_timeout_ms=1_000,
+        settle_delay_seconds=0,
+    )
+    page = FakePage()
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+
+    trace = await _call_execute_action(
+        executor,
+        page,
+        "left_click",
+        {"coordinates": [500, 250], "modifier": "ctrl"},
+        viewport,
+    )
+
+    assert trace == "left_click([640, 200], modifier=Control)"
+    assert page.keyboard.downs == ["Control"]
+    assert page.keyboard.ups == ["Control"]
+    assert page.mouse.clicks == [(640, 200, "left")]
+
+
+@pytest.mark.asyncio
 async def test_execute_action_drag_previews_before_drag_motion() -> None:
     module = _import_actions_module()
     call_order: list[tuple[Any, ...]] = []
@@ -506,12 +564,12 @@ async def test_execute_action_key_press_supports_shortcuts_and_semantic_navigati
     page = FakePage()
     viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
 
-    await _call_execute_action(executor, page, "key_press", {"key_comb": "ctrl+a"}, viewport)
+    await _call_execute_action(executor, page, "key_press", {"key": "ctrl+a"}, viewport)
     await _call_execute_action(executor, page, "key_press", {"key_comb": "F5"}, viewport)
     await _call_execute_action(executor, page, "key_press", {"key_comb": "Alt+ArrowRight"}, viewport)
-    await _call_execute_action(executor, page, "wait", {"seconds": 0}, viewport)
+    await _call_execute_action(executor, page, "wait", {"duration": 0}, viewport)
 
-    assert "ControlOrMeta+a" in page.keyboard.pressed
+    assert "Control+a" in page.keyboard.pressed
     assert page.reload_calls
     assert page.go_forward_calls
 
@@ -527,10 +585,10 @@ async def test_execute_action_key_press_supports_repeated_key_sequences() -> Non
     page = FakePage()
     viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
 
-    trace = await _call_execute_action(executor, page, "key_press", {"key_comb": "Tab Tab Tab"}, viewport)
+    trace = await _call_execute_action(executor, page, "key_press", {"key": "down down enter"}, viewport)
 
-    assert trace == "key_press_sequence(Tab, Tab, Tab)"
-    assert page.keyboard.pressed == ["Tab", "Tab", "Tab"]
+    assert trace == "key_press_sequence(ArrowDown, ArrowDown, Enter)"
+    assert page.keyboard.pressed == ["ArrowDown", "ArrowDown", "Enter"]
 
 
 @pytest.mark.asyncio
@@ -544,10 +602,36 @@ async def test_execute_action_key_press_ignores_zoom_shortcuts() -> None:
     page = FakePage()
     viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
 
-    trace = await _call_execute_action(executor, page, "key_press", {"key_comb": "ControlOrMeta+Minus"}, viewport)
+    trace = await _call_execute_action(executor, page, "key_press", {"key": "ctrl+minus"}, viewport)
 
-    assert trace == "key_press(ControlOrMeta+Minus)"
+    assert trace == "key_press(Control+-)"
     assert page.keyboard.pressed == []
+
+
+@pytest.mark.asyncio
+async def test_execute_action_hold_key_supports_duration_and_fallback_press(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _import_actions_module()
+    executor = instantiate_with_supported_kwargs(
+        module.ActionExecutor,
+        navigation_timeout_ms=1_000,
+        settle_delay_seconds=0,
+    )
+    page = FakePage()
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+
+    async def _noop_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr(module.asyncio, "sleep", _noop_sleep)
+
+    duration_trace = await _call_execute_action(executor, page, "hold_key", {"key": "shift", "duration": 0.5}, viewport)
+    press_trace = await _call_execute_action(executor, page, "hold_key", {"key": "enter"}, viewport)
+
+    assert duration_trace == "hold_key(Shift, duration=0.5)"
+    assert press_trace == "hold_key(Enter)"
+    assert page.keyboard.downs == ["Shift"]
+    assert page.keyboard.ups == ["Shift"]
+    assert page.keyboard.pressed == ["Enter"]
 
 
 @pytest.mark.asyncio
@@ -662,3 +746,78 @@ async def test_execute_tool_call_rejects_removed_find_tool() -> None:
 
     with pytest.raises(Exception):
         await _call_execute_tool_call(executor, page, "find", {"text": "ATMOS"}, viewport)
+
+
+@pytest.mark.asyncio
+async def test_execute_action_click_modifier_released_on_failure() -> None:
+    """Modifier keys must be released even when the click raises."""
+    module = _import_actions_module()
+    executor = instantiate_with_supported_kwargs(
+        module.ActionExecutor,
+        navigation_timeout_ms=1_000,
+        settle_delay_seconds=0,
+    )
+    page = FakePage()
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+
+    async def _failing_click(*_args: Any, **_kwargs: Any) -> None:
+        raise RuntimeError("click exploded")
+
+    page.mouse.click = _failing_click
+
+    with pytest.raises(module.BrowserActionError, match="click exploded"):
+        await _call_execute_action(
+            executor, page, "left_click",
+            {"coordinates": [500, 250], "modifier": "ctrl"},
+            viewport,
+        )
+
+    # Modifier must still be released despite the error.
+    assert page.keyboard.downs == ["Control"]
+    assert page.keyboard.ups == ["Control"]
+
+
+@pytest.mark.asyncio
+async def test_resolve_coordinates_falls_back_to_raw_when_ref_fails() -> None:
+    """When ref resolution fails, fall back to the raw coordinates arg."""
+    module = _import_actions_module()
+    executor = instantiate_with_supported_kwargs(
+        module.ActionExecutor,
+        navigation_timeout_ms=1_000,
+        settle_delay_seconds=0,
+    )
+    page = FakePage()
+    # Queue a failed evaluate result for ref resolution
+    page.evaluate_results.append({"success": False, "message": "element not found"})
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+
+    trace = await _call_execute_action(
+        executor, page, "left_click",
+        {"coordinates": [500, 250], "ref": "missing-ref"},
+        viewport,
+    )
+
+    # Should fall back to denormalized coordinates
+    assert page.mouse.clicks == [(640, 200, "left")]
+    assert "left_click" in trace
+
+
+@pytest.mark.asyncio
+async def test_resolve_coordinates_raises_when_ref_fails_and_no_coords() -> None:
+    """When ref fails and there are no fallback coordinates, raise BrowserActionError."""
+    module = _import_actions_module()
+    executor = instantiate_with_supported_kwargs(
+        module.ActionExecutor,
+        navigation_timeout_ms=1_000,
+        settle_delay_seconds=0,
+    )
+    page = FakePage()
+    page.evaluate_results.append({"success": False, "message": "element not found"})
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+
+    with pytest.raises(module.BrowserActionError, match="element not found"):
+        await _call_execute_action(
+            executor, page, "left_click",
+            {"ref": "missing-ref"},  # no coordinates fallback
+            viewport,
+        )

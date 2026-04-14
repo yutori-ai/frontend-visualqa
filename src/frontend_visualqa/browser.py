@@ -12,12 +12,14 @@ from typing import Any
 
 from PIL import Image
 from playwright.async_api import Browser, BrowserContext, Page, Playwright, async_playwright
+from yutori.navigator.page_ready import PageReadyChecker
 
 from frontend_visualqa.schemas import BrowserConfig, BrowserMode, BrowserSessionStatus, BrowserStatusResult, ViewportConfig
 
 
 DEFAULT_NAVIGATION_TIMEOUT_MS = 20_000
 DEFAULT_SETTLE_DELAY_SECONDS = 1.0
+DEFAULT_PAGE_READY_TIMEOUT_SECONDS = 3
 DEFAULT_SCREENSHOT_JPEG_QUALITY = 75
 DEFAULT_SCREENSHOT_WEBP_QUALITY = 90
 logger = logging.getLogger(__name__)
@@ -66,6 +68,15 @@ class BrowserManager:
         self.headless = self.config.headless
         self.navigation_timeout_ms = self.config.navigation_timeout_ms
         self.settle_delay_seconds = self.config.settle_delay_seconds
+        self._page_ready_checker = PageReadyChecker(
+            timeout=min(DEFAULT_PAGE_READY_TIMEOUT_SECONDS, max(1, int(self.navigation_timeout_ms / 1000))),
+            initial_wait=0.0,
+            wait_after_ready=self.settle_delay_seconds,
+            replace_native_select_dropdown=True,
+            disable_new_tabs=True,
+            disable_printing=True,
+            poll_interval=0.1,
+        )
         self._playwright: Playwright | None = None
         self._browser: Browser | None = None
         self._persistent_context: BrowserContext | None = None
@@ -139,7 +150,7 @@ class BrowserManager:
         response = await session.page.goto(url, wait_until="domcontentloaded", timeout=self.navigation_timeout_ms)
         if response is None:
             await session.page.wait_for_load_state("domcontentloaded", timeout=self.navigation_timeout_ms)
-        await asyncio.sleep(self.settle_delay_seconds)
+        await self._best_effort_wait_for_page_ready(session.page)
         return session.page.url
 
     async def reset_to_url(self, session: BrowserSession, url: str) -> str:
@@ -157,7 +168,8 @@ class BrowserManager:
         if not self.headless:
             # In headed Chromium, the default screenshot surface path can
             # flash the live page. Prefer a view-backed CDP capture, then
-            # normalize the returned image back to CSS viewport size for n1.
+            # normalize the returned image back to CSS viewport size for
+            # Navigator's 1000x1000 coordinate system.
             cdp_image = await self._capture_screenshot_image_via_cdp(session)
             if cdp_image is not None:
                 return cdp_image
@@ -173,8 +185,9 @@ class BrowserManager:
 
         # When device_scale_factor > 1, Playwright returns an image at native
         # pixel resolution (e.g. 2560x1600 for DSF=2 at 1280x800 viewport).
-        # n1 maps its 1000x1000 coordinate grid to the image dimensions, so we
-        # must resize back to CSS viewport size to keep coordinates aligned.
+        # Navigator maps its 1000x1000 coordinate grid to the image
+        # dimensions, so we must resize back to CSS viewport size to keep
+        # coordinates aligned.
         css_size = (session.viewport.width, session.viewport.height)
         if image.size != css_size:
             image = image.resize(css_size, resample=Image.Resampling.LANCZOS)
@@ -391,6 +404,12 @@ class BrowserManager:
     def _configure_context(self, context: BrowserContext) -> None:
         context.set_default_navigation_timeout(self.navigation_timeout_ms)
         context.set_default_timeout(self.navigation_timeout_ms)
+
+    async def _best_effort_wait_for_page_ready(self, page: Page) -> None:
+        try:
+            await self._page_ready_checker.wait_until_ready(page, fast_mode=self.settle_delay_seconds == 0)
+        except Exception:
+            logger.debug("Page ready check failed", exc_info=True)
 
     async def _stop_playwright_if_idle(self) -> None:
         if self._browser is not None or self._persistent_context is not None:

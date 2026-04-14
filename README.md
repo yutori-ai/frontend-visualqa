@@ -4,7 +4,7 @@
 [![visual QA](https://img.shields.io/github/actions/workflow/status/yutori-ai/frontend-visualqa/visualqa.yml?label=visual%20QA)](https://github.com/yutori-ai/frontend-visualqa/actions/workflows/visualqa.yml)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
-Gives coding agents eyes for frontend work — visual QA and verification powered by [Yutori n1](https://yutori.com/api).
+Gives coding agents eyes for frontend work — visual QA and verification powered by [Yutori Navigator](https://yutori.com/api).
 
 ![CLI demo](docs/images/cli-demo.gif)
 
@@ -21,27 +21,27 @@ Does not start your dev server. If the URL is unreachable, claims return `not_te
 
 Playwright MCP can click, type, and assert against the DOM — but it cannot *see* the page. It can run cleanly on the wrong page, assert `modal.isVisible()` on a modal rendered off-screen, or miss a layout that broke on mobile.
 
-n1 is a pixels-to-actions model trained with RL on live websites. Two capabilities matter here:
+Navigator (powered by n1.5) is a pixels-to-actions model trained with RL on live websites. Two capabilities matter here:
 
-- **Self-correcting navigation** — Point the agent at the product catalog instead of a specific product page and n1 recognizes the wrong page, clicks through to the right one, and reports `trace.wrong_page_recovered: true`. Playwright MCP would run assertions on the wrong page and silently pass — garbage in, garbage out.
+- **Self-correcting navigation** — Point the agent at the product catalog instead of a specific product page and Navigator recognizes the wrong page, clicks through to the right one, and reports `trace.wrong_page_recovered: true`. Playwright MCP would run assertions on the wrong page and silently pass — garbage in, garbage out.
 
   <table border="0" cellspacing="0" cellpadding="8"><tr>
-    <td align="center" width="47%"><img src="docs/images/nav-step0-wrong-page.webp" alt="Product catalog — wrong page" width="100%"><br><em>n1 lands on the product catalog</em></td>
+    <td align="center" width="47%"><img src="docs/images/nav-step0-wrong-page.webp" alt="Product catalog — wrong page" width="100%"><br><em>Navigator lands on the product catalog</em></td>
     <td align="center" width="6%"><strong>→</strong></td>
     <td align="center" width="47%"><img src="docs/images/nav-step6-correct-page.webp" alt="Product detail — correct page" width="100%"><br><em>Navigated to the correct product page</em></td>
   </tr></table>
 
-- **Rich visual evaluation** — On the cart page, both items show sale prices ($149.99 and $79.99) but n1 caught that the subtotal of $279.98 uses the original prices — the discount was never applied. On the API dashboard, the quota label reads "100%" but the progress bar is visibly only two-thirds full. Playwright MCP would pass both — the DOM text is consistent and the progress bar width is just a CSS value.
+- **Rich visual evaluation** — On the cart page, both items show sale prices ($149.99 and $79.99) but Navigator caught that the subtotal of $279.98 uses the original prices — the discount was never applied. On the API dashboard, the quota label reads "100%" but the progress bar is visibly only two-thirds full. Playwright MCP would pass both — the DOM text is consistent and the progress bar width is just a CSS value.
 
   <table border="0" cellspacing="0" cellpadding="8"><tr>
-    <td align="center" width="50%"><img src="docs/images/cart-pricing-bug.webp" alt="Cart — sale prices shown but subtotal uses original prices" width="100%"><br><em>n1 catches the discount-not-applied bug</em></td>
+    <td align="center" width="50%"><img src="docs/images/cart-pricing-bug.webp" alt="Cart — sale prices shown but subtotal uses original prices" width="100%"><br><em>Navigator catches the discount-not-applied bug</em></td>
     <td align="center" width="50%"><img src="docs/images/dashboard-quota.webp" alt="Dashboard — label says 100% but bar is 65%" width="100%"><br><em>Label says 100% but the bar is only at 2/3rds</em></td>
   </tr></table>
 
 <details>
 <summary><strong>Known limitation</strong></summary>
 
-- **Native `<select>` dropdowns** — n1 cannot see or interact with native HTML `<select>` dropdown options because they render as OS-level widgets outside the browser viewport. If your page uses native selects, replace them with custom in-browser dropdown components for visual testing, or pre-fill the selection via URL parameters.
+- **Native `<select>` dropdowns** — Native HTML `<select>` dropdown options can still be unreliable because they render as OS-level widgets outside the browser viewport. If your page uses native selects, prefer custom in-browser dropdown components for visual testing, or pre-fill the selection via URL parameters.
 
 </details>
 
@@ -209,10 +209,10 @@ cd /path/to/frontend-visualqa
 lsof -ti:8000 | xargs kill 2>/dev/null; python3 -m http.server 8000 -d examples &
 ```
 
-**Self-correcting navigation** — start on the wrong page and watch n1 find its way:
+**Self-correcting navigation** — start on the wrong page and watch Navigator find its way:
 
 ```bash
-# n1 lands on the product catalog, clicks through to find the product detail page
+# Navigator lands on the product catalog, clicks through to find the product detail page
 # After each evidence screenshot, the Yutori overlay replays the last action
 frontend-visualqa verify http://localhost:8000/ecommerce_store.html \
   --headed \
@@ -236,10 +236,10 @@ frontend-visualqa verify http://localhost:8000/analytics_dashboard.html \
 frontend-visualqa verify 'http://localhost:8000/ecommerce_store.html#/cart' \
   --headed \
   --claims 'The displayed cart subtotal equals the sum of the visible sale prices'
-# → fails: n1 sees the sale prices sum to $229.98 while the displayed subtotal is $279.98
+# → fails: Navigator sees the sale prices sum to $229.98 while the displayed subtotal is $279.98
 ```
 
-**Autonomous form filling** — n1 fills a multi-step form, picks a date, and catches a timezone bug:
+**Autonomous form filling** — Navigator fills a multi-step form, picks a date, and catches a timezone bug:
 
 ```bash
 frontend-visualqa verify 'http://localhost:8000/booking_form.html' \
@@ -247,10 +247,10 @@ frontend-visualqa verify 'http://localhost:8000/booking_form.html' \
   --max-steps-per-claim 25 \
   --claims 'The date on the confirmation page matches the date selected on the calendar' \
   --navigation-hint "Fill out the form with example data (grayed text is showing example format, not filled out values)"
-# → fails: n1 fills the form, picks a date, books the slot, and catches the off-by-one on the confirmation page
+# → fails: Navigator fills the form, picks a date, books the slot, and catches the off-by-one on the confirmation page
 ```
 
-`--navigation-hint` gives n1 context it can't infer from pixels alone. Here, the booking form shows placeholder text like "John Doe" and "555-0123" — n1 can mistake these for already-filled values and skip the form. The hint tells it that grayed text is placeholder format, not real data, so it fills every field correctly.
+`--navigation-hint` gives Navigator context it can't infer from pixels alone. Here, the booking form shows placeholder text like "John Doe" and "555-0123" — the model can mistake these for already-filled values and skip the form. The hint tells it that grayed text is placeholder format, not real data, so it fills every field correctly.
 
 **Login flow with visual bug detection** — when only the first claim needs setup, put the hint next to that claim in a claims file (`examples/login_flow_claims.md`). The runner reuses the logged-in session for later claims, and only the claim that carries the hint gets the login guidance:
 
@@ -289,7 +289,7 @@ Scrolling to find off-screen content:
 frontend-visualqa verify http://localhost:8000/analytics_dashboard.html \
   --headed \
   --claims 'The /api/v1/webhooks endpoint returned a 200 OK status'
-# → fails: n1 scrolls to the request table and finds a 500 Error
+# → fails: Navigator scrolls to the request table and finds a 500 Error
 ```
 
 Form validation — triggering and verifying an error message:
@@ -440,7 +440,7 @@ frontend-visualqa verify http://localhost:3000/dashboard \
 <details>
 <summary><strong>Action visualization</strong></summary>
 
-When running in headed mode (`--headed`), the browser shows visual effects illustrating what n1 is doing:
+When running in headed mode (`--headed`), the browser shows visual effects illustrating what Navigator is doing:
 - post-capture cursor replays for click, scroll, drag, and typing actions
 - a compact thought card when a tool-using model turn includes reasoning text
 
@@ -454,7 +454,7 @@ frontend-visualqa verify http://localhost:3000 \
 
 The MCP tool `verify_visual_claims` accepts a per-call `visualize` parameter to control this independently of the server's default.
 
-Overlay elements are hidden for every evidence screenshot, and action replays are injected only after capture so no visualization appears before the screenshot sent to n1 or saved to artifacts.
+Overlay elements are hidden for every evidence screenshot, and action replays are injected only after capture so no visualization appears before the screenshot sent to the model or saved to artifacts.
 
 </details>
 
@@ -530,7 +530,7 @@ Each claim result contains:
 }
 ```
 
-`proof.screenshot_path` points to the screenshot n1 was examining when it rendered the verdict.
+`proof.screenshot_path` points to the screenshot the model was examining when it rendered the verdict.
 `proof.text` and `proof.text_path` are optional and are usually `null` unless a tool returns saved text output.
 `trace.trace_path` points to `trace.json`, which contains the full machine-readable event trace with reasoning and verdict metadata. Events are excluded from the JSON output by default to keep it compact; access them programmatically via `result.trace.events` or read `trace.json` directly.
 

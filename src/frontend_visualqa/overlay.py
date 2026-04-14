@@ -316,7 +316,7 @@ class OverlayController:
             else:
                 await asyncio.sleep(CURSOR_TRANSITION_MS / 1000)
 
-        if action_type in {"left_click", "double_click", "triple_click", "right_click"}:
+        if action_type in {"left_click", "double_click", "triple_click", "middle_click", "right_click"}:
             await self._show_click_effect(x, y, num_clicks)
         elif action_type == "scroll":
             await self._show_scroll_effect(x, y, direction)

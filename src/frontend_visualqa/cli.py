@@ -26,7 +26,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     parser = argparse.ArgumentParser(
         prog="frontend-visualqa",
-        description="Gives coding agents eyes for frontend work — visual QA and verification powered by Yutori n1.",
+        description="Gives coding agents eyes for frontend work — visual QA and verification powered by Yutori Navigator.",
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     subparsers = parser.add_subparsers(dest="command", required=True)

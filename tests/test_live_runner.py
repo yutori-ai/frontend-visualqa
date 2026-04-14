@@ -178,14 +178,14 @@ async def test_live_runner_executes_real_browser_flow_and_passes_modal_claim(
     assert result.overall_status == "completed"
     assert [item.status for item in result.results] == ["passed"]
     assert "Visible dialog title matched" in result.results[0].finding
-    assert result.results[0].trace.actions == ["left_click([419, 348])"]
+    assert result.results[0].trace.actions == ["left_click([420, 348])"]
     assert result.results[0].trace.steps_taken == 1
     assert all(Path(path).exists() for path in result.results[0].trace.screenshot_paths)
     assert result.results[0].proof is not None
     assert result.results[0].proof.step == 1
     assert result.results[0].proof.text is None
     assert Path(result.results[0].proof.screenshot_path).exists()
-    assert result.results[0].proof.after_action == "left_click([419, 348])"
+    assert result.results[0].proof.after_action == "left_click([420, 348])"
     assert result.results[0].page.url == f"{example_server}/test_page.html"
 
 
@@ -306,7 +306,7 @@ async def test_live_runner_headed_overlay_hides_restores_and_cleans_up(
         assert result.overall_status == "completed"
         assert [item.status for item in result.results] == ["passed"]
         assert "Visible dialog title matched" in result.results[0].finding
-        assert result.results[0].trace.actions == ["left_click([419, 348])"]
+        assert result.results[0].trace.actions == ["left_click([420, 348])"]
         assert result.results[0].trace.steps_taken == 1
         assert all(Path(path).exists() for path in result.results[0].trace.screenshot_paths)
 

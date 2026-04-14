@@ -8,7 +8,7 @@ from typing import Any, Protocol
 
 import httpx
 from yutori import AsyncYutoriClient
-from yutori.navigator import estimate_messages_size_bytes, trim_images_to_fit
+from yutori.navigator import N1_5_MODEL, TOOL_SET_CORE, estimate_messages_size_bytes, trim_images_to_fit
 
 from frontend_visualqa.errors import NavigatorClientError
 
@@ -36,7 +36,9 @@ class NavigatorClient:
         *,
         api_key: str | None = None,
         base_url: str = "https://api.yutori.com/v1",
-        model: str = "n1.5-latest",
+        model: str = N1_5_MODEL,
+        tool_set: str | None = TOOL_SET_CORE,
+        disable_tools: list[str] | None = None,
         temperature: float = 0.3,
         timeout_seconds: float = 60.0,
         max_request_bytes: int = DEFAULT_MAX_REQUEST_BYTES,
@@ -49,6 +51,8 @@ class NavigatorClient:
         self.api_key = api_key
         self.base_url = base_url
         self.model = model
+        self.tool_set = tool_set
+        self.disable_tools = list(disable_tools) if disable_tools else None
         self.temperature = temperature
         self.timeout_seconds = timeout_seconds
         self.max_request_bytes = max_request_bytes
@@ -72,6 +76,11 @@ class NavigatorClient:
         kwargs: dict[str, Any] = {}
         if tools:
             kwargs["tools"] = tools
+        if self._supports_tool_set():
+            if self.tool_set is not None:
+                kwargs["tool_set"] = self.tool_set
+            if self.disable_tools:
+                kwargs["disable_tools"] = self.disable_tools
         if self.temperature is not None:
             kwargs["temperature"] = self.temperature
 
@@ -160,3 +169,10 @@ class NavigatorClient:
         response = getattr(exc, "response", None)
         status_code = getattr(response, "status_code", None) or getattr(exc, "status_code", None)
         return status_code in {408, 409, 425, 429, 500, 502, 503, 504}
+
+    def _supports_tool_set(self) -> bool:
+        # tool_set is supported by n1.5+ models. Legacy n1 (and n1-experimental)
+        # models do not accept it. Rather than maintaining a prefix list, reject
+        # only the known-legacy patterns.
+        m = self.model
+        return not (m.startswith("n1-") or m == "n1")

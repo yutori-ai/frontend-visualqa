@@ -58,9 +58,13 @@ INCONCLUSIVE_FINDING_PATTERNS = (
 )
 ACTION_NEEDED_FINDING_PATTERNS = (
     re.compile(
-        r"""\b(?:i\s+)?need\s+to\s+(?:click|tap|open|navigate|go|scroll|expand|select|hover)\b""", re.IGNORECASE
+        r"""\b(?:i\s+)?need\s+to\s+(?:click|tap|open|navigate|go|scroll|expand|select|hover|move|drag|press|hold)\b""",
+        re.IGNORECASE,
     ),
-    re.compile(r"""\b(?:i\s+)?should\s+(?:click|tap|open|navigate|go|scroll|expand|select|hover)\b""", re.IGNORECASE),
+    re.compile(
+        r"""\b(?:i\s+)?should\s+(?:click|tap|open|navigate|go|scroll|expand|select|hover|move|drag|press|hold)\b""",
+        re.IGNORECASE,
+    ),
     re.compile(r"""\bbefore\s+i\s+can\s+(?:verify|determine|confirm|decide)\b""", re.IGNORECASE),
 )
 
@@ -552,8 +556,9 @@ class ClaimVerifier:
 
     @staticmethod
     def _model_tools() -> list[dict[str, Any]]:
-        # n1's built-in browser actions are injected server-side by the Yutori
-        # chat completions endpoint. We only need to send truly custom tools.
+        # Navigator's built-in browser actions are injected server-side by the
+        # Yutori chat completions endpoint. We only need to send truly custom
+        # tools here.
         return [EXTRACT_CONTENT_AND_LINKS_TOOL, RECORD_CLAIM_RESULT_TOOL]
 
     @staticmethod
