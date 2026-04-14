@@ -408,8 +408,8 @@ class BrowserManager:
     async def _best_effort_wait_for_page_ready(self, page: Page) -> None:
         try:
             await self._page_ready_checker.wait_until_ready(page, fast_mode=self.settle_delay_seconds == 0)
-        except Exception:
-            logger.debug("Page ready check failed", exc_info=True)
+        except Exception:  # noqa: BLE001 - best-effort readiness check must not fail navigation
+            logger.debug("Page ready check failed during navigation", exc_info=True)
 
     async def _stop_playwright_if_idle(self) -> None:
         if self._browser is not None or self._persistent_context is not None:

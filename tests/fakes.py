@@ -1,4 +1,4 @@
-"""Shared test fakes for n1 client protocol objects."""
+"""Shared test fakes for Navigator client protocol objects."""
 
 from __future__ import annotations
 

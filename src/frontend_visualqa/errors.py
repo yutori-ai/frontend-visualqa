@@ -17,8 +17,3 @@ class BrowserActionError(FrontendVisualQAError):
 
 class NavigatorClientError(FrontendVisualQAError):
     """Raised when the Navigator client cannot complete a request."""
-
-
-# Deprecated alias kept so existing catch-site references and downstream tests
-# don't break. Prefer NavigatorClientError in new code.
-N1ClientError = NavigatorClientError

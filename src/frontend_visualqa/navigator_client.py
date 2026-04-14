@@ -174,5 +174,5 @@ class NavigatorClient:
         # tool_set is supported by n1.5+ models. Legacy n1 (and n1-experimental)
         # models do not accept it. Rather than maintaining a prefix list, reject
         # only the known-legacy patterns.
-        m = self.model
+        m = str(self.model).strip().lower()
         return not (m.startswith("n1-") or m == "n1")

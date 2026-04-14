@@ -79,7 +79,11 @@ KEY_COMBINATION_ACTIONS: dict[str, str] = {
     "F5": "refresh",
 }
 
-DISALLOWED_ZOOM_KEYS = {"-", "+", "=", "0"}
+# The "+" key is intentionally omitted: is_disallowed_zoom_shortcut splits on
+# "+" as a delimiter, so "Control++" (Ctrl + the plus key) would split to
+# ["Control", ""] and evade the check. The "=" key covers the standard Ctrl+=
+# zoom-in shortcut on the same physical key.
+DISALLOWED_ZOOM_KEYS = {"-", "=", "0"}
 
 
 def _mapped_key_presses(key_text: str) -> list[str]:
@@ -145,12 +149,15 @@ def render_action_trace(
             return f"drag([{start_x}, {start_y}], [{end_x}, {end_y}])"
 
     if canonical_name == "scroll" and width and height:
-        coordinates = arguments.get("coordinates", [500, 500])
-        x, y = denormalize_coordinates(coordinates, width=width, height=height)
-        direction = str(arguments.get("direction", "down")).lower()
-        amount = arguments.get("amount", 1)
-        modifier_suffix = _format_modifier_trace_suffix(arguments.get("modifier"))
-        return f"scroll([{x}, {y}], direction={direction}, amount={amount}{modifier_suffix})"
+        coordinates = arguments.get("coordinates")
+        if coordinates is not None:
+            x, y = denormalize_coordinates(coordinates, width=width, height=height)
+            direction = str(arguments.get("direction", "down")).lower()
+            amount = arguments.get("amount", 1)
+            modifier_suffix = _format_modifier_trace_suffix(arguments.get("modifier"))
+            return f"scroll([{x}, {y}], direction={direction}, amount={amount}{modifier_suffix})"
+        # When only ref is present, fall through to the generic renderer below
+        # so the trace shows ref='...' instead of misleading default coordinates.
 
     if canonical_name == "type":
         text = json.dumps(str(arguments.get("text", "")))

@@ -19,7 +19,6 @@ _LAZY_EXPORTS = {
     "ConfigurationError": ("frontend_visualqa.errors", "ConfigurationError"),
     "BrowserActionError": ("frontend_visualqa.errors", "BrowserActionError"),
     "NavigatorClientError": ("frontend_visualqa.errors", "NavigatorClientError"),
-    "N1ClientError": ("frontend_visualqa.errors", "N1ClientError"),
     "NavigatorClient": ("frontend_visualqa.navigator_client", "NavigatorClient"),
     "VisualQARunner": ("frontend_visualqa.runner", "VisualQARunner"),
     "BrowserConfig": ("frontend_visualqa.schemas", "BrowserConfig"),

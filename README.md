@@ -35,7 +35,7 @@ Navigator (powered by n1.5) is a pixels-to-actions model trained with RL on live
 
   <table border="0" cellspacing="0" cellpadding="8"><tr>
     <td align="center" width="50%"><img src="docs/images/cart-pricing-bug.webp" alt="Cart — sale prices shown but subtotal uses original prices" width="100%"><br><em>Navigator catches the discount-not-applied bug</em></td>
-    <td align="center" width="50%"><img src="docs/images/dashboard-quota.webp" alt="Dashboard — label says 100% but bar is 65%" width="100%"><br><em>Label says 100% but the bar is only at 2/3rds</em></td>
+    <td align="center" width="50%"><img src="docs/images/dashboard-quota.webp" alt="Dashboard — label says 100% but bar is 65%" width="100%"><br><em>Label says 100% but the bar is only about two-thirds full</em></td>
   </tr></table>
 
 <details>
