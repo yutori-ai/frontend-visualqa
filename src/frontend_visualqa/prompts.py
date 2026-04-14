@@ -6,34 +6,19 @@ from typing import Any
 
 
 
-RECORD_CLAIM_RESULT_TOOL: dict[str, Any] = {
-    "type": "function",
-    "function": {
-        "name": "record_claim_result",
-        "description": (
-            "Report the verification result for the current claim. Call this once you have enough evidence "
-            "to decide whether the claim is visually true, false, inconclusive, or not testable."
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "status": {
-                    "type": "string",
-                    "enum": ["passed", "failed", "inconclusive", "not_testable"],
-                    "description": (
-                        "passed: the claim is visually true. failed: the claim is visually false. "
-                        "inconclusive: you tried but still cannot determine. "
-                        "not_testable: the environment blocked verification."
-                    ),
-                },
-                "finding": {
-                    "type": "string",
-                    "description": "Brief evidence-backed finding of what you observed.",
-                },
-            },
-            "required": ["status", "finding"],
+VERDICT_JSON_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "status": {
+            "type": "string",
+            "enum": ["passed", "failed", "inconclusive", "not_testable"],
+        },
+        "finding": {
+            "type": "string",
+            "description": "Brief evidence-backed finding of what you observed.",
         },
     },
+    "required": ["status", "finding"],
 }
 
 
@@ -50,7 +35,7 @@ def build_verification_task(claim: str, url: str, navigation_hint: str | None = 
         "1. If you are not already on the correct page state, navigate or interact until you reach it.",
         "2. Assess the page visually from the screenshot after each action.",
         "3. Stop as soon as you have enough evidence to make a determination.",
-        "4. Report your final verdict by calling the record_claim_result tool.",
+        "4. When you have enough evidence, stop taking actions and output your verdict as JSON.",
         "5. Treat the claim literally: do not substitute similar controls, nearby text, or adjacent UI for the element named in the claim.",
         "6. A pass requires exact grounding in the current screenshot. If the claim references text, title, heading, tab, or button label, verify that exact wording or a direct prefix match is visible.",
         "7. Do not change browser zoom or device scale. Judge the page at the provided viewport.",
@@ -127,7 +112,7 @@ def build_force_stop_prompt(claim: str) -> str:
             "You have reached the maximum number of actions for this claim.",
             f'Claim: "{claim}"',
             "Do not take any more browser actions.",
-            "Call record_claim_result now with your best verdict and a short evidence-backed finding.",
+            "Output your verdict as JSON now with your best verdict and a short evidence-backed finding.",
             "Use inconclusive if you truly cannot tell, or not_testable if the environment blocked you.",
         ]
     )
@@ -141,7 +126,7 @@ def build_action_or_verdict_prompt(claim: str) -> str:
             "You have not finished this claim yet.",
             f'Claim: "{claim}"',
             "Do not narrate your intent in plain text.",
-            "Either take exactly one browser action next, or call record_claim_result now if you already have enough evidence.",
+            "Either take exactly one browser action next, or output your verdict as JSON now if you already have enough evidence.",
             "A plain-text response without a tool call will be treated as a failure to follow instructions.",
         ]
     )

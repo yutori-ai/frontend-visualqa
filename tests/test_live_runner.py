@@ -16,7 +16,7 @@ from frontend_visualqa.claim_verifier import ClaimVerifier
 from frontend_visualqa.runner import VisualQARunner
 from frontend_visualqa.schemas import ViewportConfig
 
-from fakes import FakeFunction, FakeMessage, FakeNavigatorClient, FakeToolCall
+from fakes import FakeChoice, FakeFunction, FakeMessage, FakeNavigatorClient, FakeResponse, FakeToolCall
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
@@ -139,17 +139,7 @@ async def test_live_runner_executes_real_browser_flow_and_passes_modal_claim(
                     )
                 ]
             ),
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-2",
-                        function=FakeFunction(
-                            name="record_claim_result",
-                            arguments=json.dumps({"status": "passed", "finding": "The modal title reads Edit Task."}),
-                        ),
-                    )
-                ]
-            ),
+            FakeResponse(parsed_json={"status": "passed", "finding": "The modal title reads Edit Task."}),
         ]
     )
     artifact_manager = ArtifactManager(tmp_path / "artifacts")
@@ -197,22 +187,7 @@ async def test_live_runner_downgrades_false_positive_button_claim_with_grounding
     browser_manager = BrowserManager(headless=True, settle_delay_seconds=0)
     navigator_client = FakeNavigatorClient(
         responses=[
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-1",
-                        function=FakeFunction(
-                            name="record_claim_result",
-                            arguments=json.dumps(
-                                {
-                                    "status": "passed",
-                                    "finding": "The Show Save Confirmation button is visible without scrolling.",
-                                }
-                            ),
-                        ),
-                    )
-                ]
-            )
+            FakeResponse(parsed_json={ "status": "passed", "finding": "The Show Save Confirmation button is visible without scrolling.", })
         ]
     )
     artifact_manager = ArtifactManager(tmp_path / "artifacts")
@@ -266,19 +241,7 @@ async def test_live_runner_headed_overlay_hides_restores_and_cleans_up(
                     )
                 ]
             ),
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-2",
-                        function=FakeFunction(
-                            name="record_claim_result",
-                            arguments=json.dumps(
-                                {"status": "passed", "finding": "The modal title reads Edit Task."}
-                            ),
-                        ),
-                    )
-                ]
-            ),
+            FakeResponse(parsed_json={"status": "passed", "finding": "The modal title reads Edit Task."}),
         ]
     )
     artifact_manager = ArtifactManager(tmp_path / "artifacts")
@@ -390,22 +353,7 @@ async def test_live_runner_headed_overlay_zero_action_path_skips_hide_restore(
     browser_manager = BrowserManager(headless=False, settle_delay_seconds=0)
     navigator_client = FakeNavigatorClient(
         responses=[
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-1",
-                        function=FakeFunction(
-                            name="record_claim_result",
-                            arguments=json.dumps(
-                                {
-                                    "status": "passed",
-                                    "finding": "The page title reads Frontend Visual QA Playground.",
-                                }
-                            ),
-                        ),
-                    )
-                ]
-            )
+            FakeResponse(parsed_json={ "status": "passed", "finding": "The page title reads Frontend Visual QA Playground.", })
         ]
     )
     artifact_manager = ArtifactManager(tmp_path / "artifacts")

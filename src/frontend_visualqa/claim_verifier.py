@@ -16,7 +16,7 @@ from frontend_visualqa.grounding import capture_grounding_state, ground_claim_ve
 from frontend_visualqa.hook_adapter import VisualQAHookAdapter
 from frontend_visualqa.recovery import wrong_page_recovered
 from frontend_visualqa.prompts import (
-    RECORD_CLAIM_RESULT_TOOL,
+    VERDICT_JSON_SCHEMA,
     build_action_or_verdict_prompt,
     build_follow_navigation_hint_prompt,
     build_force_stop_prompt,
@@ -31,10 +31,6 @@ if TYPE_CHECKING:
     from frontend_visualqa.navigator_client import NavigatorClient
 
 
-FALLBACK_VERDICT_PATTERN = re.compile(
-    r"""["']?(?:status|verdict)["']?\s*[:=]\s*["']?(passed|failed|inconclusive|not[_ ]testable)\b""",
-    re.IGNORECASE,
-)
 NEGATIVE_CLAIM_PATTERN = re.compile(
     r"""\bnot\b|\bno\s+\w+|\bhidden\b|\bdisabled\b|\bmissing\b|\babsent\b|\bincorrect\b|\bwrong\b""",
     re.IGNORECASE,
@@ -73,9 +69,7 @@ MAX_NON_ACTION_REPROMPTS = 2
 MAX_INLINE_PROOF_TEXT_CHARS = 280
 MAX_INLINE_PROOF_TEXT_LINES = 6
 
-VERDICT_SOURCE_RECORD = "record_claim_result"
-VERDICT_SOURCE_FALLBACK = "fallback_content"
-VERDICT_SOURCE_LEGACY_STOP = "legacy_stop"
+VERDICT_SOURCE_JSON = "json_schema"
 VERDICT_SOURCE_FORCE_STOP = "force_stop"
 
 
@@ -221,21 +215,52 @@ class ClaimVerifier:
                 model_tools = self._model_tools()
                 await self._safe_hook_call("on_llm_start", messages=messages, tools=model_tools)
                 await self._best_effort_overlay_call("set_status", "Analyzing")
-                response = await self.navigator_client.create(messages, tools=model_tools)
-                assistant_message = self._coerce_assistant_message(response)
+                response = await self.navigator_client.create(
+                    messages, tools=model_tools, json_schema=VERDICT_JSON_SCHEMA,
+                )
+                assistant_message = response.choices[0].message
                 await self._safe_hook_call("on_llm_end", response=assistant_message)
                 messages.append(self._message_to_dict(assistant_message))
 
-                tool_calls = list(getattr(assistant_message, "tool_calls", []) or [])
-                if not tool_calls:
-                    fallback = self._parse_fallback_verdict(getattr(assistant_message, "content", None))
-                    if fallback is not None:
+                # --- Check for structured JSON verdict (parsed_json) ---
+                json_verdict = self._extract_json_verdict(response)
+                if json_verdict is not None:
+                    reprompt_text: str | None = None
+                    force_stop_finding: str | None = None
+                    if (
+                        not progress.has_interacted
+                        and json_verdict[0] == "inconclusive"
+                        and self._finding_says_action_is_needed(json_verdict[1])
+                    ):
+                        reprompt_text = build_take_action_prompt(claim)
+                        force_stop_finding = "The model kept saying more interaction was needed without taking the next browser action."
+                    elif navigation_hint and not progress.has_interacted and json_verdict[0] != "not_testable":
+                        reprompt_text = build_follow_navigation_hint_prompt(claim, navigation_hint)
+                        force_stop_finding = (
+                            "The model tried to render a verdict before following the navigation hint."
+                        )
+                    if reprompt_text is not None:
+                        if non_action_reprompts < MAX_NON_ACTION_REPROMPTS:
+                            non_action_reprompts += 1
+                            messages.append(_user_text_message(reprompt_text))
+                            continue
                         result = await self._finalize_result(
                             progress=progress,
-                            verdict=fallback,
-                            verdict_source=VERDICT_SOURCE_FALLBACK,
+                            verdict=("inconclusive", force_stop_finding or ""),
+                            verdict_source=VERDICT_SOURCE_FORCE_STOP,
                         )
                         return await self._complete_result(result)
+                    result = await self._finalize_result(
+                        progress=progress,
+                        verdict=json_verdict,
+                        verdict_source=VERDICT_SOURCE_JSON,
+                    )
+                    return await self._complete_result(result)
+
+                # --- Check for tool calls (browser actions) ---
+                tool_calls = list(getattr(assistant_message, "tool_calls", []) or [])
+                if not tool_calls:
+                    # No JSON verdict and no tool calls — reprompt
                     if non_action_reprompts < MAX_NON_ACTION_REPROMPTS:
                         non_action_reprompts += 1
                         messages.append(_user_text_message(build_action_or_verdict_prompt(claim)))
@@ -246,68 +271,6 @@ class ClaimVerifier:
                 responded_tool_ids: set[str] = set()
                 for tool_call in tool_calls:
                     tool_name = getattr(tool_call.function, "name", "")
-                    if tool_name == "record_claim_result":
-                        verdict = self._extract_structured_verdict([tool_call])
-                        if verdict is not None:
-                            reprompt_text: str | None = None
-                            force_stop_finding: str | None = None
-                            if (
-                                not progress.has_interacted
-                                and verdict[0] == "inconclusive"
-                                and self._finding_says_action_is_needed(verdict[1])
-                            ):
-                                reprompt_text = build_take_action_prompt(claim)
-                                force_stop_finding = "The model kept saying more interaction was needed without taking the next browser action."
-                            elif navigation_hint and not progress.has_interacted and verdict[0] != "not_testable":
-                                reprompt_text = build_follow_navigation_hint_prompt(claim, navigation_hint)
-                                force_stop_finding = (
-                                    "The model tried to render a verdict before following the navigation hint."
-                                )
-                            if reprompt_text is not None:
-                                if non_action_reprompts < MAX_NON_ACTION_REPROMPTS:
-                                    non_action_reprompts += 1
-                                    for tc in tool_calls:
-                                        if tc.id not in responded_tool_ids:
-                                            messages.append(
-                                                {
-                                                    "role": "tool",
-                                                    "tool_call_id": tc.id,
-                                                    "content": [
-                                                        {
-                                                            "type": "text",
-                                                            "text": "Verdict not accepted; see follow-up instructions.",
-                                                        }
-                                                    ],
-                                                }
-                                            )
-                                    messages.append(_user_text_message(reprompt_text))
-                                    break
-                                result = await self._finalize_result(
-                                    progress=progress,
-                                    verdict=("inconclusive", force_stop_finding or ""),
-                                    verdict_source=VERDICT_SOURCE_FORCE_STOP,
-                                )
-                                await self._show_post_capture_analysis(had_actions=had_action_in_turn)
-                                return await self._complete_result(result)
-                            result = await self._finalize_result(
-                                progress=progress,
-                                verdict=verdict,
-                                verdict_source=VERDICT_SOURCE_RECORD,
-                            )
-                            await self._show_post_capture_analysis(had_actions=had_action_in_turn)
-                            return await self._complete_result(result)
-                        continue
-                    if tool_name == "stop":
-                        stop_verdict = self._extract_stop_verdict([tool_call])
-                        if stop_verdict is not None:
-                            result = await self._finalize_result(
-                                progress=progress,
-                                verdict=stop_verdict,
-                                verdict_source=VERDICT_SOURCE_LEGACY_STOP,
-                            )
-                            await self._show_post_capture_analysis(had_actions=had_action_in_turn)
-                            return await self._complete_result(result)
-                        continue
                     if progress.step_count >= max_steps:
                         break
                     tool_arguments = parse_tool_arguments(tool_call)
@@ -437,19 +400,15 @@ class ClaimVerifier:
         model_tools = self._model_tools()
         await self._safe_hook_call("on_llm_start", messages=messages, tools=model_tools)
         await self._best_effort_overlay_call("set_status", "Analyzing")
-        response = await self.navigator_client.create(messages, tools=model_tools)
-        assistant_message = self._coerce_assistant_message(response)
+        response = await self.navigator_client.create(
+            messages, tools=model_tools, json_schema=VERDICT_JSON_SCHEMA,
+        )
+        assistant_message = response.choices[0].message
         await self._safe_hook_call("on_llm_end", response=assistant_message)
         messages.append(self._message_to_dict(assistant_message))
 
-        verdict_source = VERDICT_SOURCE_RECORD
-        verdict = self._extract_structured_verdict(getattr(assistant_message, "tool_calls", []) or [])
-        if verdict is None:
-            verdict_source = VERDICT_SOURCE_LEGACY_STOP
-            verdict = self._extract_stop_verdict(getattr(assistant_message, "tool_calls", []) or [])
-        if verdict is None:
-            verdict_source = VERDICT_SOURCE_FORCE_STOP
-            verdict = self._parse_fallback_verdict(getattr(assistant_message, "content", None))
+        verdict_source = VERDICT_SOURCE_JSON
+        verdict = self._extract_json_verdict(response)
         if verdict is None:
             verdict_source = VERDICT_SOURCE_FORCE_STOP
             verdict = ("inconclusive", "The model did not provide a structured verdict before the step limit.")
@@ -554,9 +513,9 @@ class ClaimVerifier:
     @staticmethod
     def _model_tools() -> list[dict[str, Any]]:
         # Navigator's built-in browser actions are injected server-side by the
-        # Yutori chat completions endpoint. We only need to send truly custom
-        # tools here.
-        return [RECORD_CLAIM_RESULT_TOOL]
+        # Yutori chat completions endpoint. No custom tools needed — verdicts
+        # are delivered via json_schema structured output.
+        return []
 
     @staticmethod
     def _build_tool_result_text(trace: str, current_url: str, output_text: str | None = None) -> str:
@@ -661,10 +620,21 @@ class ClaimVerifier:
         raise TypeError(f"Unsupported assistant message type: {type(message)!r}")
 
     @staticmethod
-    def _coerce_assistant_message(response_or_message: Any) -> Any:
-        if hasattr(response_or_message, "choices"):
-            return response_or_message.choices[0].message
-        return response_or_message
+    def _extract_json_verdict(response: Any) -> tuple[str, str] | None:
+        """Extract a verdict from the response's ``parsed_json`` attribute.
+
+        Returns ``(status, finding)`` when a valid structured verdict is
+        present, or ``None`` when the model emitted tool calls / free text
+        instead.
+        """
+        parsed = getattr(response, "parsed_json", None)
+        if not isinstance(parsed, dict):
+            return None
+        status = str(parsed.get("status", "")).strip()
+        finding = str(parsed.get("finding", "")).strip() or "No finding provided."
+        if status in {"passed", "failed", "inconclusive", "not_testable"}:
+            return status, finding
+        return None
 
     async def _execute_tool_call(self, session: BrowserSession, tool_call: Any) -> dict[str, Any]:
         result = await self.action_executor.execute_tool_call(session, tool_call)
@@ -675,63 +645,6 @@ class ClaimVerifier:
             "output_text": getattr(result, "output_text", None),
             "current_url": getattr(result, "current_url", None) or session.page.url,
         }
-
-    @staticmethod
-    def _extract_structured_verdict(tool_calls: list[Any]) -> tuple[ClaimStatus, str] | None:
-        for tool_call in tool_calls:
-            if getattr(tool_call.function, "name", "") != "record_claim_result":
-                continue
-            try:
-                arguments = parse_tool_arguments(tool_call)
-            except BrowserActionError as exc:
-                return "inconclusive", str(exc)
-            status = str(arguments.get("status", "")).strip()
-            finding = str(arguments.get("finding") or arguments.get("summary") or "").strip() or "No finding provided."
-            if status in {"passed", "failed", "inconclusive", "not_testable"}:
-                return status, finding
-        return None
-
-    @staticmethod
-    def _extract_stop_verdict(tool_calls: list[Any]) -> tuple[ClaimStatus, str] | None:
-        for tool_call in tool_calls:
-            if getattr(tool_call.function, "name", "") != "stop":
-                continue
-
-            status: ClaimStatus = "inconclusive"
-            finding = "The model stopped before recording a structured verdict."
-            try:
-                arguments = parse_tool_arguments(tool_call)
-            except BrowserActionError:
-                return status, finding
-
-            explicit_status = str(arguments.get("status", "")).strip().lower().replace(" ", "_")
-            if explicit_status in {"passed", "failed", "inconclusive", "not_testable"}:
-                status = explicit_status
-
-            explicit_finding = str(
-                arguments.get("finding")
-                or arguments.get("summary")
-                or arguments.get("reason")
-                or arguments.get("message")
-                or ""
-            ).strip()
-            if explicit_finding:
-                finding = explicit_finding
-
-            return status, finding
-        return None
-
-    @staticmethod
-    def _parse_fallback_verdict(content: Any) -> tuple[ClaimStatus, str] | None:
-        if content is None:
-            return None
-        text = content if isinstance(content, str) else str(content)
-        match = FALLBACK_VERDICT_PATTERN.search(text)
-        if match is None:
-            return None
-
-        status = match.group(1).lower().replace(" ", "_")
-        return status, text
 
     async def _finalize_result(
         self,

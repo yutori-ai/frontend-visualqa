@@ -63,14 +63,33 @@ class FakeMessage:
         return payload
 
 
+@dataclass
+class FakeChoice:
+    message: FakeMessage
+
+
+@dataclass
+class FakeResponse:
+    choices: list[FakeChoice]
+    parsed_json: dict[str, Any] | None = None
+
+
 class FakeNavigatorClient:
-    def __init__(self, responses: list[FakeMessage]) -> None:
+    def __init__(self, responses: list[FakeMessage | FakeResponse]) -> None:
         self.responses = list(responses)
         self.calls: list[dict[str, Any]] = []
 
-    async def create(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None = None) -> FakeMessage:
+    async def create(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+        json_schema: dict[str, Any] | None = None,
+    ) -> FakeResponse:
         self.calls.append({"messages": messages, "tools": tools or []})
-        return self.responses.pop(0)
+        raw = self.responses.pop(0)
+        if isinstance(raw, FakeResponse):
+            return raw
+        return FakeResponse(choices=[FakeChoice(message=raw)])
 
     def trim_messages(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         return messages

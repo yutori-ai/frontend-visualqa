@@ -68,14 +68,22 @@ class NavigatorClient:
         messages: list[dict[str, Any]],
         *,
         tools: list[dict[str, Any]] | None = None,
+        json_schema: dict[str, Any] | None = None,
     ) -> Any:
-        """Call the Navigator model and return the assistant message for the next step."""
+        """Call the Navigator model and return the full response.
+
+        When *json_schema* is provided and the model emits structured JSON
+        (instead of tool calls), the parsed result is available on
+        ``response.parsed_json``.
+        """
 
         client = await self._ensure_client()
         prepared_messages = self.trim_messages(messages)
         kwargs: dict[str, Any] = {}
         if tools:
             kwargs["tools"] = tools
+        if json_schema is not None:
+            kwargs["json_schema"] = json_schema
         if self._supports_tool_set():
             if self.tool_set is not None:
                 kwargs["tool_set"] = self.tool_set
@@ -116,10 +124,7 @@ class NavigatorClient:
                 getattr(usage, "completion_tokens", "?"),
                 getattr(usage, "total_tokens", "?"),
             )
-        try:
-            return response.choices[0].message
-        except Exception as exc:
-            raise NavigatorClientError(f"Navigator response did not contain a message choice: {exc}") from exc
+        return response
 
     def trim_messages(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Trim oversized image payloads while preserving recent screenshots."""
