@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import re
 from dataclasses import dataclass
 from typing import Any, TYPE_CHECKING
 
@@ -128,11 +127,14 @@ def is_disallowed_zoom_shortcut(key_text: str) -> bool:
     )
 
 
+_PASSIVE_ACTIONS = READ_ONLY_EXPANDED_TOOL_NAMES | {"screenshot", "wait"}
+
+
 def tool_counts_as_interaction(tool_name: str) -> bool:
     """Return whether a tool materially changes the page state."""
 
     canonical_name = ACTION_NAME_ALIASES.get(tool_name, tool_name)
-    return canonical_name not in READ_ONLY_EXPANDED_TOOL_NAMES
+    return canonical_name not in _PASSIVE_ACTIONS
 
 
 def render_action_trace(
@@ -368,13 +370,14 @@ class ActionExecutor:
                     raise BrowserActionError(f"unsupported scroll direction: {direction}")
                 # Resolve coordinates from ref or raw coordinates, then share
                 # the overlay/modifier/wheel logic for both paths.
-                if raw_arguments.get("ref") and raw_arguments.get("coordinates") is None:
+                raw_coords = raw_arguments.get("coordinates")
+                has_coords = isinstance(raw_coords, (list, tuple)) and len(raw_coords) == 2
+                if raw_arguments.get("ref") and not has_coords:
                     x, y = await self._resolve_coordinates(
                         page, raw_arguments, width=width, height=height, action_name=canonical_name,
                     )
                 else:
-                    coords = raw_arguments.get("coordinates", [500, 500])
-                    x, y = denormalize_coordinates(coords, width=width, height=height)
+                    x, y = denormalize_coordinates(raw_coords if has_coords else [500, 500], width=width, height=height)
                 await self._best_effort_overlay_preview_action(action_type="scroll", x=x, y=y, direction=direction)
                 modifier_keys = await self._press_modifier_keys(page, raw_arguments.get("modifier"))
                 try:
@@ -432,14 +435,20 @@ class ActionExecutor:
                 hold_duration = raw_arguments.get("duration")
                 if hold_duration is not None and float(hold_duration) > 0:
                     modifier_keys = map_keys_individual(key_text)
-                    await self._best_effort_overlay_set_status("Holding key")
-                    for key_name in modifier_keys:
-                        await page.keyboard.down(key_name)
-                    try:
-                        await asyncio.sleep(min(float(hold_duration), 100.0))
-                    finally:
-                        for key_name in reversed(modifier_keys):
-                            await page.keyboard.up(key_name)
+                    # Block zoom chords in the timed-hold path too, same
+                    # as the fallback press path below.
+                    combo = "+".join(modifier_keys)
+                    if is_disallowed_zoom_shortcut(combo):
+                        logger.debug("Blocked disallowed zoom chord in hold_key: %s", combo)
+                    else:
+                        await self._best_effort_overlay_set_status("Holding key")
+                        for key_name in modifier_keys:
+                            await page.keyboard.down(key_name)
+                        try:
+                            await asyncio.sleep(min(float(hold_duration), 100.0))
+                        finally:
+                            for key_name in reversed(modifier_keys):
+                                await page.keyboard.up(key_name)
                 else:
                     for key_name in _mapped_key_presses(key_text):
                         if is_disallowed_zoom_shortcut(key_name):

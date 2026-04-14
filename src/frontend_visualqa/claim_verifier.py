@@ -639,13 +639,16 @@ class ClaimVerifier:
         return None
 
     async def _execute_tool_call(self, session: BrowserSession, tool_call: Any) -> dict[str, Any]:
+        from frontend_visualqa.actions import tool_counts_as_interaction
+
         result = await self.action_executor.execute_tool_call(session, tool_call)
         if isinstance(result, str):
+            tool_name = getattr(getattr(tool_call, "function", tool_call), "name", "")
             return {
                 "trace": result,
                 "output_text": None,
                 "current_url": session.page.url,
-                "counts_as_interaction": True,
+                "counts_as_interaction": tool_counts_as_interaction(tool_name),
             }
         return {
             "trace": getattr(result, "trace", str(result)),
