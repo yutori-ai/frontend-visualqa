@@ -99,6 +99,7 @@ class FakeActionExecutor:
             output_text=None,
             current_url=session.page.url,
             success=True,
+            counts_as_interaction=resolved_name not in {"find", "extract_elements"},
         )
 
 
@@ -302,6 +303,7 @@ async def test_claim_verifier_requires_an_action_before_accepting_a_verdict_with
         claim="The cart badge shows 3 items",
         url="http://fixture.local/products",
         navigation_hint="Click Add to Cart before deciding.",
+        max_steps=3,
     )
 
     assert _field(result, "status") == "passed"
@@ -310,6 +312,66 @@ async def test_claim_verifier_requires_an_action_before_accepting_a_verdict_with
     reminder_message = next(
         message
         for message in reversed(navigator_client.calls[1]["messages"])
+        if message.get("role") == "user" and isinstance(message.get("content"), list)
+    )
+    assert "You have not followed the navigation hint yet." in reminder_message["content"][0]["text"]
+
+
+@pytest.mark.asyncio
+async def test_claim_verifier_does_not_treat_read_only_tools_as_navigation_interaction(
+    tmp_path: Path,
+) -> None:
+    module = _import_claim_verifier_module()
+    verifier, navigator_client, action_executor = _build_claim_verifier(
+        module,
+        tmp_path,
+        responses=[
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-1",
+                        function=FakeFunction(
+                            name="find",
+                            arguments=json.dumps({"text": "Cart"}),
+                        ),
+                    )
+                ]
+            ),
+            _verdict_response(status="failed", finding="The cart badge shows 2 items."),
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-2",
+                        function=FakeFunction(
+                            name="goto_url",
+                            arguments=json.dumps({"url": "http://fixture.local/cart"}),
+                        ),
+                    )
+                ]
+            ),
+            _verdict_response(status="passed", finding="The cart badge now shows 3 items."),
+        ],
+    )
+
+    result = await _call_verify(
+        verifier,
+        page=FakePage(url="http://fixture.local/products"),
+        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+        claim="The cart badge shows 3 items",
+        url="http://fixture.local/products",
+        navigation_hint="Click Add to Cart before deciding.",
+        max_steps=3,
+    )
+
+    assert _field(result, "status") == "passed"
+    assert action_executor.calls == [
+        ("find", {"text": "Cart"}),
+        ("goto_url", {"url": "http://fixture.local/cart"}),
+    ]
+    assert len(navigator_client.calls) == 4
+    reminder_message = next(
+        message
+        for message in reversed(navigator_client.calls[2]["messages"])
         if message.get("role") == "user" and isinstance(message.get("content"), list)
     )
     assert "You have not followed the navigation hint yet." in reminder_message["content"][0]["text"]

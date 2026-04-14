@@ -38,6 +38,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_WAIT_SECONDS = 1.0
 EXPANDED_TOOL_NAMES = {"extract_elements", "find", "set_element_value", "execute_js"}
+READ_ONLY_EXPANDED_TOOL_NAMES = {"extract_elements", "find"}
 
 CLICK_ACTIONS = {
     "left_click",
@@ -126,6 +127,14 @@ def is_disallowed_zoom_shortcut(key_text: str) -> bool:
         part in DISALLOWED_ZOOM_KEYS for part in parts[1:]
     )
 
+
+def tool_counts_as_interaction(tool_name: str) -> bool:
+    """Return whether a tool materially changes the page state."""
+
+    canonical_name = ACTION_NAME_ALIASES.get(tool_name, tool_name)
+    return canonical_name not in READ_ONLY_EXPANDED_TOOL_NAMES
+
+
 def render_action_trace(
     action_name: str,
     arguments: dict[str, Any],
@@ -206,6 +215,7 @@ class ToolExecutionResult:
     trace: str
     output_text: str | None = None
     current_url: str | None = None
+    counts_as_interaction: bool = True
 
 
 class ActionExecutor:
@@ -527,6 +537,7 @@ class ActionExecutor:
             trace=f"{action_name}({', '.join(f'{k}={v!r}' for k, v in arguments.items())})",
             output_text=output,
             current_url=session.page.url,
+            counts_as_interaction=tool_counts_as_interaction(action_name),
         )
 
     async def _best_effort_wait_for_domcontentloaded(self, page: Any) -> None:
@@ -551,6 +562,10 @@ class ActionExecutor:
         ref = arguments.get("ref")
         coordinates = arguments.get("coordinates")
 
+        # Treat empty lists/tuples the same as None — the model sometimes sends
+        # coordinates=[] when it intends to use ref-only targeting.
+        has_coordinates = isinstance(coordinates, (list, tuple)) and len(coordinates) == 2
+
         if ref:
             try:
                 result = await evaluate_tool_script(page, GET_ELEMENT_BY_REF_SCRIPT, ref)
@@ -558,9 +573,9 @@ class ActionExecutor:
                 result = {"success": False, "message": str(exc)}
             if result.get("success"):
                 resolved_coordinates = result.get("coordinates")
-                if isinstance(resolved_coordinates, list | tuple) and len(resolved_coordinates) == 2:
+                if isinstance(resolved_coordinates, (list, tuple)) and len(resolved_coordinates) == 2:
                     return int(round(float(resolved_coordinates[0]))), int(round(float(resolved_coordinates[1])))
-            if coordinates is None:
+            if not has_coordinates:
                 message = result.get("message", "Unknown error")
                 raise BrowserActionError(f"{action_name} ref resolution failed for {ref}: {message}")
             logger.warning(
@@ -571,8 +586,8 @@ class ActionExecutor:
                 coordinates,
             )
 
-        if coordinates is None:
-            raise BrowserActionError(f"{action_name} requires coordinates")
+        if not has_coordinates:
+            raise BrowserActionError(f"{action_name} requires coordinates or a valid ref")
         return denormalize_coordinates(coordinates, width=width, height=height)
 
     @staticmethod

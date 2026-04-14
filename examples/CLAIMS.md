@@ -126,7 +126,8 @@ frontend-visualqa verify http://localhost:8000/campaign_editor.html \
   'The Send test email button appears active and clickable' \
   'The mobile email preview is fully visible inside its frame' \
   'The subject line shows Launch Week starts now'
-# → first three failed, fourth passed (3/3)
+# → first two failed, subject line passed (3/3).
+# → The mobile preview claim now passes in the latest n1.5 reruns (3/3).
 ```
 
 ### calendar_scheduler.html — date selection, time slot, toggle state
@@ -161,7 +162,7 @@ frontend-visualqa verify http://localhost:8000/service_status.html \
   'The system health gauge fill matches the 98.7% label'
 # → API Gateway incorrectly passes (0/3 correct).
 # → Auth indicator non-deterministic (1-2/3 correct — improvement over n1 which was 0/3).
-# → Gauge incorrectly passes (0/3 correct).
+# → Gauge is non-deterministic (failed, passed, failed in the latest rerun).
 ```
 
 ### Badge clipping (notification_center.html)
@@ -183,5 +184,5 @@ Navigator has difficulty counting filled vs empty stars in a rating display.
 ```bash
 frontend-visualqa verify http://localhost:8000/pricing_plans.html \
   --claims 'The Pro plan star rating visually matches the 4.8 out of 5 text'
-# → non-deterministic (1/3 correct)
+# → non-deterministic (1-2/3 correct in current reruns)
 ```

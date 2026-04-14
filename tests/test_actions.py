@@ -199,6 +199,15 @@ def test_render_action_trace_formats_scaled_coordinates() -> None:
     assert result == "left_click([640, 200])"
 
 
+def test_tool_counts_as_interaction_marks_read_only_expanded_tools_non_interactive() -> None:
+    module = _import_actions_module()
+
+    assert module.tool_counts_as_interaction("find") is False
+    assert module.tool_counts_as_interaction("extract_elements") is False
+    assert module.tool_counts_as_interaction("set_element_value") is True
+    assert module.tool_counts_as_interaction("left_click") is True
+
+
 @pytest.mark.asyncio
 async def test_execute_action_left_click_scales_coordinates_before_dispatch() -> None:
     module = _import_actions_module()
@@ -674,7 +683,7 @@ async def test_execute_action_rejects_invalid_scroll_direction() -> None:
 
 
 @pytest.mark.asyncio
-async def test_execute_tool_call_rejects_removed_find_tool() -> None:
+async def test_execute_tool_call_runs_find_without_counting_as_interaction(monkeypatch: pytest.MonkeyPatch) -> None:
     module = _import_actions_module()
     executor = instantiate_with_supported_kwargs(
         module.ActionExecutor,
@@ -684,8 +693,23 @@ async def test_execute_tool_call_rejects_removed_find_tool() -> None:
     page = FakePage()
     viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
 
-    with pytest.raises(Exception):
-        await _call_execute_tool_call(executor, page, "find", {"text": "ATMOS"}, viewport)
+    async def _fake_evaluate_tool_script(page_arg: Any, script: str, text: str) -> dict[str, Any]:
+        assert page_arg is page
+        assert script == module.FIND_SCRIPT
+        assert text == "ATMOS"
+        return {
+            "success": True,
+            "matches": ["ATMOS icon"],
+            "totalMatches": 1,
+        }
+
+    monkeypatch.setattr(module, "evaluate_tool_script", _fake_evaluate_tool_script)
+
+    result = await _call_execute_tool_call(executor, page, "find", {"text": "ATMOS"}, viewport)
+
+    assert result.trace == "find(text='ATMOS')"
+    assert result.output_text == 'Found 1 element(s) matching "ATMOS":\nATMOS icon'
+    assert result.counts_as_interaction is False
 
 
 @pytest.mark.asyncio

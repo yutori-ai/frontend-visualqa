@@ -287,11 +287,13 @@ class ClaimVerifier:
                         trace=trace,
                     )
                     current_url = execution.get("current_url", session.page.url) or url
+                    counts_as_interaction = bool(execution.get("counts_as_interaction", True))
                     progress.url_history.append(current_url)
                     progress.step_count += 1
-                    non_action_reprompts = 0
-                    had_action_in_turn = True
-                    progress.has_interacted = True
+                    if counts_as_interaction:
+                        non_action_reprompts = 0
+                        had_action_in_turn = True
+                        progress.has_interacted = True
                     screenshot_bytes, screenshot_path = await self._capture_evidence_screenshot(
                         session=session,
                         run_artifacts=run_artifacts,
@@ -639,11 +641,17 @@ class ClaimVerifier:
     async def _execute_tool_call(self, session: BrowserSession, tool_call: Any) -> dict[str, Any]:
         result = await self.action_executor.execute_tool_call(session, tool_call)
         if isinstance(result, str):
-            return {"trace": result, "output_text": None, "current_url": session.page.url}
+            return {
+                "trace": result,
+                "output_text": None,
+                "current_url": session.page.url,
+                "counts_as_interaction": True,
+            }
         return {
             "trace": getattr(result, "trace", str(result)),
             "output_text": getattr(result, "output_text", None),
             "current_url": getattr(result, "current_url", None) or session.page.url,
+            "counts_as_interaction": getattr(result, "counts_as_interaction", True),
         }
 
     async def _finalize_result(
