@@ -26,6 +26,7 @@ from frontend_visualqa.prompts import (
 from frontend_visualqa.schemas import ClaimPage, ClaimProof, ClaimResult, ClaimStatus, ClaimTrace
 from frontend_visualqa.text_utils import clip_text
 from frontend_visualqa.tool_arguments import parse_tool_arguments
+from frontend_visualqa.utils import safe_async_method_call
 
 if TYPE_CHECKING:
     from frontend_visualqa.navigator_client import NavigatorClient
@@ -429,28 +430,14 @@ class ClaimVerifier:
             await self._best_effort_overlay_call("show_thought", reasoning)
 
     async def _best_effort_overlay_call(self, method_name: str, *args: Any, **kwargs: Any) -> None:
-        overlay = self._overlay
-        if overlay is None:
-            return
-        method = getattr(overlay, method_name, None)
-        if not callable(method):
-            return
-        try:
-            await method(*args, **kwargs)
-        except Exception:
-            logger.debug("Overlay method %s failed", method_name, exc_info=True)
+        """Invoke an optional overlay hook without interrupting verification."""
+
+        await safe_async_method_call(self._overlay, method_name, *args, log_label="Overlay", **kwargs)
 
     async def _safe_hook_call(self, method_name: str, **kwargs: Any) -> None:
-        hook = self._hook
-        if hook is None:
-            return
-        method = getattr(hook, method_name, None)
-        if not callable(method):
-            return
-        try:
-            await method(**kwargs)
-        except Exception:
-            logger.debug("Hook method %s failed", method_name, exc_info=True)
+        """Invoke an optional lifecycle hook without interrupting verification."""
+
+        await safe_async_method_call(self._hook, method_name, log_label="Hook", **kwargs)
 
     async def _complete_result(self, result: ClaimResult) -> ClaimResult:
         await self._safe_hook_call("on_agent_end", output=result)

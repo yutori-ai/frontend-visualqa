@@ -15,6 +15,7 @@ from frontend_visualqa.browser import (
 )
 from frontend_visualqa.errors import BrowserActionError
 from frontend_visualqa.tool_arguments import parse_tool_arguments
+from frontend_visualqa.utils import safe_async_method_call
 from yutori.navigator import (
     denormalize_coordinates,
     map_key_to_playwright,
@@ -615,28 +616,14 @@ class ActionExecutor:
             await page.keyboard.up(key_name)
 
     async def _best_effort_overlay_preview_action(self, **kwargs: Any) -> None:
-        overlay = self._overlay
-        if overlay is None:
-            return
-        preview_action = getattr(overlay, "preview_action", None)
-        if not callable(preview_action):
-            return
-        try:
-            await preview_action(**kwargs)
-        except Exception:
-            logger.debug("Overlay preview_action failed", exc_info=True)
+        """Preview an action on the overlay without breaking the main flow."""
+
+        await safe_async_method_call(self._overlay, "preview_action", log_label="Overlay", **kwargs)
 
     async def _best_effort_overlay_set_status(self, label: str) -> None:
-        overlay = self._overlay
-        if overlay is None:
-            return
-        set_status = getattr(overlay, "set_status", None)
-        if not callable(set_status):
-            return
-        try:
-            await set_status(label)
-        except Exception:
-            logger.debug("Overlay set_status failed", exc_info=True)
+        """Update overlay status text without propagating overlay failures."""
+
+        await safe_async_method_call(self._overlay, "set_status", label, log_label="Overlay")
 
     def _post_action_delay(self, action_name: str) -> float:
         if self.settle_delay_seconds is not None:
