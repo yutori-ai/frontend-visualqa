@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.0] - 2026-04-14
+
+### Breaking
+- Renamed `N1Client` → `NavigatorClient`; `N1ClientError` → `NavigatorClientError` (backward-compat aliases kept)
+- Default model changed from `n1-latest` to `n1.5-latest`
+- Imports changed from `yutori.n1` to `yutori.navigator`
+- Replaced `record_claim_result` tool with `json_schema` structured output; `verdict_source` values are now `json_schema` | `force_stop`
+- Removed `extract_content_and_links` tool — n1.5 handles visual QA from screenshots alone
+
+### Added
+- n1.5 action handlers: `mouse_move`, `middle_click`, `mouse_down`, `mouse_up`, `hold_key`, click modifiers
+- Ref-based coordinate resolution for n1.5 element references
+- SDK `PageReadyChecker` integration for page-settle waits
+- Expanded tool handlers (`extract_elements`, `find`, `set_element_value`, `execute_js`) — available but not default
+- `tool_set` and `disable_tools` parameters on `NavigatorClient.create()`
+- `json_schema` parameter on `NavigatorClient.create()` for structured output
+- `safe_async_method_call()` utility consolidating four near-identical helpers from `claim_verifier.py` and `actions.py`
+
+### Changed
+- `NavigatorClient.create()` retry mechanism replaced with `tenacity` (same backoff behavior, battle-tested library)
+- Prompt tuned for visual-first reasoning with calibrated gauge and toggle examples
+- `DEFAULT_PAGE_READY_TIMEOUT_SECONDS` lowered from 3 to 2
+- `yutori` SDK dependency bumped from `>=0.4.10` to `>=0.6.0`
+- New dependency: `tenacity>=8.2.0`
+
 ## [0.7.0] - 2026-04-07
 
 ### Added
