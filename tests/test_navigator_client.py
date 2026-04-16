@@ -9,7 +9,7 @@ import pytest
 from frontend_visualqa.errors import NavigatorClientError
 
 try:
-    from frontend_visualqa.navigator_client import AsyncYutoriClient, NavigatorClient
+    from frontend_visualqa.navigator_client import AsyncYutoriClient, NavigatorClient, wait_exponential
 except ModuleNotFoundError:
     pytestmark = pytest.mark.skip(reason="yutori SDK not installed")
 
@@ -119,6 +119,20 @@ async def test_navigator_client_retries_transient_errors() -> None:
     assert result is response
     assert result.choices[0].message is message
     assert len(client.completions.calls) == 2
+
+
+def test_wait_exponential_matches_original_retry_delays() -> None:
+    """Tenacity's wait strategy should preserve the original backoff sequence."""
+
+    wait_strategy = wait_exponential(multiplier=0.5, max=4.0)
+
+    class RetryState:
+        def __init__(self, attempt_number: int) -> None:
+            self.attempt_number = attempt_number
+
+    waits = [wait_strategy(RetryState(attempt_number)) for attempt_number in range(1, 6)]
+
+    assert waits == [0.5, 1.0, 2.0, 4.0, 4.0]
 
 
 def test_navigator_client_trim_messages_uses_sdk_compatibility_fallback(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -95,6 +95,8 @@ class NavigatorClient:
         try:
             async for attempt in AsyncRetrying(
                 stop=stop_after_attempt(self.max_retries + 1),
+                # wait_exponential uses attempt_number - 1 internally, so this
+                # preserves the original delay sequence: 0.5, 1.0, 2.0, ...
                 wait=wait_exponential(
                     multiplier=self.initial_backoff_seconds,
                     max=self.max_backoff_seconds,
@@ -163,6 +165,8 @@ class NavigatorClient:
         return self._client
 
     def _log_retry(self, retry_state: Any) -> None:
+        """Log retry timing before the next transient-error retry attempt."""
+
         logger.warning(
             "Transient Navigator failure on attempt %s/%s; retrying in %.2fs",
             retry_state.attempt_number,
@@ -180,6 +184,8 @@ class NavigatorClient:
         return status_code in {408, 409, 425, 429, 500, 502, 503, 504}
 
     def _supports_tool_set(self) -> bool:
+        """Return whether the configured model supports Navigator's tool_set option."""
+
         # tool_set is supported by n1.5+ models. Legacy n1 (and n1-experimental)
         # models do not accept it. Rather than maintaining a prefix list, reject
         # only the known-legacy patterns.
