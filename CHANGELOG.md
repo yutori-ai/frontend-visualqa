@@ -16,7 +16,7 @@ All notable changes to this project will be documented in this file.
 - Ref-based coordinate resolution for n1.5 element references
 - SDK `PageReadyChecker` integration for page-settle waits
 - Expanded tool handlers (`extract_elements`, `find`, `set_element_value`, `execute_js`) — available but not default
-- `tool_set` and `disable_tools` parameters on `NavigatorClient.create()`
+- `tool_set` and `disable_tools` parameters on `NavigatorClient.__init__` (applied during `create()`)
 - `json_schema` parameter on `NavigatorClient.create()` for structured output
 - `safe_async_method_call()` utility consolidating four near-identical helpers from `claim_verifier.py` and `actions.py`
 
