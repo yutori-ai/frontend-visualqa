@@ -430,10 +430,14 @@ class ClaimVerifier:
             await self._best_effort_overlay_call("show_thought", reasoning)
 
     async def _best_effort_overlay_call(self, method_name: str, *args: Any, **kwargs: Any) -> None:
-        await safe_async_method_call(self._overlay, method_name, *args, label="Overlay", **kwargs)
+        """Invoke an optional overlay hook without interrupting verification."""
+
+        await safe_async_method_call(self._overlay, method_name, *args, log_label="Overlay", **kwargs)
 
     async def _safe_hook_call(self, method_name: str, **kwargs: Any) -> None:
-        await safe_async_method_call(self._hook, method_name, label="Hook", **kwargs)
+        """Invoke an optional lifecycle hook without interrupting verification."""
+
+        await safe_async_method_call(self._hook, method_name, log_label="Hook", **kwargs)
 
     async def _complete_result(self, result: ClaimResult) -> ClaimResult:
         await self._safe_hook_call("on_agent_end", output=result)

@@ -616,10 +616,14 @@ class ActionExecutor:
             await page.keyboard.up(key_name)
 
     async def _best_effort_overlay_preview_action(self, **kwargs: Any) -> None:
-        await safe_async_method_call(self._overlay, "preview_action", label="Overlay", **kwargs)
+        """Preview an action on the overlay without breaking the main flow."""
+
+        await safe_async_method_call(self._overlay, "preview_action", log_label="Overlay", **kwargs)
 
     async def _best_effort_overlay_set_status(self, label: str) -> None:
-        await safe_async_method_call(self._overlay, "set_status", label, label="Overlay")
+        """Update overlay status text without propagating overlay failures."""
+
+        await safe_async_method_call(self._overlay, "set_status", label, log_label="Overlay")
 
     def _post_action_delay(self, action_name: str) -> float:
         if self.settle_delay_seconds is not None:

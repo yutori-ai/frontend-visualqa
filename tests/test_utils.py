@@ -8,29 +8,39 @@ from frontend_visualqa.utils import safe_async_method_call
 
 
 @pytest.mark.asyncio
-async def test_none_target_is_noop() -> None:
+async def test_none_target_is_noop(caplog: pytest.LogCaptureFixture) -> None:
     """Calling with target=None should do nothing and not raise."""
-    await safe_async_method_call(None, "any_method", "arg1", key="val")
+
+    with caplog.at_level(logging.DEBUG, logger="frontend_visualqa.utils"):
+        await safe_async_method_call(None, "any_method", "arg1", key="val")
+
+    assert not caplog.records
 
 
 @pytest.mark.asyncio
-async def test_missing_method_is_noop() -> None:
+async def test_missing_method_is_noop(caplog: pytest.LogCaptureFixture) -> None:
     """Target without the named method should be a silent no-op."""
 
     class Stub:
         pass
 
-    await safe_async_method_call(Stub(), "nonexistent_method")
+    with caplog.at_level(logging.DEBUG, logger="frontend_visualqa.utils"):
+        await safe_async_method_call(Stub(), "nonexistent_method")
+
+    assert not caplog.records
 
 
 @pytest.mark.asyncio
-async def test_non_callable_attribute_is_noop() -> None:
+async def test_non_callable_attribute_is_noop(caplog: pytest.LogCaptureFixture) -> None:
     """Target with a non-callable attribute of the same name should be a no-op."""
 
     class Stub:
         some_method = 42  # not callable
 
-    await safe_async_method_call(Stub(), "some_method")
+    with caplog.at_level(logging.DEBUG, logger="frontend_visualqa.utils"):
+        await safe_async_method_call(Stub(), "some_method")
+
+    assert not caplog.records
 
 
 @pytest.mark.asyncio
@@ -48,6 +58,21 @@ async def test_successful_call_forwards_args_and_kwargs() -> None:
 
 
 @pytest.mark.asyncio
+async def test_keyword_named_label_is_forwarded_to_target_method() -> None:
+    """Forwarded kwargs should remain available even when named ``label``."""
+
+    captured: dict[str, str] = {}
+
+    class Stub:
+        async def set_status(self, *, label: str) -> None:
+            captured["label"] = label
+
+    await safe_async_method_call(Stub(), "set_status", label="Analyzing", log_label="Overlay")
+
+    assert captured == {"label": "Analyzing"}
+
+
+@pytest.mark.asyncio
 async def test_exception_is_swallowed_and_logged(caplog: pytest.LogCaptureFixture) -> None:
     """Method exceptions are caught and logged at DEBUG, not propagated."""
 
@@ -56,7 +81,7 @@ async def test_exception_is_swallowed_and_logged(caplog: pytest.LogCaptureFixtur
             raise RuntimeError("kaboom")
 
     with caplog.at_level(logging.DEBUG, logger="frontend_visualqa.utils"):
-        await safe_async_method_call(Stub(), "boom", label="Overlay")
+        await safe_async_method_call(Stub(), "boom", log_label="Overlay")
 
     assert any("Overlay" in r.message and "boom" in r.message for r in caplog.records)
 

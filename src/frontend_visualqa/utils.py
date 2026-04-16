@@ -12,7 +12,7 @@ async def safe_async_method_call(
     target: Any | None,
     method_name: str,
     *args: Any,
-    label: str = "",
+    log_label: str = "",
     **kwargs: Any,
 ) -> None:
     """Best-effort call to an optional async method on *target*.
@@ -29,4 +29,4 @@ async def safe_async_method_call(
     try:
         await method(*args, **kwargs)
     except Exception:
-        logger.debug("%s %s failed", label or type(target).__name__, method_name, exc_info=True)
+        logger.debug("%s %s failed", log_label or type(target).__name__, method_name, exc_info=True)
