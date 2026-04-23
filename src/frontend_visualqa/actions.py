@@ -119,6 +119,18 @@ def _format_modifier_trace_suffix(modifier: Any) -> str:
     return f", modifier={'+'.join(modifier_keys)}"
 
 
+def _get_clear_before(arguments: dict[str, Any]) -> bool:
+    return bool(
+        arguments.get("clear_before_typing")
+        or arguments.get("clear_before")
+        or arguments.get("clear_before_type")
+    )
+
+
+def _get_key_text(arguments: dict[str, Any]) -> str:
+    return str(arguments.get("key") or arguments.get("key_comb") or "")
+
+
 def is_disallowed_zoom_shortcut(key_text: str) -> bool:
     """Return true when the key chord would change the browser zoom level."""
 
@@ -178,13 +190,11 @@ def render_action_trace(
     if canonical_name == "type":
         text = json.dumps(str(arguments.get("text", "")))
         press_enter = bool(arguments.get("press_enter_after"))
-        clear_before = bool(
-            arguments.get("clear_before_typing") or arguments.get("clear_before") or arguments.get("clear_before_type")
-        )
+        clear_before = _get_clear_before(arguments)
         return f"type({text}, press_enter_after={press_enter}, clear_before={clear_before})"
 
     if canonical_name == "key_press":
-        key_comb = str(arguments.get("key") or arguments.get("key_comb") or "")
+        key_comb = _get_key_text(arguments)
         key_sequence = _mapped_key_presses(key_comb)
         if not key_sequence:
             return "key_press()"
@@ -193,7 +203,7 @@ def render_action_trace(
         return f"key_press_sequence({', '.join(key_sequence)})"
 
     if canonical_name == "hold_key":
-        key_text = str(arguments.get("key") or arguments.get("key_comb") or "")
+        key_text = _get_key_text(arguments)
         key_sequence = map_keys_individual(key_text)
         rendered = "+".join(key_sequence) if key_sequence else ""
         duration = arguments.get("duration")
@@ -396,11 +406,7 @@ class ActionExecutor:
 
             elif canonical_name == "type":
                 text = str(raw_arguments.get("text", ""))
-                clear_before = bool(
-                    raw_arguments.get("clear_before_typing")
-                    or raw_arguments.get("clear_before")
-                    or raw_arguments.get("clear_before_type")
-                )
+                clear_before = _get_clear_before(raw_arguments)
                 press_enter = bool(raw_arguments.get("press_enter_after"))
                 await self._best_effort_overlay_preview_action(action_type="type")
                 if clear_before:
@@ -412,7 +418,7 @@ class ActionExecutor:
                     await page.keyboard.press("Enter")
 
             elif canonical_name == "key_press":
-                key_comb = str(raw_arguments.get("key") or raw_arguments.get("key_comb") or "")
+                key_comb = _get_key_text(raw_arguments)
                 if not key_comb:
                     raise BrowserActionError("key_press requires key")
                 key_sequence = _mapped_key_presses(key_comb)
@@ -430,7 +436,7 @@ class ActionExecutor:
                     await page.keyboard.press(key_name)
 
             elif canonical_name == "hold_key":
-                key_text = str(raw_arguments.get("key") or raw_arguments.get("key_comb") or "")
+                key_text = _get_key_text(raw_arguments)
                 if not key_text:
                     raise BrowserActionError("hold_key requires key")
                 hold_duration = raw_arguments.get("duration")
