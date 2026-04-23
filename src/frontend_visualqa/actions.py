@@ -120,6 +120,11 @@ def _format_modifier_trace_suffix(modifier: Any) -> str:
 
 
 def _get_clear_before(arguments: dict[str, Any]) -> bool:
+    """Return whether a ``type`` action should clear the field before typing.
+
+    Accepts any of the aliases the model has historically emitted:
+    ``clear_before_typing``, ``clear_before``, and ``clear_before_type``.
+    """
     return bool(
         arguments.get("clear_before_typing")
         or arguments.get("clear_before")
@@ -128,6 +133,11 @@ def _get_clear_before(arguments: dict[str, Any]) -> bool:
 
 
 def _get_key_text(arguments: dict[str, Any]) -> str:
+    """Extract the key or key combination string from a key_press/hold_key action.
+
+    Accepts either the ``key`` or ``key_comb`` argument name and coerces the
+    result to ``str``; returns ``""`` when neither is present.
+    """
     return str(arguments.get("key") or arguments.get("key_comb") or "")
 
 
