@@ -6,7 +6,7 @@ import asyncio
 import logging
 import time
 from pathlib import Path
-from typing import Any, TYPE_CHECKING, Callable
+from typing import Any, Literal, TYPE_CHECKING, Callable
 
 import httpx
 
@@ -34,6 +34,21 @@ logger = logging.getLogger(__name__)
 if not TYPE_CHECKING:
     ClaimVerifier = None  # type: ignore[assignment]
     NavigatorClient = None  # type: ignore[assignment]
+
+
+_TimeoutScope = Literal["claim", "run"]
+
+# (no-timeout message, with-timeout template using {seconds})
+_TIMEOUT_FINDING_TEMPLATES: dict[_TimeoutScope, tuple[str, str]] = {
+    "claim": (
+        "Claim verification timed out before a verdict was recorded.",
+        "Claim verification timed out after {seconds} before a verdict was recorded.",
+    ),
+    "run": (
+        "Run timed out before this claim could finish.",
+        "Run timed out after {seconds} before this claim could finish.",
+    ),
+}
 
 
 def _load_claim_verifier_class() -> Any:
@@ -260,7 +275,7 @@ class VisualQARunner:
                                 navigation_hint=navigation_hint_for_claim,
                             )
                         except TimeoutError:
-                            finding = self._format_claim_timeout_finding(request.claim_timeout_seconds)
+                            finding = self._format_timeout_finding("claim", request.claim_timeout_seconds)
                             result = self._consume_partial_claim_result(
                                 status="inconclusive",
                                 finding=finding,
@@ -287,7 +302,7 @@ class VisualQARunner:
                         next_claim_index = index + 1
             except TimeoutError:
                 timed_out_claims = request.claims[next_claim_index - 1 :]
-                timeout_finding = self._format_run_timeout_finding(request.run_timeout_seconds)
+                timeout_finding = self._format_timeout_finding("run", request.run_timeout_seconds)
                 if timed_out_claims:
                     interrupted_index = next_claim_index
                     interrupted_claim = timed_out_claims[0]
@@ -675,19 +690,11 @@ class VisualQARunner:
             return None
 
     @staticmethod
-    def _format_claim_timeout_finding(timeout_seconds: float | None) -> str:
+    def _format_timeout_finding(scope: _TimeoutScope, timeout_seconds: float | None) -> str:
+        no_timeout_msg, with_timeout_template = _TIMEOUT_FINDING_TEMPLATES[scope]
         if timeout_seconds is None:
-            return "Claim verification timed out before a verdict was recorded."
-        return (
-            f"Claim verification timed out after {VisualQARunner._format_timeout_seconds(timeout_seconds)} "
-            "before a verdict was recorded."
-        )
-
-    @staticmethod
-    def _format_run_timeout_finding(timeout_seconds: float | None) -> str:
-        if timeout_seconds is None:
-            return "Run timed out before this claim could finish."
-        return f"Run timed out after {VisualQARunner._format_timeout_seconds(timeout_seconds)} before this claim could finish."
+            return no_timeout_msg
+        return with_timeout_template.format(seconds=VisualQARunner._format_timeout_seconds(timeout_seconds))
 
     @staticmethod
     def _format_timeout_seconds(timeout_seconds: float) -> str:
