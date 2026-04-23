@@ -8,6 +8,17 @@ from typing import Any
 from frontend_visualqa.errors import BrowserActionError
 
 
+def tool_call_name(tool_call: Any) -> str:
+    """Return the tool-call's function name, tolerating SDK shape variation.
+
+    Handles both chat-completions tool-call shapes — those that wrap the name
+    under ``.function.name`` (OpenAI SDK) and those that expose ``.name``
+    directly on the tool-call object.
+    """
+
+    return getattr(getattr(tool_call, "function", tool_call), "name", "")
+
+
 def parse_tool_arguments(tool_call: Any) -> dict[str, Any]:
     """Parse chat-completions tool arguments into a JSON object."""
 
