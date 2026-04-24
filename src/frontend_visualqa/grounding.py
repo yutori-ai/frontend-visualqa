@@ -254,7 +254,7 @@ def _normalize_text(value: str) -> str:
 
 def _normalize_label_for_match(value: str) -> str:
     text = " ".join(value.split()).strip().casefold()
-    for quote in ("'", '"', "‘", "’", "“", "”"):
+    for quote in ("'", '"', "‘", "’", "“", "”"):  # noqa: RUF001
         text = text.replace(quote, "")
     for suffix in (" dropdown", " menu", " icon", " button"):
         if text.endswith(suffix):
