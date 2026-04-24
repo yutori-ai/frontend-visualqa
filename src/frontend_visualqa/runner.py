@@ -238,12 +238,7 @@ class VisualQARunner:
                 _safe_on_claim_complete(index, claim, result)
 
             try:
-                timeout_cm = (
-                    asyncio.timeout(request.run_timeout_seconds)
-                    if request.run_timeout_seconds
-                    else _null_async_context()
-                )
-                async with timeout_cm:
+                async with asyncio.timeout(request.run_timeout_seconds or None):
                     for index, claim in enumerate(request.claims, start=1):
                         next_claim_index = index
                         _safe_on_claim_start(index, claim)
@@ -774,11 +769,3 @@ class VisualQARunner:
             if claim_hint is not None:
                 return claim_hint
         return request.navigation_hint
-
-
-class _null_async_context:
-    async def __aenter__(self) -> None:
-        return None
-
-    async def __aexit__(self, exc_type: type | None, exc: BaseException | None, traceback: Any) -> None:
-        return None
