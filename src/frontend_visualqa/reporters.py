@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import json
 import time
 from pathlib import Path
 from typing import Any, Protocol
 
+from frontend_visualqa.artifacts import write_json_file
 from frontend_visualqa.claim_parser import ParsedClaimLine, ParsedClaimsFile
 from frontend_visualqa.schemas import ClaimResult, RunResult
 from frontend_visualqa.text_utils import collapse_whitespace as _collapse_whitespace
@@ -28,9 +28,7 @@ class NativeReporter:
 
     def write(self, run_result: RunResult, output_dir: Path, *, claims_file: ParsedClaimsFile | None = None) -> None:
         del claims_file
-        path = output_dir / "run_result.json"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(run_result.model_dump(mode="json"), indent=2))
+        write_json_file(output_dir / "run_result.json", run_result.model_dump(mode="json"))
 
 
 _CTRF_STATUS_MAP: dict[str, str] = {
@@ -126,9 +124,7 @@ class CTRFReporter:
         if run_result.run_name is not None:
             ctrf_report["results"]["extra"] = {"runName": run_result.run_name}
 
-        path = output_dir / "ctrf-report.json"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(ctrf_report, indent=2))
+        write_json_file(output_dir / "ctrf-report.json", ctrf_report)
 
 
 def _escape_markdown_inline(text: str) -> str:
