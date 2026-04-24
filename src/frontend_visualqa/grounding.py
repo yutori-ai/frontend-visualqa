@@ -254,7 +254,7 @@ def _normalize_text(value: str) -> str:
 
 def _normalize_label_for_match(value: str) -> str:
     text = " ".join(value.split()).strip().casefold()
-    for quote in ("'", '"', "\u2018", "\u2019", "\u201c", "\u201d"):
+    for quote in ("'", '"', "‘", "’", "“", "”"):
         text = text.replace(quote, "")
     for suffix in (" dropdown", " menu", " icon", " button"):
         if text.endswith(suffix):
@@ -263,17 +263,32 @@ def _normalize_label_for_match(value: str) -> str:
     return " ".join(text.split()).strip()
 
 
+def _check_exact_text_match(
+    grounding_state: GroundingState,
+    groups: dict[str, str],
+    *,
+    state_key: str,
+    entity_label: str,
+) -> tuple[ClaimStatus, str] | None:
+    expected = _normalize_text(groups["text"])
+    candidates = grounding_state.get(state_key, [])
+    if any(_normalize_text(text) == expected for text in candidates):
+        return "passed", f"Visible {entity_label} matched {groups['text']!r}."
+    return (
+        "failed",
+        f"No visible {entity_label} matched {groups['text']!r}. Visible {entity_label}s: {candidates or ['<none>']}.",
+    )
+
+
 def _check_heading_match(
     grounding_state: GroundingState,
     groups: dict[str, str],
 ) -> tuple[ClaimStatus, str] | None:
-    expected = _normalize_text(groups["text"])
-    visible_headings = grounding_state.get("visibleHeadings", [])
-    if any(_normalize_text(text) == expected for text in visible_headings):
-        return "passed", f"Visible heading matched {groups['text']!r}."
-    return (
-        "failed",
-        f"No visible heading matched {groups['text']!r}. Visible headings: {visible_headings or ['<none>']}.",
+    return _check_exact_text_match(
+        grounding_state,
+        groups,
+        state_key="visibleHeadings",
+        entity_label="heading",
     )
 
 
@@ -281,13 +296,11 @@ def _check_dialog_title_match(
     grounding_state: GroundingState,
     groups: dict[str, str],
 ) -> tuple[ClaimStatus, str] | None:
-    expected = _normalize_text(groups["text"])
-    dialog_titles = grounding_state.get("dialogTitles", [])
-    if any(_normalize_text(text) == expected for text in dialog_titles):
-        return "passed", f"Visible dialog title matched {groups['text']!r}."
-    return (
-        "failed",
-        f"No visible dialog title matched {groups['text']!r}. Visible dialog titles: {dialog_titles or ['<none>']}.",
+    return _check_exact_text_match(
+        grounding_state,
+        groups,
+        state_key="dialogTitles",
+        entity_label="dialog title",
     )
 
 
