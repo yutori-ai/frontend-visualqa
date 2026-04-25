@@ -26,7 +26,7 @@ from frontend_visualqa.prompts import (
 from frontend_visualqa.schemas import ClaimPage, ClaimProof, ClaimResult, ClaimStatus, ClaimTrace
 from frontend_visualqa.text_utils import clip_text
 from frontend_visualqa.tool_arguments import parse_tool_arguments
-from frontend_visualqa.utils import safe_async_method_call
+from frontend_visualqa.utils import safe_async_method_call, safe_method_call
 
 if TYPE_CHECKING:
     from frontend_visualqa.navigator_client import NavigatorClient
@@ -579,19 +579,16 @@ class ClaimVerifier:
         output_text: str | None,
         screenshot_path: str | None,
     ) -> None:
-        hook = self._hook
-        if hook is None:
-            return
-        try:
-            hook.record_action_event(
-                step=step,
-                action=action,
-                action_args=action_args,
-                output_preview=self._clip_trace_output_preview(output_text),
-                screenshot_path=screenshot_path,
-            )
-        except Exception:
-            logger.debug("record_action_event failed", exc_info=True)
+        safe_method_call(
+            self._hook,
+            "record_action_event",
+            log_label="Hook",
+            step=step,
+            action=action,
+            action_args=action_args,
+            output_preview=self._clip_trace_output_preview(output_text),
+            screenshot_path=screenshot_path,
+        )
 
     @staticmethod
     def _clip_trace_output_preview(output_text: str | None) -> str | None:
@@ -658,19 +655,18 @@ class ClaimVerifier:
             status=status,
             finding=finding,
         )
-        hook = self._hook
-        if verdict_source is not None and hook is not None:
-            try:
-                hook.record_verdict_event(
-                    step=progress.step_count,
-                    source=verdict_source,
-                    raw_status=status,
-                    raw_finding=finding,
-                    status=grounded_status,
-                    finding=grounded_finding,
-                )
-            except Exception:
-                logger.debug("record_verdict_event failed", exc_info=True)
+        if verdict_source is not None:
+            safe_method_call(
+                self._hook,
+                "record_verdict_event",
+                log_label="Hook",
+                step=progress.step_count,
+                source=verdict_source,
+                raw_status=status,
+                raw_finding=finding,
+                status=grounded_status,
+                finding=grounded_finding,
+            )
         return self._build_result(progress=progress, status=grounded_status, finding=grounded_finding)
 
     async def _ground_verdict(
