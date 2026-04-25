@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from urllib.parse import urlsplit
 
 
@@ -55,17 +56,10 @@ def wrong_page_recovered(
 # Internal helpers
 # ---------------------------------------------------------------------------
 
+@dataclass(slots=True)
 class _Location:
-    __slots__ = ("context", "route")
-
-    def __init__(self, context: str, route: tuple[str, ...]) -> None:
-        self.context = context
-        self.route = route
-
-    def __eq__(self, other: object) -> bool:
-        if not isinstance(other, _Location):
-            return NotImplemented
-        return self.context == other.context and self.route == other.route
+    context: str
+    route: tuple[str, ...]
 
 
 def _strip_trailing_hash(url: str) -> str:
