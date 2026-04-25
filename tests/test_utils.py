@@ -1,10 +1,83 @@
-"""Tests for the shared safe_async_method_call utility."""
+"""Tests for the shared safe_method_call / safe_async_method_call utilities."""
 
 import logging
 
 import pytest
 
-from frontend_visualqa.utils import safe_async_method_call
+from frontend_visualqa.utils import safe_async_method_call, safe_method_call
+
+
+def test_sync_none_target_is_noop(caplog: pytest.LogCaptureFixture) -> None:
+    with caplog.at_level(logging.DEBUG, logger="frontend_visualqa.utils"):
+        safe_method_call(None, "any_method", "arg1", key="val")
+
+    assert not caplog.records
+
+
+def test_sync_missing_method_is_noop(caplog: pytest.LogCaptureFixture) -> None:
+    class Stub:
+        pass
+
+    with caplog.at_level(logging.DEBUG, logger="frontend_visualqa.utils"):
+        safe_method_call(Stub(), "nonexistent_method")
+
+    assert not caplog.records
+
+
+def test_sync_non_callable_attribute_is_noop(caplog: pytest.LogCaptureFixture) -> None:
+    class Stub:
+        some_method = 42  # not callable
+
+    with caplog.at_level(logging.DEBUG, logger="frontend_visualqa.utils"):
+        safe_method_call(Stub(), "some_method")
+
+    assert not caplog.records
+
+
+def test_sync_successful_call_forwards_args_and_kwargs() -> None:
+    captured: dict = {}
+
+    class Stub:
+        def do_thing(self, x: int, tag: str = "") -> None:
+            captured["x"] = x
+            captured["tag"] = tag
+
+    safe_method_call(Stub(), "do_thing", 42, tag="hello")
+    assert captured == {"x": 42, "tag": "hello"}
+
+
+def test_sync_keyword_named_label_is_forwarded_to_target_method() -> None:
+    captured: dict[str, str] = {}
+
+    class Stub:
+        def set_status(self, *, label: str) -> None:
+            captured["label"] = label
+
+    safe_method_call(Stub(), "set_status", label="Analyzing", log_label="Hook")
+
+    assert captured == {"label": "Analyzing"}
+
+
+def test_sync_exception_is_swallowed_and_logged(caplog: pytest.LogCaptureFixture) -> None:
+    class Stub:
+        def boom(self) -> None:
+            raise RuntimeError("kaboom")
+
+    with caplog.at_level(logging.DEBUG, logger="frontend_visualqa.utils"):
+        safe_method_call(Stub(), "boom", log_label="Hook")
+
+    assert any("Hook" in r.message and "boom" in r.message for r in caplog.records)
+
+
+def test_sync_default_label_uses_type_name(caplog: pytest.LogCaptureFixture) -> None:
+    class MyHook:
+        def fail(self) -> None:
+            raise ValueError("oops")
+
+    with caplog.at_level(logging.DEBUG, logger="frontend_visualqa.utils"):
+        safe_method_call(MyHook(), "fail")
+
+    assert any("MyHook" in r.message and "fail" in r.message for r in caplog.records)
 
 
 @pytest.mark.asyncio
