@@ -263,6 +263,35 @@ def _normalize_label_for_match(value: str) -> str:
     return " ".join(text.split()).strip()
 
 
+def _label_matches(
+    *,
+    candidate: str,
+    normalized_label: str,
+    fuzzy_label: str,
+    allow_substring: bool = False,
+) -> bool:
+    """Return True if ``candidate`` matches ``label`` under the grounding rules.
+
+    ``allow_substring`` enables the more permissive containment check used for
+    progress-bar labels (which are often surrounded by extra context text).
+    """
+    normalized_candidate = _normalize_text(candidate)
+    fuzzy_candidate = _normalize_label_for_match(candidate)
+    if (
+        normalized_candidate == normalized_label
+        or normalized_candidate.startswith(f"{normalized_label} ")
+        or (fuzzy_label and fuzzy_candidate == fuzzy_label)
+        or (fuzzy_label and fuzzy_candidate.startswith(f"{fuzzy_label} "))
+    ):
+        return True
+    if allow_substring and (
+        normalized_label in normalized_candidate
+        or (fuzzy_label and fuzzy_label in fuzzy_candidate)
+    ):
+        return True
+    return False
+
+
 def _check_exact_text_match(
     grounding_state: GroundingState,
     groups: dict[str, str],
@@ -319,17 +348,14 @@ def _check_button_match(
             f"Visible button label matched {groups['label']!r}, but {candidate!r} is clipped or only partially visible.",
         )
 
-    label = _normalize_text(groups["label"])
+    normalized_label = _normalize_text(groups["label"])
     fuzzy_label = _normalize_label_for_match(groups["label"])
     visible_buttons = grounding_state.get("visibleButtons", [])
     for candidate in visible_buttons:
-        normalized_candidate = _normalize_text(candidate)
-        fuzzy_candidate = _normalize_label_for_match(candidate)
-        if (
-            normalized_candidate == label
-            or normalized_candidate.startswith(f"{label} ")
-            or (fuzzy_label and fuzzy_candidate == fuzzy_label)
-            or (fuzzy_label and fuzzy_candidate.startswith(f"{fuzzy_label} "))
+        if _label_matches(
+            candidate=candidate,
+            normalized_label=normalized_label,
+            fuzzy_label=fuzzy_label,
         ):
             return "passed", f"Visible button label matched {groups['label']!r}: {candidate!r}."
     return (
@@ -387,36 +413,27 @@ def _check_progress_bar_completely_filled(
 def _matching_button_states(grounding_state: GroundingState, label: str) -> list[ButtonState]:
     normalized_label = _normalize_text(label)
     fuzzy_label = _normalize_label_for_match(label)
-    matched_states: list[ButtonState] = []
-    for state in grounding_state.get("buttonStates", []):
-        text = str(state.get("text", ""))
-        normalized_candidate = _normalize_text(text)
-        fuzzy_candidate = _normalize_label_for_match(text)
-        if (
-            normalized_candidate == normalized_label
-            or normalized_candidate.startswith(f"{normalized_label} ")
-            or (fuzzy_label and fuzzy_candidate == fuzzy_label)
-            or (fuzzy_label and fuzzy_candidate.startswith(f"{fuzzy_label} "))
-        ):
-            matched_states.append(state)
-    return matched_states
+    return [
+        state
+        for state in grounding_state.get("buttonStates", [])
+        if _label_matches(
+            candidate=str(state.get("text", "")),
+            normalized_label=normalized_label,
+            fuzzy_label=fuzzy_label,
+        )
+    ]
 
 
 def _matching_progress_bars(grounding_state: GroundingState, label: str) -> list[ProgressBarState]:
     normalized_label = _normalize_text(label)
     fuzzy_label = _normalize_label_for_match(label)
-    matched_bars: list[ProgressBarState] = []
-    for bar in grounding_state.get("progressBars", []):
-        text = str(bar.get("label", ""))
-        normalized_candidate = _normalize_text(text)
-        fuzzy_candidate = _normalize_label_for_match(text)
-        if (
-            normalized_candidate == normalized_label
-            or normalized_candidate.startswith(f"{normalized_label} ")
-            or normalized_label in normalized_candidate
-            or (fuzzy_label and fuzzy_candidate == fuzzy_label)
-            or (fuzzy_label and fuzzy_candidate.startswith(f"{fuzzy_label} "))
-            or (fuzzy_label and fuzzy_label in fuzzy_candidate)
-        ):
-            matched_bars.append(bar)
-    return matched_bars
+    return [
+        bar
+        for bar in grounding_state.get("progressBars", [])
+        if _label_matches(
+            candidate=str(bar.get("label", "")),
+            normalized_label=normalized_label,
+            fuzzy_label=fuzzy_label,
+            allow_substring=True,
+        )
+    ]
