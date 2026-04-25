@@ -718,14 +718,8 @@ class VisualQARunner:
             async with httpx.AsyncClient(follow_redirects=True, timeout=5.0) as client:
                 try:
                     response = await client.head(url)
-                except httpx.RequestError as exc:
-                    return f"Could not reach {url} before opening the browser: {exc}"
-
-                if response is not None and response.status_code not in {405, 501}:
-                    return None
-
-                try:
-                    await client.get(url)
+                    if response is None or response.status_code in {405, 501}:
+                        await client.get(url)
                 except httpx.RequestError as exc:
                     return f"Could not reach {url} before opening the browser: {exc}"
         except Exception as exc:
