@@ -270,8 +270,10 @@ def _label_matches(
     fuzzy_label: str,
     allow_substring: bool = False,
 ) -> bool:
-    """Return True if ``candidate`` matches ``label`` under the grounding rules.
+    """Return True if ``candidate`` matches the pre-normalized label values.
 
+    ``normalized_label`` and ``fuzzy_label`` should be produced via
+    :func:`_normalize_text` and :func:`_normalize_label_for_match` respectively.
     ``allow_substring`` enables the more permissive containment check used for
     progress-bar labels (which are often surrounded by extra context text).
     """
