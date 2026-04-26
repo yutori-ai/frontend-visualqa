@@ -78,7 +78,7 @@ def _user_text_message(text: str) -> dict[str, Any]:
     return {"role": "user", "content": [{"type": "text", "text": text}]}
 
 
-@dataclass
+@dataclass(slots=True)
 class _VerificationProgress:
     claim: str
     session: BrowserSession

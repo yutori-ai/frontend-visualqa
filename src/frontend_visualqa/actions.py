@@ -233,7 +233,7 @@ def render_action_trace(
     return f"{canonical_name}({ordered_parts})"
 
 
-@dataclass
+@dataclass(slots=True)
 class ToolExecutionResult:
     trace: str
     output_text: str | None = None

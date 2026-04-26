@@ -18,7 +18,7 @@ _NAVIGATION_HINT_BULLET_RE = re.compile(r"^\s*[*-]\s+(.*\S.*)$")
 ClaimBullet = Literal["-", "*"]
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class ParsedClaimLine:
     """Metadata for a claim line in a Markdown source file."""
 
@@ -28,7 +28,7 @@ class ParsedClaimLine:
     navigation_hint: str | None = None
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class ParsedClaimsFile:
     """Parsed claims plus the original source content."""
 

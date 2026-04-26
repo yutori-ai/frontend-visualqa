@@ -30,7 +30,7 @@ PERSISTENT_SESSION_KEY_ERROR = (
 )
 
 
-@dataclass
+@dataclass(slots=True)
 class BrowserSession:
     """Mutable session state bound to a Playwright context and page."""
 

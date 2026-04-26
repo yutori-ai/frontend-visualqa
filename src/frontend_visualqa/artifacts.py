@@ -9,7 +9,7 @@ from pathlib import Path
 from uuid import uuid4
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class RunArtifacts:
     """Filesystem locations for a single run."""
 
