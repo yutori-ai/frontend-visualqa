@@ -46,6 +46,28 @@ class ViewportConfig(FrontendVisualQABaseModel):
     device_scale_factor: float = Field(default=1.0, gt=0, le=4)
 
 
+def coerce_viewport(value: ViewportConfig | dict[str, Any] | None) -> ViewportConfig:
+    """Normalize a viewport input into a ViewportConfig instance.
+
+    Pass through ``ViewportConfig`` unchanged, fill in defaults for ``None``,
+    and validate dicts via the pydantic model.
+    """
+    if isinstance(value, ViewportConfig):
+        return value
+    if value is None:
+        return ViewportConfig()
+    return ViewportConfig.model_validate(value)
+
+
+def coerce_optional_viewport(
+    value: ViewportConfig | dict[str, Any] | None,
+) -> ViewportConfig | None:
+    """Like :func:`coerce_viewport`, but preserve ``None`` rather than defaulting."""
+    if value is None:
+        return None
+    return coerce_viewport(value)
+
+
 class ClaimProof(FrontendVisualQABaseModel):
     """Primary evidence for a claim verdict."""
 
