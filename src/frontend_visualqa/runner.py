@@ -174,15 +174,13 @@ class VisualQARunner:
 
             preflight_error = await self._preflight_url(request.url)
             if preflight_error is not None:
-                result = self._build_not_testable_run(
+                return self._abort_run_not_testable(
                     request=request,
-                    run_dir=str(run_artifacts.run_dir),
+                    run_artifacts=run_artifacts,
                     finding=preflight_error,
                     started_at=run_started_at,
-                    completed_at=time.time(),
+                    claims_file=claims_file,
                 )
-                self._write_reports(result, str(run_artifacts.run_dir), claims_file=claims_file)
-                return result
 
             try:
                 session = await self.browser_manager.get_session(
@@ -191,28 +189,24 @@ class VisualQARunner:
                     reuse_session=request.reuse_session,
                 )
             except Exception as exc:
-                result = self._build_not_testable_run(
+                return self._abort_run_not_testable(
                     request=request,
-                    run_dir=str(run_artifacts.run_dir),
+                    run_artifacts=run_artifacts,
                     finding=f"Could not start a browser session for {request.url}: {exc}",
                     started_at=run_started_at,
-                    completed_at=time.time(),
+                    claims_file=claims_file,
                 )
-                self._write_reports(result, str(run_artifacts.run_dir), claims_file=claims_file)
-                return result
 
             try:
                 await self.browser_manager.goto(session, request.url)
             except Exception as exc:
-                result = self._build_not_testable_run(
+                return self._abort_run_not_testable(
                     request=request,
-                    run_dir=str(run_artifacts.run_dir),
+                    run_artifacts=run_artifacts,
                     finding=f"Could not navigate to {request.url}: {exc}",
                     started_at=run_started_at,
-                    completed_at=time.time(),
+                    claims_file=claims_file,
                 )
-                self._write_reports(result, str(run_artifacts.run_dir), claims_file=claims_file)
-                return result
 
             claim_results: list[ClaimResult] = []
             next_claim_index = 1
@@ -712,6 +706,27 @@ class VisualQARunner:
                 reporter.write(run_result, output_dir, claims_file=claims_file)
             except Exception:
                 logger.warning("Reporter %s failed to write", reporter.name, exc_info=True)
+
+    def _abort_run_not_testable(
+        self,
+        *,
+        request: VerifyVisualClaimsInput,
+        run_artifacts: Any,
+        finding: str,
+        started_at: float,
+        claims_file: ParsedClaimsFile | None,
+    ) -> RunResult:
+        """Build a not-testable RunResult, persist its reports, and return it."""
+        run_dir = str(run_artifacts.run_dir)
+        result = self._build_not_testable_run(
+            request=request,
+            run_dir=run_dir,
+            finding=finding,
+            started_at=started_at,
+            completed_at=time.time(),
+        )
+        self._write_reports(result, run_dir, claims_file=claims_file)
+        return result
 
     async def _preflight_url(self, url: str) -> str | None:
         try:
