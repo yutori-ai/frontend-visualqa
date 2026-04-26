@@ -14,6 +14,8 @@ from frontend_visualqa.schemas import (
     ManageBrowserInput,
     VerifyVisualClaimsInput,
     ViewportConfig,
+    coerce_optional_viewport,
+    coerce_viewport,
     validate_url,
 )
 
@@ -52,14 +54,6 @@ def configure_server(browser_config: BrowserConfig) -> None:
             "Call configure_server() before the first tool invocation."
         )
     _server_browser_config = browser_config
-
-
-def _coerce_viewport(viewport: ViewportConfig | dict[str, Any] | None) -> ViewportConfig:
-    if viewport is None:
-        return ViewportConfig()
-    if isinstance(viewport, ViewportConfig):
-        return viewport
-    return ViewportConfig.model_validate(viewport)
 
 
 def _loop_key() -> int:
@@ -177,7 +171,7 @@ async def verify_visual_claims(
     request = VerifyVisualClaimsInput(
         url=validate_url(url),
         claims=claims,
-        viewport=_coerce_viewport(viewport),
+        viewport=coerce_viewport(viewport),
         session_key=session_key,
         run_name=run_name,
         reuse_session=reuse_session,
@@ -207,7 +201,7 @@ async def take_screenshot(
     runner = await _get_runner()
     result = await runner.take_screenshot(
         url=validate_url(url),
-        viewport=_coerce_viewport(viewport),
+        viewport=coerce_viewport(viewport),
         session_key=session_key,
         run_name=run_name,
         reuse_session=reuse_session,
@@ -243,7 +237,7 @@ async def manage_browser(
     request = ManageBrowserInput(
         action=action,
         session_key=session_key,
-        viewport=_coerce_viewport(viewport) if viewport is not None else None,
+        viewport=coerce_optional_viewport(viewport),
         url=url,
     )
     return serialize_result(await runner.manage_browser_request(request))

@@ -27,6 +27,8 @@ from frontend_visualqa.schemas import (
     ScreenshotResult,
     VerifyVisualClaimsInput,
     ViewportConfig,
+    coerce_optional_viewport,
+    coerce_viewport,
 )
 
 logger = logging.getLogger(__name__)
@@ -140,7 +142,7 @@ class VisualQARunner:
             url=url,
             claims=claims,
             claim_navigation_hints=claim_navigation_hints,
-            viewport=self._coerce_viewport(viewport),
+            viewport=coerce_viewport(viewport),
             session_key=session_key,
             run_name=run_name,
             reuse_session=reuse_session,
@@ -378,7 +380,7 @@ class VisualQARunner:
         """Navigate to a page and persist a screenshot."""
 
         async with self._operation_lock:
-            viewport_config = self._coerce_viewport(viewport)
+            viewport_config = coerce_viewport(viewport)
             run_artifacts = self.artifact_manager.create_run(prefix="screenshot")
 
             preflight_error = await self._preflight_url(url)
@@ -437,7 +439,7 @@ class VisualQARunner:
         request = ManageBrowserInput(
             action=action,
             session_key=session_key,
-            viewport=self._coerce_optional_viewport(viewport),
+            viewport=coerce_optional_viewport(viewport),
             url=url,
         )
         return await self.manage_browser_request(request)
@@ -610,20 +612,6 @@ class VisualQARunner:
         if counts["not_testable"]:
             parts.append(f"{counts['not_testable']} not testable.")
         return " ".join(parts)
-
-    @staticmethod
-    def _coerce_viewport(value: ViewportConfig | dict[str, Any] | None) -> ViewportConfig:
-        if isinstance(value, ViewportConfig):
-            return value
-        if value is None:
-            return ViewportConfig()
-        return ViewportConfig.model_validate(value)
-
-    @staticmethod
-    def _coerce_optional_viewport(value: ViewportConfig | dict[str, Any] | None) -> ViewportConfig | None:
-        if value is None:
-            return None
-        return VisualQARunner._coerce_viewport(value)
 
     @staticmethod
     def _build_not_testable_run(
