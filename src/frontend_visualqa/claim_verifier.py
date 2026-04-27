@@ -212,16 +212,8 @@ class ClaimVerifier:
             await self._safe_hook_call("on_agent_start", messages=messages)
 
             while progress.step_count < max_steps:
-                messages = self._prepare_messages_for_request(messages)
-                model_tools = self._model_tools()
-                await self._safe_hook_call("on_llm_start", messages=messages, tools=model_tools)
-                await self._best_effort_overlay_call("set_status", "Analyzing")
-                response = await self.navigator_client.create(
-                    messages, tools=model_tools, json_schema=VERDICT_JSON_SCHEMA,
-                )
+                response, messages = await self._invoke_navigator_turn(messages)
                 assistant_message = response.choices[0].message
-                await self._safe_hook_call("on_llm_end", response=assistant_message)
-                messages.append(self._message_to_dict(assistant_message))
 
                 # --- Check for structured JSON verdict (parsed_json) ---
                 json_verdict = self._extract_json_verdict(response)
@@ -369,6 +361,26 @@ class ClaimVerifier:
                 self.action_executor.overlay = None
                 self._overlay = None
 
+    async def _invoke_navigator_turn(
+        self, messages: list[dict[str, Any]]
+    ) -> tuple[Any, list[dict[str, Any]]]:
+        """Trim messages, dispatch a navigator request, and append the assistant reply.
+
+        Returns ``(response, messages)`` where ``messages`` is the trimmed list with
+        the assistant reply appended.
+        """
+        messages = self._prepare_messages_for_request(messages)
+        model_tools = self._model_tools()
+        await self._safe_hook_call("on_llm_start", messages=messages, tools=model_tools)
+        await self._best_effort_overlay_call("set_status", "Analyzing")
+        response = await self.navigator_client.create(
+            messages, tools=model_tools, json_schema=VERDICT_JSON_SCHEMA,
+        )
+        assistant_message = response.choices[0].message
+        await self._safe_hook_call("on_llm_end", response=assistant_message)
+        messages.append(self._message_to_dict(assistant_message))
+        return response, messages
+
     async def _capture_evidence_screenshot(
         self,
         *,
@@ -399,16 +411,7 @@ class ClaimVerifier:
         messages: list[dict[str, Any]],
     ) -> ClaimResult:
         messages.append(_user_text_message(build_force_stop_prompt(progress.claim)))
-        messages = self._prepare_messages_for_request(messages)
-        model_tools = self._model_tools()
-        await self._safe_hook_call("on_llm_start", messages=messages, tools=model_tools)
-        await self._best_effort_overlay_call("set_status", "Analyzing")
-        response = await self.navigator_client.create(
-            messages, tools=model_tools, json_schema=VERDICT_JSON_SCHEMA,
-        )
-        assistant_message = response.choices[0].message
-        await self._safe_hook_call("on_llm_end", response=assistant_message)
-        messages.append(self._message_to_dict(assistant_message))
+        response, _ = await self._invoke_navigator_turn(messages)
 
         verdict_source = VERDICT_SOURCE_JSON
         verdict = self._extract_json_verdict(response)
