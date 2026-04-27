@@ -91,6 +91,11 @@ KEY_COMBINATION_ACTIONS: dict[str, str] = {
 DISALLOWED_ZOOM_KEYS = {"-", "=", "0"}
 
 
+def _is_coordinate_pair(value: Any) -> bool:
+    """True if `value` is a list/tuple of exactly two elements (an [x, y] pair)."""
+    return isinstance(value, (list, tuple)) and len(value) == 2
+
+
 def _mapped_key_presses(key_text: str) -> list[str]:
     stripped = key_text.strip()
     if not stripped:
@@ -392,7 +397,7 @@ class ActionExecutor:
                 # Resolve coordinates from ref or raw coordinates, then share
                 # the overlay/modifier/wheel logic for both paths.
                 raw_coords = raw_arguments.get("coordinates")
-                has_coords = isinstance(raw_coords, (list, tuple)) and len(raw_coords) == 2
+                has_coords = _is_coordinate_pair(raw_coords)
                 if raw_arguments.get("ref") and not has_coords:
                     x, y = await self._resolve_coordinates(
                         page, raw_arguments, width=width, height=height, action_name=canonical_name,
@@ -593,7 +598,7 @@ class ActionExecutor:
 
         # Treat empty lists/tuples the same as None — the model sometimes sends
         # coordinates=[] when it intends to use ref-only targeting.
-        has_coordinates = isinstance(coordinates, (list, tuple)) and len(coordinates) == 2
+        has_coordinates = _is_coordinate_pair(coordinates)
 
         if ref:
             try:
@@ -602,7 +607,7 @@ class ActionExecutor:
                 result = {"success": False, "message": str(exc)}
             if result.get("success"):
                 resolved_coordinates = result.get("coordinates")
-                if isinstance(resolved_coordinates, (list, tuple)) and len(resolved_coordinates) == 2:
+                if _is_coordinate_pair(resolved_coordinates):
                     return round(float(resolved_coordinates[0])), round(float(resolved_coordinates[1]))
             if not has_coordinates:
                 message = result.get("message", "Unknown error")
