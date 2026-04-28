@@ -10,7 +10,7 @@ from typing import Any, Literal, TYPE_CHECKING, Callable
 
 import httpx
 
-from frontend_visualqa.artifacts import ArtifactManager
+from frontend_visualqa.artifacts import ArtifactManager, RunArtifacts
 from frontend_visualqa.browser import BrowserManager
 from frontend_visualqa.claim_parser import ParsedClaimsFile
 from frontend_visualqa.reporters import get_reporters
@@ -611,7 +611,7 @@ class VisualQARunner:
         self,
         *,
         request: VerifyVisualClaimsInput,
-        run_artifacts: Any,
+        run_artifacts: RunArtifacts,
         finding: str,
         started_at: float,
         claims_file: ParsedClaimsFile | None,
