@@ -38,6 +38,15 @@ _CTRF_STATUS_MAP: dict[str, str] = {
     "not_testable": "skipped",
 }
 
+
+def _ctrf_attachment(path: str, content_type: str) -> dict[str, str]:
+    """Build a CTRF attachment dict (name derived from path basename)."""
+    return {
+        "name": Path(path).name,
+        "contentType": content_type,
+        "path": path,
+    }
+
 _CLAIM_DETAILS_START_MARKER = "<!-- frontend-visualqa:claim-details:start -->"
 _CLAIM_DETAILS_END_MARKER = "<!-- frontend-visualqa:claim-details:end -->"
 _APPENDIX_START_MARKER = "<!-- frontend-visualqa:appendix:start -->"
@@ -63,30 +72,16 @@ class CTRFReporter:
 
             extra: dict[str, Any] = {"claimResult": claim_result.model_dump(mode="json")}
             trace = claim_result.trace
-            screenshots = trace.screenshot_paths
-            attachments = [
-                {
-                    "name": Path(screenshot_path).name,
-                    "contentType": "image/webp",
-                    "path": screenshot_path,
-                }
-                for screenshot_path in screenshots
+            attachments: list[dict[str, str]] = [
+                _ctrf_attachment(screenshot_path, "image/webp")
+                for screenshot_path in trace.screenshot_paths
             ]
             proof = claim_result.proof
             proof_text_path = proof.text_path if proof is not None else None
             if proof_text_path:
-                attachments.append({
-                    "name": Path(proof_text_path).name,
-                    "contentType": "text/plain",
-                    "path": proof_text_path,
-                })
-            trace_path = trace.trace_path
-            if trace_path:
-                attachments.append({
-                    "name": Path(trace_path).name,
-                    "contentType": "application/json",
-                    "path": trace_path,
-                })
+                attachments.append(_ctrf_attachment(proof_text_path, "text/plain"))
+            if trace.trace_path:
+                attachments.append(_ctrf_attachment(trace.trace_path, "application/json"))
 
             ctrf_test: dict[str, Any] = {
                 "name": claim_result.claim,
