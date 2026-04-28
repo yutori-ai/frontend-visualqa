@@ -127,18 +127,28 @@ class CTRFReporter:
         write_json_file(output_dir / "ctrf-report.json", ctrf_report)
 
 
+# Single-pass per-character translation, used by _escape_markdown_inline.
+# Built once at import time. The chained .replace() form this replaces had a
+# load-bearing ordering requirement (escape "\" first, before subsequent steps
+# introduced new "\" characters); str.translate cannot collide with itself, so
+# the hazard is gone by construction.
+_MARKDOWN_INLINE_ESCAPES = str.maketrans(
+    {
+        "\\": r"\\",
+        "*": r"\*",
+        "_": r"\_",
+        "[": r"\[",
+        "]": r"\]",
+        "`": r"\`",
+        "<": r"\<",
+        ">": r"\>",
+        "|": r"\|",
+    }
+)
+
+
 def _escape_markdown_inline(text: str) -> str:
-    return (
-        text.replace("\\", "\\\\")
-        .replace("*", r"\*")
-        .replace("_", r"\_")
-        .replace("[", r"\[")
-        .replace("]", r"\]")
-        .replace("`", r"\`")
-        .replace("<", r"\<")
-        .replace(">", r"\>")
-        .replace("|", r"\|")
-    )
+    return text.translate(_MARKDOWN_INLINE_ESCAPES)
 
 
 def _line_ending(text: str) -> str:
