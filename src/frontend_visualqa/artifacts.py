@@ -6,7 +6,15 @@ import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
+
+
+def write_json_file(path: Path, obj: Any, *, indent: int = 2) -> None:
+    """Write *obj* as JSON to *path*, creating parent directories if needed."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(obj, indent=indent), encoding="utf-8")
 
 
 @dataclass(frozen=True)
@@ -55,7 +63,7 @@ class ArtifactManager:
         """Persist the rich trace payload and return its path."""
 
         path = self.claim_dir(run, claim_index) / "trace.json"
-        path.write_text(json.dumps(events, indent=2))
+        write_json_file(path, events)
         return str(path)
 
     def save_proof_text(self, run: RunArtifacts, claim_index: int, label: str, text: str) -> str:
@@ -69,8 +77,7 @@ class ArtifactManager:
         """Persist arbitrary JSON within the run directory."""
 
         path = run.run_dir / relative_path
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(payload, indent=2))
+        write_json_file(path, payload)
         return str(path)
 
     @staticmethod
