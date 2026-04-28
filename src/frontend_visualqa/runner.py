@@ -15,6 +15,7 @@ from frontend_visualqa.artifacts import ArtifactManager, RunArtifacts
 from frontend_visualqa.browser import BrowserManager
 from frontend_visualqa.claim_parser import ParsedClaimsFile
 from frontend_visualqa.reporters import get_reporters
+from frontend_visualqa.utils import safe_callback_call
 from frontend_visualqa.schemas import (
     BrowserConfig,
     BrowserMode,
@@ -215,20 +216,21 @@ class VisualQARunner:
             next_claim_index = 1
 
             def _safe_on_claim_start(index: int, claim: str) -> None:
-                if on_claim_start is None:
-                    return
-                try:
-                    on_claim_start(index, claim)
-                except Exception:
-                    logger.warning("Claim start callback failed for claim %s", index, exc_info=True)
+                safe_callback_call(
+                    on_claim_start,
+                    index,
+                    claim,
+                    log_label=f"Claim start callback for claim {index}",
+                )
 
             def _safe_on_claim_complete(index: int, claim: str, result: ClaimResult) -> None:
-                if on_claim_complete is None:
-                    return
-                try:
-                    on_claim_complete(index, claim, result)
-                except Exception:
-                    logger.warning("Claim completion callback failed for claim %s", index, exc_info=True)
+                safe_callback_call(
+                    on_claim_complete,
+                    index,
+                    claim,
+                    result,
+                    log_label=f"Claim completion callback for claim {index}",
+                )
 
             def _append_result(index: int, claim: str, result: ClaimResult) -> None:
                 claim_results.append(result)

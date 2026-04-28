@@ -1,10 +1,14 @@
-"""Tests for the shared safe_method_call / safe_async_method_call utilities."""
+"""Tests for the shared safe_method_call / safe_async_method_call / safe_callback_call utilities."""
 
 import logging
 
 import pytest
 
-from frontend_visualqa.utils import safe_async_method_call, safe_method_call
+from frontend_visualqa.utils import (
+    safe_async_method_call,
+    safe_callback_call,
+    safe_method_call,
+)
 
 
 def test_sync_none_target_is_noop(caplog: pytest.LogCaptureFixture) -> None:
@@ -171,3 +175,47 @@ async def test_default_label_uses_type_name(caplog: pytest.LogCaptureFixture) ->
         await safe_async_method_call(MyOverlay(), "fail")
 
     assert any("MyOverlay" in r.message and "fail" in r.message for r in caplog.records)
+
+
+def test_safe_callback_call_none_is_noop(caplog: pytest.LogCaptureFixture) -> None:
+    with caplog.at_level(logging.DEBUG, logger="frontend_visualqa.utils"):
+        safe_callback_call(None, 1, 2, log_label="Progress")
+
+    assert not caplog.records
+
+
+def test_safe_callback_call_forwards_args_and_kwargs() -> None:
+    captured: dict = {}
+
+    def cb(index: int, claim: str, *, tag: str = "") -> None:
+        captured["index"] = index
+        captured["claim"] = claim
+        captured["tag"] = tag
+
+    safe_callback_call(cb, 3, "the claim", tag="hello")
+    assert captured == {"index": 3, "claim": "the claim", "tag": "hello"}
+
+
+def test_safe_callback_call_swallows_exception_and_logs_at_warning(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    def cb() -> None:
+        raise RuntimeError("kaboom")
+
+    with caplog.at_level(logging.WARNING, logger="frontend_visualqa.utils"):
+        safe_callback_call(cb, log_label="Claim start callback for claim 7")
+
+    matching = [r for r in caplog.records if "Claim start callback for claim 7" in r.message]
+    assert matching, "expected log message containing the supplied label"
+    assert all(r.levelno == logging.WARNING for r in matching)
+    assert any(r.exc_info is not None for r in matching)
+
+
+def test_safe_callback_call_default_label(caplog: pytest.LogCaptureFixture) -> None:
+    def cb() -> None:
+        raise ValueError("oops")
+
+    with caplog.at_level(logging.WARNING, logger="frontend_visualqa.utils"):
+        safe_callback_call(cb)
+
+    assert any("Callback" in r.message and "failed" in r.message for r in caplog.records)
