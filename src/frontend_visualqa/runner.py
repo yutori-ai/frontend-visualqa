@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from collections import Counter
 from pathlib import Path
 from typing import Any, Literal, TYPE_CHECKING, Callable
 
@@ -598,12 +599,7 @@ class VisualQARunner:
 
     @staticmethod
     def _summarize_results(results: list[ClaimResult]) -> str:
-        counts = {
-            "passed": sum(result.status == "passed" for result in results),
-            "failed": sum(result.status == "failed" for result in results),
-            "inconclusive": sum(result.status == "inconclusive" for result in results),
-            "not_testable": sum(result.status == "not_testable" for result in results),
-        }
+        counts: Counter[ClaimStatus] = Counter(result.status for result in results)
         parts = [f"{counts['passed']}/{len(results)} claims passed."]
         if counts["failed"]:
             parts.append(f"{counts['failed']} failed.")
