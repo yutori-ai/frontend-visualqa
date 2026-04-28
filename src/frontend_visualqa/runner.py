@@ -11,7 +11,7 @@ from typing import Any, Literal, TYPE_CHECKING, Callable
 
 import httpx
 
-from frontend_visualqa.artifacts import ArtifactManager
+from frontend_visualqa.artifacts import ArtifactManager, RunArtifacts
 from frontend_visualqa.browser import BrowserManager
 from frontend_visualqa.claim_parser import ParsedClaimsFile
 from frontend_visualqa.reporters import get_reporters
@@ -177,15 +177,13 @@ class VisualQARunner:
 
             preflight_error = await self._preflight_url(request.url)
             if preflight_error is not None:
-                result = self._build_not_testable_run(
+                return self._finalize_not_testable_run(
                     request=request,
-                    run_dir=str(run_artifacts.run_dir),
+                    run_artifacts=run_artifacts,
                     finding=preflight_error,
                     started_at=run_started_at,
-                    completed_at=time.time(),
+                    claims_file=claims_file,
                 )
-                self._write_reports(result, str(run_artifacts.run_dir), claims_file=claims_file)
-                return result
 
             try:
                 session = await self.browser_manager.get_session(
@@ -194,28 +192,24 @@ class VisualQARunner:
                     reuse_session=request.reuse_session,
                 )
             except Exception as exc:
-                result = self._build_not_testable_run(
+                return self._finalize_not_testable_run(
                     request=request,
-                    run_dir=str(run_artifacts.run_dir),
+                    run_artifacts=run_artifacts,
                     finding=f"Could not start a browser session for {request.url}: {exc}",
                     started_at=run_started_at,
-                    completed_at=time.time(),
+                    claims_file=claims_file,
                 )
-                self._write_reports(result, str(run_artifacts.run_dir), claims_file=claims_file)
-                return result
 
             try:
                 await self.browser_manager.goto(session, request.url)
             except Exception as exc:
-                result = self._build_not_testable_run(
+                return self._finalize_not_testable_run(
                     request=request,
-                    run_dir=str(run_artifacts.run_dir),
+                    run_artifacts=run_artifacts,
                     finding=f"Could not navigate to {request.url}: {exc}",
                     started_at=run_started_at,
-                    completed_at=time.time(),
+                    claims_file=claims_file,
                 )
-                self._write_reports(result, str(run_artifacts.run_dir), claims_file=claims_file)
-                return result
 
             claim_results: list[ClaimResult] = []
             next_claim_index = 1
@@ -608,6 +602,26 @@ class VisualQARunner:
         if counts["not_testable"]:
             parts.append(f"{counts['not_testable']} not testable.")
         return " ".join(parts)
+
+    def _finalize_not_testable_run(
+        self,
+        *,
+        request: VerifyVisualClaimsInput,
+        run_artifacts: RunArtifacts,
+        finding: str,
+        started_at: float,
+        claims_file: ParsedClaimsFile | None,
+    ) -> RunResult:
+        """Build a not-testable run result, persist reports, and return it."""
+        result = self._build_not_testable_run(
+            request=request,
+            run_dir=str(run_artifacts.run_dir),
+            finding=finding,
+            started_at=started_at,
+            completed_at=time.time(),
+        )
+        self._write_reports(result, str(run_artifacts.run_dir), claims_file=claims_file)
+        return result
 
     @staticmethod
     def _build_not_testable_run(
