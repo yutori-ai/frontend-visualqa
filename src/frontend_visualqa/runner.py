@@ -221,6 +221,7 @@ class VisualQARunner:
                     index,
                     claim,
                     log_label=f"Claim start callback for claim {index}",
+                    log=logger,
                 )
 
             def _safe_on_claim_complete(index: int, claim: str, result: ClaimResult) -> None:
@@ -230,6 +231,7 @@ class VisualQARunner:
                     claim,
                     result,
                     log_label=f"Claim completion callback for claim {index}",
+                    log=logger,
                 )
 
             def _append_result(index: int, claim: str, result: ClaimResult) -> None:

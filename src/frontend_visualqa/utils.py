@@ -63,6 +63,7 @@ def safe_callback_call(
     callback: Callable[..., Any] | None,
     *args: Any,
     log_label: str = "Callback",
+    log: logging.Logger | None = None,
     **kwargs: Any,
 ) -> None:
     """Best-effort call to an optional user-provided callback.
@@ -71,10 +72,14 @@ def safe_callback_call(
     than a ``(target, method_name)`` pair. No-op when *callback* is ``None``.
     Any exception raised by the callback is caught and logged at WARNING so
     that callback failures never break the main control flow.
+
+    Pass ``log=...`` to emit the warning under the caller's logger name (e.g.
+    so existing log-aggregation rules keyed on ``frontend_visualqa.runner``
+    keep capturing these records); defaults to this module's logger.
     """
     if callback is None:
         return
     try:
         callback(*args, **kwargs)
     except Exception:
-        logger.warning("%s failed", log_label, exc_info=True)
+        (log or logger).warning("%s failed", log_label, exc_info=True)

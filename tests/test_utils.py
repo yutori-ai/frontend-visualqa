@@ -219,3 +219,19 @@ def test_safe_callback_call_default_label(caplog: pytest.LogCaptureFixture) -> N
         safe_callback_call(cb)
 
     assert any("Callback" in r.message and "failed" in r.message for r in caplog.records)
+
+
+def test_safe_callback_call_uses_caller_logger_when_supplied(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caller_logger = logging.getLogger("frontend_visualqa.runner")
+
+    def cb() -> None:
+        raise RuntimeError("boom")
+
+    with caplog.at_level(logging.WARNING, logger="frontend_visualqa.runner"):
+        safe_callback_call(cb, log_label="Claim callback", log=caller_logger)
+
+    matching = [r for r in caplog.records if "Claim callback" in r.message]
+    assert matching, "expected a log record under the caller-supplied logger"
+    assert all(r.name == "frontend_visualqa.runner" for r in matching)
