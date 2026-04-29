@@ -76,7 +76,7 @@ class ArtifactManager:
         """Persist extracted proof text and return its path."""
 
         path = self.claim_dir(run, claim_index) / f"{label}.txt"
-        path.write_text(text, encoding="utf-8")
+        write_text_file(path, text)
         return str(path)
 
     def save_json(self, run: RunArtifacts, relative_path: str, payload: dict) -> str:
