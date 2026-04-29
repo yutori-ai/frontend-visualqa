@@ -10,11 +10,17 @@ from typing import Any
 from uuid import uuid4
 
 
+def write_text_file(path: Path, content: str) -> None:
+    """Write UTF-8 text *content* to *path*, creating parent directories if needed."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
+
+
 def write_json_file(path: Path, obj: Any, *, indent: int = 2) -> None:
     """Write *obj* as JSON to *path*, creating parent directories if needed."""
 
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(obj, indent=indent), encoding="utf-8")
+    write_text_file(path, json.dumps(obj, indent=indent))
 
 
 @dataclass(frozen=True)
@@ -70,7 +76,7 @@ class ArtifactManager:
         """Persist extracted proof text and return its path."""
 
         path = self.claim_dir(run, claim_index) / f"{label}.txt"
-        path.write_text(text, encoding="utf-8")
+        write_text_file(path, text)
         return str(path)
 
     def save_json(self, run: RunArtifacts, relative_path: str, payload: dict) -> str:

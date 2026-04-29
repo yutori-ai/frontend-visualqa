@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 from typing import Any, Protocol
 
-from frontend_visualqa.artifacts import write_json_file
+from frontend_visualqa.artifacts import write_json_file, write_text_file
 from frontend_visualqa.claim_parser import ParsedClaimLine, ParsedClaimsFile
 from frontend_visualqa.schemas import ClaimResult, RunResult
 from frontend_visualqa.text_utils import collapse_whitespace as _collapse_whitespace
@@ -294,9 +294,7 @@ class MarkdownReporter:
         else:
             content = _render_annotated_source_markdown(run_result, claims_file)
 
-        path = output_dir / "report.md"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content, encoding="utf-8")
+        write_text_file(output_dir / "report.md", content)
 
 
 _REPORTERS: dict[str, type[Reporter]] = {
