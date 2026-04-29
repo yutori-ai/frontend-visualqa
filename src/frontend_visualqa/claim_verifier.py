@@ -97,7 +97,7 @@ class _VerificationProgress:
 def _create_overlay_controller(page: Any) -> Any | None:
     try:
         from frontend_visualqa.overlay import OverlayController
-    except Exception:
+    except ImportError:
         return None
     try:
         return OverlayController(page)
