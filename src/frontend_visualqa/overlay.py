@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from frontend_visualqa.text_utils import clip_text
 
@@ -381,28 +381,25 @@ class OverlayController:
         first move of a claim and after full-page navigations that destroy
         and recreate the cursor element.
         """
-        try:
-            return bool(await self._page.evaluate(
-                f"""() => {{
-                    const cursor = document.getElementById('{CURSOR_ID}');
-                    if (!cursor) return true;
-                    const offScreen = cursor.style.left === '-200px';
-                    if (offScreen) {{
-                        cursor.style.transition = 'none';
-                        cursor.style.left = '{x}px';
-                        cursor.style.top = '{y}px';
-                        cursor.offsetHeight;
-                        cursor.style.transition = 'left {CURSOR_TRANSITION_MS}ms ease-in-out,top {CURSOR_TRANSITION_MS}ms ease-in-out';
-                        return true;
-                    }}
+        return bool(await self._safe_evaluate(
+            f"""() => {{
+                const cursor = document.getElementById('{CURSOR_ID}');
+                if (!cursor) return true;
+                const offScreen = cursor.style.left === '-200px';
+                if (offScreen) {{
+                    cursor.style.transition = 'none';
                     cursor.style.left = '{x}px';
                     cursor.style.top = '{y}px';
-                    return false;
-                }}"""
-            ))
-        except Exception:
-            logger.debug("Overlay _move_cursor failed", exc_info=True)
-            return True
+                    cursor.offsetHeight;
+                    cursor.style.transition = 'left {CURSOR_TRANSITION_MS}ms ease-in-out,top {CURSOR_TRANSITION_MS}ms ease-in-out';
+                    return true;
+                }}
+                cursor.style.left = '{x}px';
+                cursor.style.top = '{y}px';
+                return false;
+            }}""",
+            default=True,
+        ))
 
     async def _show_click_effect(self, x: int, y: int, num_clicks: int) -> None:
         gap = int(CLICK_DURATION_MS * 0.5)
@@ -525,34 +522,36 @@ class OverlayController:
         )
 
     async def _get_focused_element_center(self) -> dict[str, int] | None:
-        try:
-            return await self._page.evaluate(
-                """() => {
-                    const element = document.activeElement;
-                    if (!element || element === document.body || element === document.documentElement) return null;
-                    const rect = element.getBoundingClientRect();
-                    if (rect.width <= 0 || rect.height <= 0) return null;
-                    return {
-                        x: Math.round(rect.left + rect.width / 2),
-                        y: Math.round(rect.top + rect.height / 2),
-                    };
-                }"""
-            )
-        except Exception:
-            logger.debug("Overlay _get_focused_element_center failed", exc_info=True)
-            return None
+        return await self._safe_evaluate(
+            """() => {
+                const element = document.activeElement;
+                if (!element || element === document.body || element === document.documentElement) return null;
+                const rect = element.getBoundingClientRect();
+                if (rect.width <= 0 || rect.height <= 0) return null;
+                return {
+                    x: Math.round(rect.left + rect.width / 2),
+                    y: Math.round(rect.top + rect.height / 2),
+                };
+            }"""
+        )
 
     async def _ensure_transient_root(self) -> None:
         await self._eval(_TRANSIENT_ROOT_JS)
 
-    async def _eval(self, script: str, arg: object | None = None) -> None:
+    async def _safe_evaluate(
+        self, script: str, arg: object | None = None, *, default: Any = None
+    ) -> Any:
+        """Best-effort ``page.evaluate``; return ``default`` on failure (logged at DEBUG)."""
         try:
             if arg is None:
-                await self._page.evaluate(script)
-            else:
-                await self._page.evaluate(script, arg)
+                return await self._page.evaluate(script)
+            return await self._page.evaluate(script, arg)
         except Exception:
             logger.debug("Overlay evaluate failed (best-effort)", exc_info=True)
+            return default
+
+    async def _eval(self, script: str, arg: object | None = None) -> None:
+        await self._safe_evaluate(script, arg)
 
     @staticmethod
     def _clip_text(text: str, limit: int) -> str:
