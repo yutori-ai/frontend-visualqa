@@ -9,6 +9,7 @@ from typing import TypedDict
 
 from frontend_visualqa.browser import BrowserSession
 from frontend_visualqa.schemas import ClaimStatus
+from frontend_visualqa.text_utils import collapse_whitespace
 
 
 logger = logging.getLogger(__name__)
@@ -249,18 +250,18 @@ def ground_claim_verdict(
 
 
 def _normalize_text(value: str) -> str:
-    return " ".join(value.split()).strip().casefold()
+    return collapse_whitespace(value).casefold()
 
 
 def _normalize_label_for_match(value: str) -> str:
-    text = " ".join(value.split()).strip().casefold()
+    text = collapse_whitespace(value).casefold()
     for quote in ("'", '"', "‘", "’", "“", "”"):
         text = text.replace(quote, "")
     for suffix in (" dropdown", " menu", " icon", " button"):
         if text.endswith(suffix):
             text = text[: -len(suffix)]
     text = "".join(ch for ch in text if unicodedata.category(ch)[0] not in ("S",) and ch not in "▼▶▾▸◀◂✕×›‹«»")
-    return " ".join(text.split()).strip()
+    return collapse_whitespace(text)
 
 
 def _label_matches(
