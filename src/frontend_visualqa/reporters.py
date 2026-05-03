@@ -71,7 +71,7 @@ class CTRFReporter:
             ctrf_status = _CTRF_STATUS_MAP.get(claim_result.status, "other")
             summary_counts[ctrf_status] += 1
 
-            extra: dict[str, Any] = {"claimResult": claim_result.model_dump(mode="json")}
+            extra: dict[str, Any] = {"claimResult": serialize_result(claim_result)}
             trace = claim_result.trace
             attachments: list[dict[str, str]] = [
                 _ctrf_attachment(screenshot_path, "image/webp")
