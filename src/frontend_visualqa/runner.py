@@ -272,27 +272,13 @@ class VisualQARunner:
                             )
                         except TimeoutError:
                             finding = self._format_timeout_finding("claim", request.claim_timeout_seconds)
-                            result = self._consume_partial_claim_result(
-                                status="inconclusive",
-                                finding=finding,
-                            ) or self._build_claim(
-                                claim=claim,
-                                status="inconclusive",
-                                finding=finding,
-                                final_url=session.page.url or request.url,
-                                viewport=session.viewport,
+                            result = self._inconclusive_claim_result(
+                                claim=claim, finding=finding, session=session, request=request
                             )
                         except Exception as exc:
                             finding = f"Verification crashed unexpectedly before returning a verdict: {exc}"
-                            result = self._consume_partial_claim_result(
-                                status="inconclusive",
-                                finding=finding,
-                            ) or self._build_claim(
-                                claim=claim,
-                                status="inconclusive",
-                                finding=finding,
-                                final_url=session.page.url or request.url,
-                                viewport=session.viewport,
+                            result = self._inconclusive_claim_result(
+                                claim=claim, finding=finding, session=session, request=request
                             )
                         _append_result(index, claim, result)
                         next_claim_index = index + 1
@@ -302,15 +288,11 @@ class VisualQARunner:
                 if timed_out_claims:
                     interrupted_index = next_claim_index
                     interrupted_claim = timed_out_claims[0]
-                    interrupted_result = self._consume_partial_claim_result(
-                        status="inconclusive",
-                        finding=timeout_finding,
-                    ) or self._build_claim(
+                    interrupted_result = self._inconclusive_claim_result(
                         claim=interrupted_claim,
-                        status="inconclusive",
                         finding=timeout_finding,
-                        final_url=session.page.url or request.url,
-                        viewport=session.viewport,
+                        session=session,
+                        request=request,
                     )
                     _append_result(interrupted_index, interrupted_claim, interrupted_result)
 
@@ -685,6 +667,26 @@ class VisualQARunner:
         except Exception:
             logger.warning("Failed to recover partial claim result after verifier interruption", exc_info=True)
             return None
+
+    def _inconclusive_claim_result(
+        self,
+        *,
+        claim: str,
+        finding: str,
+        session: Any,
+        request: VerifyVisualClaimsInput,
+    ) -> ClaimResult:
+        """Return an inconclusive ClaimResult, preferring a partial result from the verifier."""
+        return self._consume_partial_claim_result(
+            status="inconclusive",
+            finding=finding,
+        ) or self._build_claim(
+            claim=claim,
+            status="inconclusive",
+            finding=finding,
+            final_url=session.page.url or request.url,
+            viewport=session.viewport,
+        )
 
     @staticmethod
     def _format_timeout_finding(scope: _TimeoutScope, timeout_seconds: float | None) -> str:
