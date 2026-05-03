@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import re
 import unicodedata
+from collections.abc import Callable
 from typing import TypedDict
 
 from frontend_visualqa.browser import BrowserSession
@@ -295,6 +296,27 @@ def _label_matches(
     return False
 
 
+def _make_label_matcher(label: str, *, allow_substring: bool = False) -> Callable[[str], bool]:
+    """Return a predicate that tests candidate strings against ``label``.
+
+    Pre-normalizes ``label`` once so the predicate can be applied to many
+    candidates without redoing the (collapse-whitespace, casefold, fuzzy-strip)
+    work each call.
+    """
+    normalized_label = _normalize_text(label)
+    fuzzy_label = _normalize_label_for_match(label)
+
+    def matches(candidate: str) -> bool:
+        return _label_matches(
+            candidate=candidate,
+            normalized_label=normalized_label,
+            fuzzy_label=fuzzy_label,
+            allow_substring=allow_substring,
+        )
+
+    return matches
+
+
 def _check_exact_text_match(
     grounding_state: GroundingState,
     groups: dict[str, str],
@@ -351,15 +373,10 @@ def _check_button_match(
             f"Visible button label matched {groups['label']!r}, but {candidate!r} is clipped or only partially visible.",
         )
 
-    normalized_label = _normalize_text(groups["label"])
-    fuzzy_label = _normalize_label_for_match(groups["label"])
+    matches = _make_label_matcher(groups["label"])
     visible_buttons = grounding_state.get("visibleButtons", [])
     for candidate in visible_buttons:
-        if _label_matches(
-            candidate=candidate,
-            normalized_label=normalized_label,
-            fuzzy_label=fuzzy_label,
-        ):
+        if matches(candidate):
             return "passed", f"Visible button label matched {groups['label']!r}: {candidate!r}."
     return (
         "failed",
@@ -414,29 +431,18 @@ def _check_progress_bar_completely_filled(
 
 
 def _matching_button_states(grounding_state: GroundingState, label: str) -> list[ButtonState]:
-    normalized_label = _normalize_text(label)
-    fuzzy_label = _normalize_label_for_match(label)
+    matches = _make_label_matcher(label)
     return [
         state
         for state in grounding_state.get("buttonStates", [])
-        if _label_matches(
-            candidate=str(state.get("text", "")),
-            normalized_label=normalized_label,
-            fuzzy_label=fuzzy_label,
-        )
+        if matches(str(state.get("text", "")))
     ]
 
 
 def _matching_progress_bars(grounding_state: GroundingState, label: str) -> list[ProgressBarState]:
-    normalized_label = _normalize_text(label)
-    fuzzy_label = _normalize_label_for_match(label)
+    matches = _make_label_matcher(label, allow_substring=True)
     return [
         bar
         for bar in grounding_state.get("progressBars", [])
-        if _label_matches(
-            candidate=str(bar.get("label", "")),
-            normalized_label=normalized_label,
-            fuzzy_label=fuzzy_label,
-            allow_substring=True,
-        )
+        if matches(str(bar.get("label", "")))
     ]
