@@ -9,6 +9,7 @@ from typing import Any, Protocol
 from frontend_visualqa.artifacts import write_json_file, write_text_file
 from frontend_visualqa.claim_parser import ParsedClaimLine, ParsedClaimsFile
 from frontend_visualqa.schemas import ClaimResult, RunResult
+from frontend_visualqa.serialization import serialize_result
 from frontend_visualqa.text_utils import collapse_whitespace as _collapse_whitespace
 
 
@@ -28,7 +29,7 @@ class NativeReporter:
 
     def write(self, run_result: RunResult, output_dir: Path, *, claims_file: ParsedClaimsFile | None = None) -> None:
         del claims_file
-        write_json_file(output_dir / "run_result.json", run_result.model_dump(mode="json"))
+        write_json_file(output_dir / "run_result.json", serialize_result(run_result))
 
 
 _CTRF_STATUS_MAP: dict[str, str] = {
@@ -70,7 +71,7 @@ class CTRFReporter:
             ctrf_status = _CTRF_STATUS_MAP.get(claim_result.status, "other")
             summary_counts[ctrf_status] += 1
 
-            extra: dict[str, Any] = {"claimResult": claim_result.model_dump(mode="json")}
+            extra: dict[str, Any] = {"claimResult": serialize_result(claim_result)}
             trace = claim_result.trace
             attachments: list[dict[str, str]] = [
                 _ctrf_attachment(screenshot_path, "image/webp")
