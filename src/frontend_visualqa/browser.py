@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from PIL import Image
-from playwright.async_api import Browser, BrowserContext, Page, Playwright, async_playwright
+from playwright.async_api import Browser, BrowserContext, Error as PlaywrightError, Page, Playwright, async_playwright
 from yutori.navigator.page_ready import PageReadyChecker
 
 from frontend_visualqa.schemas import BrowserConfig, BrowserMode, BrowserSessionStatus, BrowserStatusResult, ViewportConfig
@@ -214,7 +214,7 @@ class BrowserManager:
             if cdp_session is not None:
                 try:
                     await cdp_session.detach()
-                except Exception:
+                except PlaywrightError:
                     logger.debug("CDP screenshot session detach failed", exc_info=True)
 
     @staticmethod
@@ -443,14 +443,14 @@ class BrowserManager:
     def _session_is_open(session: BrowserSession) -> bool:
         try:
             return not session.page.is_closed()
-        except Exception:
+        except PlaywrightError:
             return False
 
     @staticmethod
     def _safe_page_url(session: BrowserSession) -> str | None:
         try:
             return session.page.url or None
-        except Exception:
+        except PlaywrightError:
             return None
 
     async def __aenter__(self) -> "BrowserManager":
