@@ -8,7 +8,7 @@ from typing import Any, Protocol
 
 from frontend_visualqa.artifacts import write_json_file, write_text_file
 from frontend_visualqa.claim_parser import ParsedClaimLine, ParsedClaimsFile
-from frontend_visualqa.schemas import ClaimResult, RunResult
+from frontend_visualqa.schemas import ClaimProof, ClaimResult, ClaimTrace, RunResult
 from frontend_visualqa.serialization import serialize_result
 from frontend_visualqa.text_utils import collapse_whitespace as _collapse_whitespace
 
@@ -48,6 +48,21 @@ def _ctrf_attachment(path: str, content_type: str) -> dict[str, str]:
         "path": path,
     }
 
+
+def _gather_ctrf_attachments(proof: ClaimProof | None, trace: ClaimTrace) -> list[dict[str, str]]:
+    """Collect every artifact attachment (screenshots, proof text, trace JSON) for a claim."""
+    attachments: list[dict[str, str]] = [
+        _ctrf_attachment(screenshot_path, "image/webp")
+        for screenshot_path in trace.screenshot_paths
+    ]
+    proof_text_path = proof.text_path if proof is not None else None
+    if proof_text_path:
+        attachments.append(_ctrf_attachment(proof_text_path, "text/plain"))
+    if trace.trace_path:
+        attachments.append(_ctrf_attachment(trace.trace_path, "application/json"))
+    return attachments
+
+
 _CLAIM_DETAILS_START_MARKER = "<!-- frontend-visualqa:claim-details:start -->"
 _CLAIM_DETAILS_END_MARKER = "<!-- frontend-visualqa:claim-details:end -->"
 _APPENDIX_START_MARKER = "<!-- frontend-visualqa:appendix:start -->"
@@ -72,17 +87,7 @@ class CTRFReporter:
             summary_counts[ctrf_status] += 1
 
             extra: dict[str, Any] = {"claimResult": serialize_result(claim_result)}
-            trace = claim_result.trace
-            attachments: list[dict[str, str]] = [
-                _ctrf_attachment(screenshot_path, "image/webp")
-                for screenshot_path in trace.screenshot_paths
-            ]
-            proof = claim_result.proof
-            proof_text_path = proof.text_path if proof is not None else None
-            if proof_text_path:
-                attachments.append(_ctrf_attachment(proof_text_path, "text/plain"))
-            if trace.trace_path:
-                attachments.append(_ctrf_attachment(trace.trace_path, "application/json"))
+            attachments = _gather_ctrf_attachments(claim_result.proof, claim_result.trace)
 
             ctrf_test: dict[str, Any] = {
                 "name": claim_result.claim,
