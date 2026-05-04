@@ -316,18 +316,13 @@ class ActionExecutor:
 
         try:
             if canonical_name in MOVE_ACTIONS:
-                x, y = await self._resolve_coordinates(
+                await self._hover_at_resolved_coordinates(
                     page,
                     raw_arguments,
                     width=width,
                     height=height,
-                    action_name=canonical_name,
+                    canonical_name=canonical_name,
                 )
-                # Lead the real page hover with the branded cursor. The cursor
-                # transition delay now sits on the critical path before the DOM
-                # mutation so the headed sequence reads naturally.
-                await self._best_effort_overlay_preview_action(action_type=canonical_name, x=x, y=y)
-                await page.mouse.move(x, y)
 
             elif canonical_name in CLICK_ACTIONS:
                 x, y = await self._resolve_coordinates(
@@ -374,27 +369,23 @@ class ActionExecutor:
                 await page.mouse.up()
 
             elif canonical_name == "mouse_down":
-                x, y = await self._resolve_coordinates(
+                await self._hover_at_resolved_coordinates(
                     page,
                     raw_arguments,
                     width=width,
                     height=height,
-                    action_name=canonical_name,
+                    canonical_name=canonical_name,
                 )
-                await self._best_effort_overlay_preview_action(action_type=canonical_name, x=x, y=y)
-                await page.mouse.move(x, y)
                 await page.mouse.down()
 
             elif canonical_name == "mouse_up":
-                x, y = await self._resolve_coordinates(
+                await self._hover_at_resolved_coordinates(
                     page,
                     raw_arguments,
                     width=width,
                     height=height,
-                    action_name=canonical_name,
+                    canonical_name=canonical_name,
                 )
-                await self._best_effort_overlay_preview_action(action_type=canonical_name, x=x, y=y)
-                await page.mouse.move(x, y)
                 await page.mouse.up()
 
             elif canonical_name == "scroll":
@@ -631,6 +622,33 @@ class ActionExecutor:
         if not has_coordinates:
             raise BrowserActionError(f"{action_name} requires coordinates or a valid ref")
         return denormalize_coordinates(coordinates, width=width, height=height)
+
+    async def _hover_at_resolved_coordinates(
+        self,
+        page: Any,
+        raw_arguments: dict[str, Any],
+        *,
+        width: int,
+        height: int,
+        canonical_name: str,
+    ) -> None:
+        """Resolve action coordinates, lead the overlay cursor, and hover the real mouse.
+
+        Shared by the move/hover, mouse_down, and mouse_up paths in
+        ``perform_action``: each does identical resolve → overlay preview →
+        ``page.mouse.move`` work before optionally calling ``mouse.down`` or
+        ``mouse.up``. Putting the cursor transition delay before the DOM
+        mutation keeps the headed sequence reading naturally.
+        """
+        x, y = await self._resolve_coordinates(
+            page,
+            raw_arguments,
+            width=width,
+            height=height,
+            action_name=canonical_name,
+        )
+        await self._best_effort_overlay_preview_action(action_type=canonical_name, x=x, y=y)
+        await page.mouse.move(x, y)
 
     @staticmethod
     async def _press_modifier_keys(page: Any, modifier: Any) -> list[str]:
