@@ -91,9 +91,17 @@ KEY_COMBINATION_ACTIONS: dict[str, str] = {
 DISALLOWED_ZOOM_KEYS = {"-", "=", "0"}
 
 
+SCROLL_DIRECTIONS = frozenset({"up", "down", "left", "right"})
+
+
 def _is_coordinate_pair(value: Any) -> bool:
     """True if `value` is a list/tuple of exactly two elements (an [x, y] pair)."""
     return isinstance(value, (list, tuple)) and len(value) == 2
+
+
+def _normalize_scroll_direction(arguments: dict[str, Any]) -> str:
+    """Lowercased scroll direction from raw arguments, defaulting to 'down'."""
+    return str(arguments.get("direction", "down")).lower()
 
 
 def _mapped_key_presses(key_text: str) -> list[str]:
@@ -195,7 +203,7 @@ def render_action_trace(
         coordinates = arguments.get("coordinates")
         if coordinates is not None:
             x, y = denormalize_coordinates(coordinates, width=width, height=height)
-            direction = str(arguments.get("direction", "down")).lower()
+            direction = _normalize_scroll_direction(arguments)
             amount = arguments.get("amount", 1)
             modifier_suffix = _format_modifier_trace_suffix(arguments.get("modifier"))
             return f"scroll([{x}, {y}], direction={direction}, amount={amount}{modifier_suffix})"
@@ -390,9 +398,9 @@ class ActionExecutor:
                 await page.mouse.up()
 
             elif canonical_name == "scroll":
-                direction = str(raw_arguments.get("direction", "down")).lower()
+                direction = _normalize_scroll_direction(raw_arguments)
                 amount = float(raw_arguments.get("amount", 1))
-                if direction not in {"up", "down", "left", "right"}:
+                if direction not in SCROLL_DIRECTIONS:
                     raise BrowserActionError(f"unsupported scroll direction: {direction}")
                 # Resolve coordinates from ref or raw coordinates, then share
                 # the overlay/modifier/wheel logic for both paths.
