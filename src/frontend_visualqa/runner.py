@@ -619,13 +619,12 @@ class VisualQARunner:
         completed_at: float | None = None,
     ) -> RunResult:
         results = [
-            ClaimResult(
+            VisualQARunner._build_claim(
                 claim=claim,
                 status="not_testable",
                 finding=finding,
-                proof=None,
-                page=ClaimPage(url=request.url, viewport=request.viewport),
-                trace=ClaimTrace(),
+                final_url=request.url,
+                viewport=request.viewport,
             )
             for claim in request.claims
         ]
