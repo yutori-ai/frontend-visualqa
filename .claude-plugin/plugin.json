@@ -1,7 +1,7 @@
 {
   "name": "frontend-visualqa",
-  "version": "0.6.0",
-  "description": "Local visual QA for frontends with Yutori n1 and Playwright",
+  "version": "0.8.0",
+  "description": "Local visual QA for frontends with Yutori Navigator and Playwright",
   "author": {
     "name": "Yutori",
     "email": "support@yutori.com",
