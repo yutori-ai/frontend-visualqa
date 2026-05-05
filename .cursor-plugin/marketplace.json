@@ -6,13 +6,13 @@
   },
   "metadata": {
     "description": "Official frontend-visualqa plugin marketplace for Cursor",
-    "version": "0.6.0"
+    "version": "0.8.0"
   },
   "plugins": [
     {
       "name": "frontend-visualqa",
       "source": "./",
-      "description": "Local visual QA for frontends with Yutori n1 and Playwright"
+      "description": "Local visual QA for frontends with Yutori Navigator and Playwright"
     }
   ]
 }
