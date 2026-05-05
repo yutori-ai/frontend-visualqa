@@ -47,6 +47,17 @@ def image_bytes_to_data_url(image_bytes: bytes, mime_type: str = "image/webp") -
     return f"data:{mime_type};base64,{encoded}"
 
 
+def _viewport_size_dict(viewport: ViewportConfig) -> dict[str, int]:
+    """Return the ``{"width", "height"}`` dict Playwright accepts.
+
+    Centralises the four call sites that pass viewport dimensions to
+    Playwright (``launch_persistent_context``, ``new_context``,
+    ``set_viewport_size``) so the field names cannot drift if Playwright
+    ever renames either key.
+    """
+    return {"width": viewport.width, "height": viewport.height}
+
+
 class BrowserManager:
     """Own the shared Chromium process and session-scoped browser contexts."""
 
@@ -104,7 +115,7 @@ class BrowserManager:
             self._persistent_context = await playwright.chromium.launch_persistent_context(
                 user_data_dir=user_data_dir,
                 headless=self.headless,
-                viewport={"width": persistent_viewport.width, "height": persistent_viewport.height},
+                viewport=_viewport_size_dict(persistent_viewport),
                 device_scale_factor=persistent_viewport.device_scale_factor,
             )
             self._configure_context(self._persistent_context)
@@ -366,13 +377,13 @@ class BrowserManager:
             context = self._persistent_context or await self.ensure_browser(viewport)
             assert isinstance(context, BrowserContext)
             page = await context.new_page()
-            await page.set_viewport_size({"width": viewport.width, "height": viewport.height})
+            await page.set_viewport_size(_viewport_size_dict(viewport))
             await page.goto("about:blank", wait_until="domcontentloaded", timeout=self.navigation_timeout_ms)
         else:
             browser = await self.ensure_browser(viewport)
             assert isinstance(browser, Browser)
             context = await browser.new_context(
-                viewport={"width": viewport.width, "height": viewport.height},
+                viewport=_viewport_size_dict(viewport),
                 device_scale_factor=viewport.device_scale_factor,
             )
             self._configure_context(context)
@@ -392,7 +403,7 @@ class BrowserManager:
                 await self.goto(refreshed, current_url)
             return refreshed
 
-        await session.page.set_viewport_size({"width": desired.width, "height": desired.height})
+        await session.page.set_viewport_size(_viewport_size_dict(desired))
         session.viewport = desired
         return session
 
