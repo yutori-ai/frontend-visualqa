@@ -87,7 +87,7 @@ jobs:
 
       # ── Dashboard — login once, verify claims without re-navigating ──
       # The navigation hint applies to claim 1 (login). Claims 2-3 run on the
-      # already-loaded dashboard thanks to --no-reset-between-claims. n1 correctly
+      # already-loaded dashboard thanks to --no-reset-between-claims. Navigator correctly
       # ignores the hint for claims that don't need it.
 
       - name: Visual QA — Login and verify dashboard
