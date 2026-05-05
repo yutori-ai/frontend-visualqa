@@ -25,7 +25,7 @@ from frontend_visualqa.prompts import (
 )
 from frontend_visualqa.schemas import ClaimPage, ClaimProof, ClaimResult, ClaimStatus, ClaimTrace
 from frontend_visualqa.text_utils import clip_text
-from frontend_visualqa.tool_arguments import parse_tool_arguments
+from frontend_visualqa.tool_arguments import parse_tool_arguments, tool_call_name
 from frontend_visualqa.utils import safe_async_method_call, safe_method_call
 
 if TYPE_CHECKING:
@@ -263,7 +263,7 @@ class ClaimVerifier:
                 had_action_in_turn = False
                 responded_tool_ids: set[str] = set()
                 for tool_call in tool_calls:
-                    tool_name = getattr(tool_call.function, "name", "")
+                    tool_name = tool_call_name(tool_call)
                     if progress.step_count >= max_steps:
                         break
                     tool_arguments = parse_tool_arguments(tool_call)
@@ -630,7 +630,7 @@ class ClaimVerifier:
 
         result = await self.action_executor.execute_tool_call(session, tool_call)
         if isinstance(result, str):
-            tool_name = getattr(getattr(tool_call, "function", tool_call), "name", "")
+            tool_name = tool_call_name(tool_call)
             return {
                 "trace": result,
                 "output_text": None,
