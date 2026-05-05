@@ -14,7 +14,7 @@ from frontend_visualqa.browser import (
     DEFAULT_PAGE_READY_TIMEOUT_SECONDS,
 )
 from frontend_visualqa.errors import BrowserActionError
-from frontend_visualqa.tool_arguments import parse_tool_arguments
+from frontend_visualqa.tool_arguments import parse_tool_arguments, tool_call_name
 from frontend_visualqa.utils import safe_async_method_call
 from yutori.navigator import (
     denormalize_coordinates,
@@ -288,7 +288,7 @@ class ActionExecutor:
     async def execute_tool_call(self, session: BrowserSession, tool_call: Any) -> ToolExecutionResult | str:
         """Execute a tool call object with ``function.name`` and JSON arguments."""
 
-        action_name = getattr(getattr(tool_call, "function", tool_call), "name", "")
+        action_name = tool_call_name(tool_call)
         if action_name in EXPANDED_TOOL_NAMES:
             arguments = parse_tool_arguments(tool_call)
             return await self._execute_expanded_tool(session, action_name, arguments)
