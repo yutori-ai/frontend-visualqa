@@ -280,6 +280,16 @@ class OverlayController:
         # happens to fire — visible "appears and disappears" flicker.
         # _inject_persistent_root is idempotent (id guard), so spurious
         # firings are harmless.
+        # Defensive: a prior listener may still be subscribed if claim_started
+        # was called twice without claim_ended between (page.on appends — it
+        # doesn't replace). Detach first so we never leak a handler that
+        # claim_ended can no longer reference.
+        if self._navigation_handler is not None:
+            try:
+                self._page.remove_listener("domcontentloaded", self._navigation_handler)
+            except Exception:
+                logger.debug("Failed to detach previous overlay navigation listener", exc_info=True)
+            self._navigation_handler = None
         self._navigation_handler = lambda _frame=None: asyncio.create_task(
             self._reinject_after_navigation()
         )
