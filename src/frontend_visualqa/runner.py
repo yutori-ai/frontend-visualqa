@@ -718,7 +718,11 @@ class VisualQARunner:
 
     async def _preflight_url(self, url: str) -> str | None:
         try:
-            async with httpx.AsyncClient(follow_redirects=True, timeout=5.0) as client:
+            # http2=True opts into ALPN h2 negotiation for parity with the
+            # Navigator client. A single HEAD doesn't benefit perf-wise;
+            # this is purely consistency-of-transport across all outbound
+            # HTTP. Requires the httpx[http2] extra (pulled by pyproject).
+            async with httpx.AsyncClient(http2=True, follow_redirects=True, timeout=5.0) as client:
                 try:
                     response = await client.head(url)
                     if response.status_code in {405, 501}:
