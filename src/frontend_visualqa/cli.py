@@ -86,6 +86,17 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Output reporter. Can be specified multiple times. Defaults to native.",
     )
+    verify_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="count",
+        default=0,
+        help=(
+            "Stream service-responsiveness logs to stderr. "
+            "-v: INFO (Navigator token usage, retries, image trimming, page ready). "
+            "-vv: DEBUG (per-action timing, screenshot fallbacks, low-level SDK chatter)."
+        ),
+    )
     verify_parser.set_defaults(handler=_handle_verify)
 
     screenshot_parser = subparsers.add_parser("screenshot", help="Capture a screenshot for a target URL.")
@@ -200,11 +211,73 @@ def _build_browser_config(
     )
 
 
+class _DropDestroyedContextWarning(logging.Filter):
+    """Suppress yutori PageReadyChecker's "Execution context was destroyed"
+    warning.
+
+    The warning fires when ``page.evaluate(...)`` runs against a Playwright
+    context that just got torn down by a navigation. ``is_ready`` catches
+    the exception, returns ``False``, and the polling loop retries on the
+    next tick — which succeeds because the new context is up. By the time
+    a user sees the log line, the situation has already self-recovered.
+    Pure noise; we drop only this specific message and leave any other
+    page-ready warnings intact.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return "Execution context was destroyed" not in record.getMessage()
+
+
+def _install_page_ready_noise_filter() -> None:
+    """Attach the destroyed-context filter to the yutori page_ready logger.
+
+    Called from both serve and verify logging setup so the noise is
+    suppressed regardless of how the process was launched.
+    """
+    logging.getLogger("yutori.navigator.page_ready").addFilter(
+        _DropDestroyedContextWarning()
+    )
+
+
 def _configure_serve_logging() -> None:
     # Stdio transport depends on a clean stdout channel for MCP messages.
     logging.basicConfig(level=logging.WARNING, stream=sys.stderr, force=True)
     logging.getLogger("frontend_visualqa").setLevel(logging.WARNING)
     logging.getLogger("mcp").setLevel(logging.ERROR)
+    _install_page_ready_noise_filter()
+
+
+def _configure_verify_logging(verbose: int) -> None:
+    """Wire stderr logging for the verify subcommand based on -v / -vv.
+
+    The verify subcommand emits its result JSON on stdout, so logs MUST go to
+    stderr (otherwise downstream tools that pipe verify into jq see garbage).
+    Default (verbose==0) stays at WARNING — same noise level as before.
+    -v (INFO) surfaces the existing instrumentation: Navigator token usage,
+    retries with backoff, image trimming events, page-ready check timing.
+    -vv (DEBUG) adds low-level chatter from frontend_visualqa, the yutori
+    SDK, and the MCP transport. We intentionally leave Playwright at INFO
+    even on -vv because its DEBUG output is overwhelming and rarely useful.
+    """
+    if verbose >= 2:
+        level = logging.DEBUG
+    elif verbose == 1:
+        level = logging.INFO
+    else:
+        level = logging.WARNING
+    logging.basicConfig(
+        level=level,
+        stream=sys.stderr,
+        format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
+        datefmt="%H:%M:%S",
+        force=True,
+    )
+    logging.getLogger("frontend_visualqa").setLevel(level)
+    logging.getLogger("yutori").setLevel(level)
+    # Playwright DEBUG is firehose-y and almost never useful for service
+    # responsiveness. Keep it at INFO regardless.
+    logging.getLogger("playwright").setLevel(max(level, logging.INFO))
+    _install_page_ready_noise_filter()
 
 
 def _emit_json(payload: dict[str, Any]) -> None:
@@ -223,6 +296,7 @@ def _handle_serve(args: argparse.Namespace) -> int:
 
 
 def _handle_verify(args: argparse.Namespace) -> int:
+    _configure_verify_logging(getattr(args, "verbose", 0))
     try:
         result = asyncio.run(_run_verify(args))
     except ConfigurationError as exc:
@@ -322,6 +396,13 @@ async def _preflight_verify_auth() -> None:
         )
 
     client = AsyncYutoriClient(api_key=api_key)
+    # Match the transport NavigatorClient uses so verify-time logs don't show
+    # one HTTP/1.1 line for /v1/usage followed by HTTP/2 for /v1/chat/completions.
+    # AsyncYutoriClient's default timeout is 30s — pass that through so the
+    # HTTP/2 client mirrors the original's behavior.
+    from frontend_visualqa.navigator_client import enable_http2_on_yutori_client
+
+    enable_http2_on_yutori_client(client, timeout_seconds=30.0)
     try:
         await client.get_usage()
     except AuthenticationError as exc:

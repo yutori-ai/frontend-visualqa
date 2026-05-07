@@ -89,7 +89,9 @@ class FakeNavigatorClient:
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None = None,
         json_schema: dict[str, Any] | None = None,
+        already_trimmed: bool = False,
     ) -> FakeResponse:
+        del already_trimmed  # informational; we don't trim in fake
         self.calls.append({"messages": messages, "tools": tools or []})
         raw = self.responses.pop(0)
         if isinstance(raw, FakeResponse):

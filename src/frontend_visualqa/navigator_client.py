@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import time
 from typing import Any, Protocol
 
 import httpx
@@ -17,6 +19,99 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_MAX_REQUEST_BYTES = 9_500_000
 DEFAULT_KEEP_RECENT_SCREENSHOTS = 6
+
+
+def _schedule_close(client: Any, *, attr: str = "close") -> None:
+    """Best-effort async close of a swapped-out HTTP client.
+
+    Schedules the close as a background task on the running loop; called
+    from sync code that can't ``await``. If no loop is running, the leak
+    is bounded — the original client never sent a request and gets
+    cleaned up by GC.
+    """
+    coro_factory = getattr(client, attr, None)
+    if coro_factory is None:
+        return
+    try:
+        asyncio.get_running_loop().create_task(coro_factory())
+    except RuntimeError:
+        logger.debug("No running loop available to close swapped-out client")
+
+
+def enable_http2_on_yutori_client(yclient: Any, *, timeout_seconds: float) -> None:
+    """Swap both httpx clients inside an ``AsyncYutoriClient`` for HTTP/2.
+
+    Two distinct httpx clients live inside ``AsyncYutoriClient``:
+
+    1. ``yclient.chat._openai_client`` — the OpenAI SDK's internal httpx
+       client (used by the chat completions hot loop).
+    2. ``yclient._client`` — yutori's own httpx client (used by
+       ``get_usage()`` and the scouts/browsing/research namespaces).
+
+    Neither is constructable with ``http2=True`` through public yutori SDK
+    API, so we patch private attributes after construction. Each swap is
+    fenced — if a yutori SDK rename breaks one, the other still upgrades,
+    and we log a warning rather than crashing.
+
+    Used by both ``NavigatorClient`` (for the verifier hot loop) and
+    ``cli._preflight_verify_auth`` (for the standalone auth-check client).
+    """
+    _swap_chat_openai_to_http2(yclient, timeout_seconds=timeout_seconds)
+    _swap_yutori_httpx_to_http2(yclient, timeout_seconds=timeout_seconds)
+
+
+def _swap_chat_openai_to_http2(yclient: Any, *, timeout_seconds: float) -> None:
+    try:
+        from openai import AsyncOpenAI
+
+        chat_ns = yclient.chat
+        old_oai = chat_ns._openai_client  # type: ignore[attr-defined]
+        api_key = old_oai.api_key
+        base_url = str(old_oai.base_url)
+        new_http2_client = httpx.AsyncClient(
+            http2=True,
+            timeout=timeout_seconds,
+        )
+        new_oai = AsyncOpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            timeout=timeout_seconds,
+            http_client=new_http2_client,
+        )
+        chat_ns._openai_client = new_oai  # type: ignore[attr-defined]
+        chat_ns.completions._client = new_oai  # type: ignore[attr-defined]
+        _schedule_close(old_oai)
+        logger.info("Navigator HTTP/2 transport enabled (chat completions)")
+    except Exception:
+        logger.warning(
+            "Could not enable HTTP/2 on chat namespace; "
+            "chat completions will use HTTP/1.1",
+            exc_info=True,
+        )
+
+
+def _swap_yutori_httpx_to_http2(yclient: Any, *, timeout_seconds: float) -> None:
+    try:
+        old_httpx = yclient._client  # type: ignore[attr-defined]
+        new_httpx = httpx.AsyncClient(
+            http2=True,
+            timeout=timeout_seconds,
+        )
+        yclient._client = new_httpx  # type: ignore[attr-defined]
+        # Each namespace stores its own ref to the original client; update
+        # them too so usage/scouts/browsing/research calls also use h2.
+        for ns_name in ("scouts", "browsing", "research"):
+            ns = getattr(yclient, ns_name, None)
+            if ns is not None and hasattr(ns, "_client"):
+                ns._client = new_httpx  # type: ignore[attr-defined]
+        _schedule_close(old_httpx, attr="aclose")
+        logger.info("Navigator HTTP/2 transport enabled (yutori SDK client)")
+    except Exception:
+        logger.warning(
+            "Could not enable HTTP/2 on yutori SDK client; "
+            "usage/auth preflight will use HTTP/1.1",
+            exc_info=True,
+        )
 
 
 class SupportsChatCompletionCreate(Protocol):
@@ -69,16 +164,25 @@ class NavigatorClient:
         *,
         tools: list[dict[str, Any]] | None = None,
         json_schema: dict[str, Any] | None = None,
+        already_trimmed: bool = False,
     ) -> Any:
         """Call the Navigator model and return the full response.
 
         When *json_schema* is provided and the model emits structured JSON
         (instead of tool calls), the parsed result is available on
         ``response.parsed_json``.
+
+        ``already_trimmed`` skips the size-estimation+trim pass when the
+        caller has already trimmed (e.g. ``ClaimVerifier`` does this so the
+        ``on_llm_start`` hook sees the post-trim payload). Each
+        ``trim_messages`` call serializes the entire message list to JSON to
+        estimate size — for screenshot-heavy traces that's a multi-MB dump
+        per turn, so dedupe matters. External callers should keep the
+        default ``False`` to stay protected.
         """
 
         client = await self._ensure_client()
-        prepared_messages = self.trim_messages(messages)
+        prepared_messages = messages if already_trimmed else self.trim_messages(messages)
         kwargs: dict[str, Any] = {}
         if tools:
             kwargs["tools"] = tools
@@ -92,6 +196,7 @@ class NavigatorClient:
         if self.temperature is not None:
             kwargs["temperature"] = self.temperature
 
+        request_started = time.perf_counter()
         try:
             async for attempt in AsyncRetrying(
                 stop=stop_after_attempt(self.max_retries + 1),
@@ -114,14 +219,21 @@ class NavigatorClient:
         except Exception as exc:
             raise NavigatorClientError(f"Navigator request failed: {exc}") from exc
 
+        # Wall-clock per Navigator call. Surfaced by `frontend-visualqa verify
+        # -v` (INFO). Includes any retry+backoff time, so a single line can
+        # account for both raw latency and transient-failure recovery cost.
+        elapsed_ms = (time.perf_counter() - request_started) * 1000
         usage = getattr(response, "usage", None)
         if usage is not None:
             logger.info(
-                "Navigator usage prompt=%s completion=%s total=%s",
+                "Navigator call %.0f ms — usage prompt=%s completion=%s total=%s",
+                elapsed_ms,
                 getattr(usage, "prompt_tokens", "?"),
                 getattr(usage, "completion_tokens", "?"),
                 getattr(usage, "total_tokens", "?"),
             )
+        else:
+            logger.info("Navigator call %.0f ms (no usage info)", elapsed_ms)
         return response
 
     def trim_messages(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -162,7 +274,15 @@ class NavigatorClient:
             base_url=self.base_url,
             timeout=self.timeout_seconds,
         )
+        self._enable_http2(self._client)
         return self._client
+
+    def _enable_http2(self, yclient: Any) -> None:
+        """Swap both httpx clients inside this client's ``AsyncYutoriClient``
+        for HTTP/2 equivalents. See ``enable_http2_on_yutori_client`` for
+        details — kept as an instance method so subclasses can override.
+        """
+        enable_http2_on_yutori_client(yclient, timeout_seconds=self.timeout_seconds)
 
     def _log_retry(self, retry_state: Any) -> None:
         """Log retry timing before the next transient-error retry attempt."""
