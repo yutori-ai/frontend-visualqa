@@ -104,7 +104,14 @@ class FakeActionExecutor:
 
 
 class BlockingNavigatorClient(FakeNavigatorClient):
-    async def create(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None = None, json_schema: dict[str, Any] | None = None) -> FakeResponse:
+    async def create(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+        json_schema: dict[str, Any] | None = None,
+        already_trimmed: bool = False,
+    ) -> FakeResponse:
+        del already_trimmed
         self.calls.append({"messages": messages, "tools": tools or []})
         await asyncio.sleep(1.0)
         raise AssertionError("BlockingNavigatorClient should be cancelled before returning")

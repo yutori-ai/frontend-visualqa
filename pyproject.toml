@@ -23,7 +23,7 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
-    "httpx>=0.26.0",
+    "httpx[http2]>=0.26.0",
     "mcp>=1.1.2",
     "pillow>=10.0.0",
     "playwright>=1.40.0",
