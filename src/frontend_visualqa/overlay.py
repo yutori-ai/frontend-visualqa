@@ -34,7 +34,7 @@ TYPE_STYLE_ID = "__n1TypeStyle"
 CURSOR_ID = "__n1Cursor"
 DRAG_STYLE_ID = "__n1DragStyle"
 CLICK_DURATION_MS = 250
-SCROLL_DURATION_MS = 1000
+SCROLL_DURATION_MS = 1500
 DRAG_DURATION_MS = 200
 CURSOR_TRANSITION_MS = 350
 THOUGHT_DURATION_MS = 2000
@@ -144,6 +144,25 @@ _PERSISTENT_ROOT_JS = f"""() => {{
     chip.style.cssText = 'position:fixed;top:12px;right:12px;background:{YUTORI_GREEN};color:#000;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-size:10px;font-weight:700;letter-spacing:0.6px;text-transform:uppercase;padding:6px 12px;border-radius:999px;box-shadow:0 2px 10px rgba(29,205,152,0.45);z-index:{Z_INDEX + 1};';
     chip.textContent = 'Analyzing';
     root.appendChild(chip);
+
+    // Cursor lives in the persistent root so it survives navigation
+    // (the persistent root is re-mounted on every domcontentloaded) and
+    // the screenshot hide/restore cycle (only the persistent root is
+    // restored after a screenshot). OverlayController calls
+    // _restore_cursor_position right after _inject_persistent_root to
+    // teleport the cursor back to its last known viewport coordinates,
+    // so the user always sees it where it was, never off-screen.
+    if (!document.getElementById('{CURSOR_ID}')) {{
+        const cursor = document.createElement('img');
+        cursor.id = '{CURSOR_ID}';
+        cursor.src = '{_CURSOR_DATA_URI}';
+        // The opacity transition lets _show_scroll_effect fade the cursor
+        // out for the duration of the scroll animation and back in on
+        // animationend without a hard pop. 200ms is short enough not to
+        // delay subsequent moves and long enough to read as a fade.
+        cursor.style.cssText = 'position:fixed;left:-200px;top:-200px;width:75px;height:101px;pointer-events:none;z-index:{Z_INDEX + 2};transition:left {CURSOR_TRANSITION_MS}ms ease-in-out,top {CURSOR_TRANSITION_MS}ms ease-in-out,opacity 200ms ease-in-out;transform:translate(-17px,-4px);filter:drop-shadow(0 2px 5px rgba(0,0,0,0.18));';
+        root.appendChild(cursor);
+    }}
 
     document.documentElement.appendChild(root);
 }}"""
@@ -256,6 +275,114 @@ _THOUGHT_STYLE_CSS = (
     f"#{THOUGHT_CARD_ID} h4{{font-size:1em;opacity:0.9}}"
 )
 
+# Lightweight markdown→HTML renderer ported from yutori-ai/yutori
+# navigator-browser-extension/sidepanel.js (renderMarkdown + escapeHtml).
+# Kept as a raw triple-quoted string so backslash escapes (\n, \d, \w, \u0000,
+# etc.) reach the JS engine literally. Injected into _THOUGHT_CARD_JS via
+# f-string interpolation — the substituted contents' braces are NOT re-parsed
+# as f-string fields, which is why this file can stay readable.
+#
+# Coverage: fenced code blocks, inline code, [text](url) with scheme allow-list
+# (https/mailto only), bare-URL linkification, ATX headers, **bold**, *italic*,
+# - / 1. lists, soft line breaks. Sentinel-extracts code blocks/spans BEFORE
+# escapeHtml so backtick contents survive the link/list/emphasis passes.
+#
+# Trust model: thought text comes from the Navigator LLM, not from the page
+# being verified. escapeHtml runs on everything that isn't a fenced/inline code
+# capture; link hrefs are scheme-checked; non-allow-listed schemes fall through
+# as plain text. We render with innerHTML in good conscience.
+_RENDER_MARKDOWN_JS = r"""
+function n1escapeHtml(text) {
+    if (!text) return '';
+    return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+const N1_SAFE_LINK_SCHEME = /^(?:https?:\/\/|mailto:)/i;
+function n1renderMarkdown(text) {
+    if (!text) return '';
+    const codeBlocks = [];
+    text = text.replace(/```(\w*)\r?\n?([\s\S]*?)```/g, (_m, lang, code) => {
+        const idx = codeBlocks.push({ lang, code }) - 1;
+        return '\u0000CB' + idx + '\u0000';
+    });
+    const inlineCodes = [];
+    text = text.replace(/`([^`]+)`/g, (_m, code) => {
+        const idx = inlineCodes.push(code) - 1;
+        return '\u0000IC' + idx + '\u0000';
+    });
+    let html = n1escapeHtml(text);
+    html = html.replace(/\[([^\]]+)\]\(([^)\s'"]+)\)/g, (m, label, url) => {
+        if (!N1_SAFE_LINK_SCHEME.test(url)) return m;
+        return '<a href="' + url + '" target="_blank" rel="noopener noreferrer">' + label + '</a>';
+    });
+    html = html.replace(
+        /(^|[^"'>=])(https?:\/\/[^\s<>"']+)/g,
+        (_m, pre, url) => pre + '<a href="' + url + '" target="_blank" rel="noopener noreferrer">' + url + '</a>'
+    );
+    html = html.replace(/^### (.+)$/gm, '<h4>$1</h4>');
+    html = html.replace(/^## (.+)$/gm, '<h3>$1</h3>');
+    html = html.replace(/^# (.+)$/gm, '<h2>$1</h2>');
+    html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+    html = html.replace(/(?<![*\w])\*([^*]+)\*(?![*\w])/g, '<em>$1</em>');
+    html = html.replace(/(?<![_\w])_([^_]+)_(?![_\w])/g, '<em>$1</em>');
+    html = html.replace(/^[-*] (.+)$/gm, '<li>$1</li>');
+    html = html.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
+    html = html.replace(/(<li>[\s\S]*?<\/li>)(?=\s*(?:<li>|$))/g, (_match, content, offset, string) => {
+        const before = string.substring(0, offset);
+        const isFirstInList = !before.endsWith('</li>\n') && !before.endsWith('</li>');
+        return isFirstInList ? '<ul>' + content : content;
+    });
+    html = html.replace(/(<\/li>)(?!\s*<li>)/g, '$1</ul>');
+    html = html.replace(/\n(?!<\/?(?:h[1-6]|ul|li|p|pre))/g, '<br>');
+    html = html.replace(/(<br>){3,}/g, '<br><br>');
+    html = html.replace(/\u0000CB(\d+)\u0000/g, (_m, idx) => {
+        const block = codeBlocks[Number(idx)];
+        const langClass = block.lang ? ' class="language-' + n1escapeHtml(block.lang) + '"' : '';
+        const body = n1escapeHtml(block.code.replace(/\n$/, ''));
+        return '<pre><code' + langClass + '>' + body + '</code></pre>';
+    });
+    html = html.replace(/\u0000IC(\d+)\u0000/g, (_m, idx) => {
+        return '<code>' + n1escapeHtml(inlineCodes[Number(idx)]) + '</code>';
+    });
+    return html;
+}
+"""
+
+# Yutori wordmark (Logotype, March 2025) sourced from yutori-ai/yutori
+# navigator-browser-extension/icons/Yutori.Logotype.03.14.2025.svg. Inlined
+# into the DOM (rather than loaded as an <img> data URI) so currentColor
+# resolves — the original asset uses #334155 which would be invisible on the
+# dark thought-card background. Single-quoted Python string with only
+# double quotes inside makes Python's repr() emit a JS-valid string literal
+# at f-string-substitution time.
+_YUTORI_LOGOTYPE_SVG = '<svg width="248" height="63" viewBox="0 0 248 63" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M234.52 13.9307C232.514 13.9307 230.851 13.2714 229.533 11.9529C228.214 10.6343 227.555 8.97182 227.555 6.96534C227.555 4.95887 228.214 3.29636 229.533 1.97781C230.851 0.659272 232.514 0 234.52 0C236.527 0 238.189 0.659272 239.508 1.97781C240.826 3.29636 241.485 4.95887 241.485 6.96534C241.485 8.97182 240.826 10.6343 239.508 11.9529C238.189 13.2714 236.527 13.9307 234.52 13.9307ZM221.019 61.5702V60.1943L226.953 57.4426V30.9571L221.277 27.2594V25.8836L241.055 21.154H242.431V57.4426L247.333 60.1943V61.5702H221.019Z" fill="currentColor"/><path d="M182.034 61.5702V60.1943L187.968 57.4426V31.817L182.292 28.1194V26.7435L201.21 21.154H202.586L203.36 29.1513H203.79C205.281 26.9155 206.57 25.2243 207.66 24.0777C208.749 22.9312 209.752 22.1573 210.669 21.756C211.644 21.3547 212.733 21.154 213.937 21.154C214.453 21.154 214.998 21.2113 215.571 21.326C216.144 21.4407 216.689 21.584 217.205 21.756C218.179 22.0426 218.839 22.4152 219.183 22.8739C219.584 23.2751 219.785 23.7338 219.785 24.2497C219.785 24.651 219.699 25.1096 219.527 25.6256L217.205 32.161H216.603L215.055 31.645C214.08 31.3011 213.221 31.0718 212.475 30.9571C211.787 30.7851 210.899 30.6991 209.81 30.6991C208.548 30.6991 207.373 31.0144 206.284 31.645C205.195 32.2183 204.249 32.9636 203.446 33.8808V57.4426L210.927 60.1943V61.5702H182.034Z" fill="currentColor"/><path d="M158.321 62.4301C154.079 62.4301 150.324 61.4842 147.056 59.5924C143.789 57.6432 141.237 55.1208 139.403 52.0251C137.626 48.8721 136.737 45.4611 136.737 41.7921C136.737 38.1231 137.626 34.7121 139.403 31.559C141.237 28.406 143.789 25.8836 147.056 23.9917C150.324 22.0999 154.079 21.154 158.321 21.154C162.563 21.154 166.318 22.0999 169.586 23.9917C172.854 25.8836 175.376 28.406 177.153 31.559C178.988 34.7121 179.905 38.1231 179.905 41.7921C179.905 45.4611 178.988 48.8721 177.153 52.0251C175.376 55.1208 172.854 57.6432 169.586 59.5924C166.318 61.4842 162.563 62.4301 158.321 62.4301ZM159.095 57.8726C160.299 57.8726 161.302 57.2133 162.105 55.8948C162.907 54.5762 163.481 52.8564 163.825 50.7352C164.226 48.5568 164.427 46.149 164.427 43.5119C164.427 40.3015 164.197 37.3492 163.739 34.6547C163.28 31.9603 162.535 29.7819 161.503 28.1194C160.528 26.4569 159.267 25.6256 157.719 25.6256C156.401 25.6256 155.34 26.2849 154.538 27.6034C153.735 28.8646 153.133 30.5845 152.732 32.7629C152.388 34.8841 152.216 37.2918 152.216 39.9862C152.216 43.1393 152.445 46.0917 152.904 48.8434C153.42 51.5378 154.165 53.7163 155.139 55.3788C156.171 57.0413 157.49 57.8726 159.095 57.8726Z" fill="currentColor"/><path d="M123.627 62.4301C119.499 62.4301 116.174 61.6849 113.652 60.1943C111.129 58.7038 109.868 56.6113 109.868 53.9169V25.7976H104.279V24.1637L112.62 22.0139L122.853 12.5548H125.347V22.0139H137.557V25.7976H125.347V51.2512C125.347 52.7417 125.949 53.8309 127.152 54.5189C128.414 55.2068 129.876 55.5508 131.538 55.5508C132.57 55.5508 133.459 55.4934 134.204 55.3788C135.006 55.2641 135.838 55.1208 136.698 54.9488L136.956 55.1208V57.0126C135.809 58.4458 133.946 59.7071 131.366 60.7963C128.844 61.8855 126.264 62.4301 123.627 62.4301Z" fill="currentColor"/><path d="M71.4835 62.4301C67.9865 62.4301 65.1201 61.5129 62.8843 59.6784C60.7058 57.8439 59.6166 55.1208 59.6166 51.5092V26.1415L53.6831 23.3898V22.0139H75.0951V48.3275C75.0951 49.99 75.5251 51.2798 76.385 52.1971C77.2449 53.057 78.3342 53.487 79.6527 53.487C80.398 53.487 81.1719 53.315 81.9745 52.971C82.8344 52.6271 83.6083 52.2258 84.2963 51.7671V26.1415L79.6527 23.3898V22.0139H99.7748V57.4426L104.676 60.1943V61.5702H84.2963V56.0667H83.9523C82.0605 57.9585 80.1973 59.5064 78.3628 60.7103C76.5283 61.8569 74.2352 62.4301 71.4835 62.4301Z" fill="currentColor"/><path d="M17.1124 61.5702V60.1943L24.7657 56.5827V35.0847L6.19142 9.80308L0 6.19142V4.81555H30.3551V6.19142L23.7338 9.5451V9.88907L38.4384 29.6672L51.5951 10.0611V9.71709L44.7158 6.19142V4.81555H65.1819V6.19142L59.2484 9.02915L41.1041 35.0847V56.5827L48.7574 60.1943V61.5702H17.1124Z" fill="currentColor"/></svg>'
+
+# Markdown styles scoped to the thought card. The shimmer keyframe stays here
+# so the existing single-style-element teardown still cleans everything up.
+_THOUGHT_STYLE_CSS = (
+    "@keyframes n1thoughtShimmer{0%{background-position:200% 50%}100%{background-position:0% 50%}}"
+    f"#{THOUGHT_CARD_ID} strong{{font-weight:700}}"
+    f"#{THOUGHT_CARD_ID} em{{font-style:italic}}"
+    f"#{THOUGHT_CARD_ID} a{{color:{YUTORI_GREEN};text-decoration:underline;text-underline-offset:2px}}"
+    f"#{THOUGHT_CARD_ID} code{{background:rgba(255,255,255,0.08);padding:1px 5px;border-radius:4px;"
+    "font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;font-size:0.92em}"
+    f"#{THOUGHT_CARD_ID} pre{{background:rgba(0,0,0,0.32);border-radius:8px;padding:10px 12px;"
+    "overflow-x:auto;margin:8px 0}"
+    f"#{THOUGHT_CARD_ID} pre code{{background:transparent;padding:0;font-size:0.9em}}"
+    f"#{THOUGHT_CARD_ID} ul{{padding-left:18px;margin:6px 0}}"
+    f"#{THOUGHT_CARD_ID} li{{margin:2px 0}}"
+    f"#{THOUGHT_CARD_ID} h2,#{THOUGHT_CARD_ID} h3,#{THOUGHT_CARD_ID} h4{{"
+    "margin:8px 0 4px;font-weight:700;line-height:1.3}"
+    f"#{THOUGHT_CARD_ID} h2{{font-size:1.18em}}"
+    f"#{THOUGHT_CARD_ID} h3{{font-size:1.08em}}"
+    f"#{THOUGHT_CARD_ID} h4{{font-size:1em;opacity:0.9}}"
+)
+
 _THOUGHT_CARD_JS = f"""(args) => {{
     {_RENDER_MARKDOWN_JS}
     const text = args.text;
@@ -326,14 +453,12 @@ _TRANSIENT_ROOT_JS = f"""() => {{
         document.documentElement.appendChild(root);
     }}
     {_set_visibility_opacity_js("root", visibility="visible", opacity="1")}
-
-    if (!document.getElementById('{CURSOR_ID}')) {{
-        const cursor = document.createElement('img');
-        cursor.id = '{CURSOR_ID}';
-        cursor.src = '{_CURSOR_DATA_URI}';
-        cursor.style.cssText = 'position:fixed;left:-200px;top:-200px;width:75px;height:101px;pointer-events:none;z-index:{Z_INDEX + 2};transition:left {CURSOR_TRANSITION_MS}ms ease-in-out,top {CURSOR_TRANSITION_MS}ms ease-in-out;transform:translate(-17px,-4px);filter:drop-shadow(0 2px 5px rgba(0,0,0,0.18));';
-        root.appendChild(cursor);
-    }}
+    // Cursor lives in the persistent root now (see _PERSISTENT_ROOT_JS).
+    // Keeping it there means it survives navigations and screenshot
+    // hide/restore cycles automatically — the user always sees the cursor
+    // at its last known position. The transient root is reserved for
+    // short-lived effect animations (clicks, scrolls, drags, types) that
+    // self-clean via animationend.
 }}"""
 
 _REMOVE_ALL_JS = f"""() => {{
@@ -397,6 +522,14 @@ class OverlayController:
         # listener we attached (anonymous lambdas would leak and survive
         # past the claim, re-injecting overlay into unrelated pages).
         self._navigation_handler: Any | None = None
+        # Last known cursor position in CSS viewport coordinates. Updated by
+        # every _move_cursor call. After navigation the persistent root is
+        # re-injected with cursor at -200px,-200px (the off-screen sentinel);
+        # _restore_cursor_position teleports it back to (_cursor_x, _cursor_y)
+        # so the user always sees it where it was. Stays None until the first
+        # action — fine, the off-screen sentinel is what we want pre-action.
+        self._cursor_x: int | None = None
+        self._cursor_y: int | None = None
 
     async def claim_started(self) -> None:
         self._active = True
@@ -426,6 +559,7 @@ class OverlayController:
             logger.debug("Failed to attach overlay navigation listener", exc_info=True)
             self._navigation_handler = None
         await self._inject_persistent_root()
+        await self._restore_cursor_position()
         await self._ensure_transient_root()
 
     async def claim_ended(self) -> None:
@@ -445,7 +579,36 @@ class OverlayController:
         if not self._active:
             return
         await self._inject_persistent_root()
+        # Persistent root re-creates the cursor at -200px,-200px (off-screen).
+        # Teleport it back to the last known position so the user perceives
+        # the cursor as continuously visible across the navigation.
+        await self._restore_cursor_position()
         await self._ensure_transient_root()
+
+    async def _restore_cursor_position(self) -> None:
+        """Teleport the cursor to the last known position with no transition.
+
+        Called after the persistent root is re-injected (claim_started or
+        post-navigation) so the cursor doesn't appear at the off-screen
+        sentinel between the persistent-root mount and the next action.
+        No-op when no cursor move has happened yet — the off-screen
+        sentinel is correct in that case.
+        """
+        if self._cursor_x is None or self._cursor_y is None:
+            return
+        await self._safe_evaluate(
+            f"""() => {{
+                const cursor = document.getElementById('{CURSOR_ID}');
+                if (!cursor) return;
+                cursor.style.transition = 'none';
+                cursor.style.left = '{self._cursor_x}px';
+                cursor.style.top = '{self._cursor_y}px';
+                // Force reflow so the transition reset takes effect before
+                // we restore the transition for subsequent moves.
+                cursor.offsetHeight;
+                cursor.style.transition = 'left {CURSOR_TRANSITION_MS}ms ease-in-out,top {CURSOR_TRANSITION_MS}ms ease-in-out,opacity 200ms ease-in-out';
+            }}"""
+        )
 
     async def preview_action(
         self,
@@ -457,6 +620,7 @@ class OverlayController:
         start_y: int = 0,
         num_clicks: int = 1,
         direction: str = "down",
+        amount: int = 1,
     ) -> None:
         if not self._active:
             return
@@ -491,7 +655,7 @@ class OverlayController:
         if action_type in {"left_click", "double_click", "triple_click", "middle_click", "right_click"}:
             await self._show_click_effect(x, y, num_clicks)
         elif action_type == "scroll":
-            await self._show_scroll_effect(x, y, direction)
+            await self._show_scroll_effect(x, y, direction, amount=amount)
         elif action_type == "type":
             await self._show_type_effect(center)
         elif action_type == "drag":
@@ -552,8 +716,14 @@ class OverlayController:
         False if it used the CSS transition.  Teleporting happens on the
         first move of a claim and after full-page navigations that destroy
         and recreate the cursor element.
+
+        Also updates ``self._cursor_x`` / ``self._cursor_y`` so
+        ``_restore_cursor_position`` can replay the move after the next
+        navigation. We update unconditionally — if the JS evaluate fails
+        (page closed, etc.) the saved position is still the right thing
+        to restore on the next page.
         """
-        return bool(await self._safe_evaluate(
+        teleported = bool(await self._safe_evaluate(
             f"""() => {{
                 const cursor = document.getElementById('{CURSOR_ID}');
                 if (!cursor) return true;
@@ -563,7 +733,7 @@ class OverlayController:
                     cursor.style.left = '{x}px';
                     cursor.style.top = '{y}px';
                     cursor.offsetHeight;
-                    cursor.style.transition = 'left {CURSOR_TRANSITION_MS}ms ease-in-out,top {CURSOR_TRANSITION_MS}ms ease-in-out';
+                    cursor.style.transition = 'left {CURSOR_TRANSITION_MS}ms ease-in-out,top {CURSOR_TRANSITION_MS}ms ease-in-out,opacity 200ms ease-in-out';
                     return true;
                 }}
                 cursor.style.left = '{x}px';
@@ -572,6 +742,9 @@ class OverlayController:
             }}""",
             default=True,
         ))
+        self._cursor_x = x
+        self._cursor_y = y
+        return teleported
 
     async def _show_click_effect(self, x: int, y: int, num_clicks: int) -> None:
         gap = int(CLICK_DURATION_MS * 0.5)
@@ -595,11 +768,43 @@ class OverlayController:
             }}"""
         )
 
-    async def _show_scroll_effect(self, x: int, y: int, direction: str = "down") -> None:
-        rotation = {"down": 0, "up": 180, "right": 270, "left": 90}.get(direction, 0)
-        # Translate in the scroll direction as the chevron fades out.
-        tx = {"right": 18, "left": -18}.get(direction, 0)
-        ty = {"down": 18, "up": -18}.get(direction, 0)
+    async def _show_scroll_effect(self, x: int, y: int, direction: str = "down", *, amount: int = 1) -> None:
+        # Two animations compose the visual:
+        #   1. Container drift+fade — translates in the scroll direction
+        #      while opacity goes 0.85→0. The drift carries the directional
+        #      meaning (down vs up vs left vs right).
+        #   2. Inner SVG rotation — spins clockwise for down/right and
+        #      counterclockwise for up/left. The rotation carries the
+        #      "scrolling motion" feel; the direction of spin reinforces the
+        #      drift direction.
+        # Splitting them across two elements avoids the CSS one-transform-per-
+        # element conflict (the container animates `transform: translate(...)`
+        # while the SVG animates `transform: rotate(...)`).
+        #
+        # Magnitude scaling: ``amount`` is the wheel-tick multiplier passed
+        # through from the action layer. We map it to a scale factor with a
+        # gentle ramp and a hard cap so a runaway "scroll 50 ticks" doesn't
+        # produce a 30-second animation. Both duration and spin amount scale
+        # together so the spin RATE stays constant (a bigger scroll = more
+        # rotations over more time, not slower spinning).
+        amount = max(1, amount)
+        scale = min(0.5 + 0.5 * amount, 2.5)
+        duration_ms = int(SCROLL_DURATION_MS * scale)
+        spin_magnitude = int(360 * scale)
+        spin_sign = 1 if direction in {"down", "right"} else -1
+        spin_deg = spin_magnitude * spin_sign
+        # ↻ U+21BB CLOCKWISE OPEN CIRCLE ARROW for down/right
+        # ↺ U+21BA ANTICLOCKWISE OPEN CIRCLE ARROW for up/left
+        # The character itself is directional, and the CSS spin animation
+        # adds motion on top — bigger scrolls produce more rotations
+        # because spin_magnitude scales with `amount`.
+        arrow_char = "↻" if spin_sign == 1 else "↺"
+        # Drift grows mildly with magnitude — capped so the icon doesn't
+        # fling off-screen on huge scrolls. Keeps directionality readable
+        # at any amount.
+        drift_scale = min(1.0 + (amount - 1) * 0.25, 1.75)
+        tx = int({"right": 26, "left": -26}.get(direction, 0) * drift_scale)
+        ty = int({"down": 26, "up": -26}.get(direction, 0) * drift_scale)
         await self._eval(
             f"""() => {{
                 const root = document.getElementById('{TRANSIENT_ROOT_ID}');
@@ -609,15 +814,41 @@ class OverlayController:
 
                 const style = document.createElement('style');
                 style.id = '{SCROLL_STYLE_ID}';
-                style.textContent = '@keyframes n1scroll{{0%{{opacity:0.7;transform:translate(-50%,-50%) rotate({rotation}deg)}}100%{{opacity:0;transform:translate(calc(-50% + {tx}px),calc(-50% + {ty}px)) rotate({rotation}deg)}}}}';
+                style.textContent =
+                    '@keyframes n1scroll{{0%{{opacity:0.85;transform:translate(-50%,-50%)}}100%{{opacity:0;transform:translate(calc(-50% + {tx}px),calc(-50% + {ty}px))}}}}'
+                    + '@keyframes n1scrollSpin{{from{{transform:rotate(0deg)}}to{{transform:rotate({spin_deg}deg)}}}}';
                 document.head.appendChild(style);
 
+                // Hide the cursor for the duration of the scroll animation —
+                // the rotating arrow IS the visual focus, the cursor would
+                // just sit there idle while the page scrolls. Restored on
+                // animationend so it reappears smoothly via the 200ms
+                // opacity transition wired into the cursor's cssText.
+                const cursor = document.getElementById('{CURSOR_ID}');
+                if (cursor) cursor.style.opacity = '0';
+
                 const container = document.createElement('div');
-                container.style.cssText = 'position:fixed;left:{x}px;top:{y}px;width:20px;height:20px;pointer-events:none;z-index:{Z_INDEX};animation:n1scroll {SCROLL_DURATION_MS}ms ease-out forwards;';
-                const chevron = document.createElement('div');
-                chevron.style.cssText = 'position:absolute;left:50%;top:50%;width:10px;height:10px;border-right:2px solid {YUTORI_GREEN};border-bottom:2px solid {YUTORI_GREEN};transform:translate(-50%,-70%) rotate(45deg);';
-                container.appendChild(chevron);
-                container.addEventListener('animationend', () => {{ container.remove(); style.remove(); }}, {{once: true}});
+                container.style.cssText = 'position:fixed;left:{x}px;top:{y}px;width:36px;height:36px;color:{YUTORI_GREEN};pointer-events:none;z-index:{Z_INDEX};animation:n1scroll {duration_ms}ms ease-out forwards;';
+
+                // Unicode arrow character (↻ or ↺) centered via flex.
+                // Inherits `color` from the container (Yutori green). The
+                // spin animation rotates the whole flex container around
+                // its own center (transform-origin defaults to 50% 50%),
+                // so the character appears to spin in place.
+                const icon = document.createElement('div');
+                icon.style.cssText = 'width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:32px;line-height:1;font-weight:600;animation:n1scrollSpin {duration_ms}ms linear forwards;';
+                icon.textContent = '{arrow_char}';
+                container.appendChild(icon);
+
+                // animationend bubbles from the inner icon too, but {{once:true}}
+                // means the listener fires exactly once and self-detaches —
+                // whichever animation ends first triggers cleanup, the second
+                // bubble has no listener to hit.
+                container.addEventListener('animationend', () => {{
+                    container.remove();
+                    style.remove();
+                    if (cursor) cursor.style.opacity = '1';
+                }}, {{once: true}});
                 root.appendChild(container);
             }}"""
         )

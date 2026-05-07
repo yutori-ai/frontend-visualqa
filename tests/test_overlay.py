@@ -89,7 +89,9 @@ class TestOverlayControllerLifecycle:
 
 class TestOverlayCursor:
     @pytest.mark.asyncio
-    async def test_transient_root_creates_cursor_img(self) -> None:
+    async def test_persistent_root_creates_cursor_img(self) -> None:
+        # The cursor lives in the persistent root so it survives navigations
+        # and screenshot hide/restore cycles. See OverlayController._restore_cursor_position.
         from frontend_visualqa.overlay import OverlayController
 
         page = _make_mock_page()
@@ -98,7 +100,7 @@ class TestOverlayCursor:
         await controller.claim_started()
 
         scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
-        assert any("__n1TransientRoot" in script and "__n1Cursor" in script and "createElement('img')" in script for script in scripts)
+        assert any("__n1PersistentRoot" in script and "__n1Cursor" in script and "createElement('img')" in script for script in scripts)
 
     @pytest.mark.asyncio
     async def test_move_cursor_updates_position(self) -> None:
@@ -253,6 +255,9 @@ class TestOverlayPreviewAction:
 
     @pytest.mark.asyncio
     async def test_scroll_effect_shows_directional_chevron(self) -> None:
+        # Scroll viz is now a circular-arrow SVG that drifts in the scroll
+        # direction (carrying directionality) and spins clockwise for
+        # down/right (carrying motion feel). See _show_scroll_effect.
         from frontend_visualqa.overlay import OverlayController
 
         page = _make_mock_page()
@@ -266,8 +271,10 @@ class TestOverlayPreviewAction:
 
         scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
         assert any("__n1ScrollStyle" in script for script in scripts)
-        # Chevron element with directional rotation (down = 0deg)
-        assert any("rotate(45deg)" in script and "border-right" in script for script in scripts)
+        # Down spins clockwise (positive rotation). Drift is +26 on Y.
+        assert any("rotate(360deg)" in script and "calc(-50% + 26px)" in script for script in scripts)
+        # ↻ U+21BB CLOCKWISE OPEN CIRCLE ARROW for down direction.
+        assert any("↻" in script for script in scripts)
         assert any("n1scroll" in script and "rotate(0deg)" in script for script in scripts)
         # Coordinates used
         assert any("left:640px" in script and "top:400px" in script for script in scripts)
@@ -286,8 +293,8 @@ class TestOverlayPreviewAction:
             await controller.preview_action("scroll", x=100, y=200, direction="up")
 
         scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
-        # Up direction uses 180deg rotation
-        assert any("n1scroll" in script and "rotate(180deg)" in script for script in scripts)
+        # Up spins counterclockwise (negative rotation). Drift is -26 on Y.
+        assert any("rotate(-360deg)" in script and "calc(-50% + -26px)" in script for script in scripts)
 
     @pytest.mark.asyncio
     async def test_type_effect_uses_caret_and_dots(self) -> None:
