@@ -403,7 +403,7 @@ class ActionExecutor:
                     )
                 else:
                     x, y = denormalize_coordinates(raw_coords if has_coords else [500, 500], width=width, height=height)
-                await self._best_effort_overlay_preview_action(action_type="scroll", x=x, y=y, direction=direction)
+                await self._best_effort_overlay_preview_action(action_type="scroll", x=x, y=y, direction=direction, amount=amount)
                 modifier_keys = await self._press_modifier_keys(page, raw_arguments.get("modifier"))
                 try:
                     await page.mouse.move(x, y)

@@ -6,6 +6,7 @@ import asyncio
 import base64
 import io
 import logging
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -19,9 +20,14 @@ from frontend_visualqa.schemas import BrowserConfig, BrowserMode, BrowserSession
 
 DEFAULT_NAVIGATION_TIMEOUT_MS = 20_000
 DEFAULT_SETTLE_DELAY_SECONDS = 1.0
-DEFAULT_PAGE_READY_TIMEOUT_SECONDS = 2
-DEFAULT_SCREENSHOT_JPEG_QUALITY = 75
-DEFAULT_SCREENSHOT_WEBP_QUALITY = 90
+# Must exceed the SDK's PageReadyChecker.initial_wait (2.0s, hardcoded) by
+# enough margin for at least a few polling cycles, otherwise the outer
+# asyncio.wait_for fires before the first is_ready() check ever runs and we
+# log a spurious "Page did not become ready" ERROR on every action against
+# real-world JS-heavy sites (amazon.com, etc.). 8s gives ~6 polling cycles
+# after the initial wait while staying well under DEFAULT_NAVIGATION_TIMEOUT_MS.
+DEFAULT_PAGE_READY_TIMEOUT_SECONDS = 8
+DEFAULT_SCREENSHOT_WEBP_QUALITY = 75
 logger = logging.getLogger(__name__)
 PERSISTENT_SESSION_KEY_ERROR = (
     "Persistent browser mode supports exactly one named session at a time. "
@@ -92,6 +98,25 @@ class BrowserManager:
         self._browser: Browser | None = None
         self._persistent_context: BrowserContext | None = None
         self._sessions: dict[str, BrowserSession] = {}
+        # Pre-warm Pillow's WebP encoder. The first WEBP save in a process
+        # lazy-loads libwebp via Pillow's plugin system — which costs ~1s on
+        # macOS — and that latency would otherwise land on the first real
+        # screenshot of the first claim. Encoding a 1x1 image here pays
+        # the cost during BrowserManager construction (a "warm" path the
+        # caller already considers part of startup) so claim 1 reaches
+        # encoder steady-state immediately.
+        self._warm_webp_encoder()
+
+    @staticmethod
+    def _warm_webp_encoder() -> None:
+        """Trigger libwebp lazy-load with a throwaway 1x1 encode."""
+        try:
+            with io.BytesIO() as buf:
+                Image.new("RGB", (1, 1), (0, 0, 0)).save(
+                    buf, format="WEBP", quality=DEFAULT_SCREENSHOT_WEBP_QUALITY
+                )
+        except Exception:  # pragma: no cover - warmup is best-effort
+            logger.debug("WebP encoder warmup failed (non-fatal)", exc_info=True)
 
     @property
     def _persistent_session_key(self) -> str | None:
@@ -172,23 +197,46 @@ class BrowserManager:
     async def capture_screenshot(self, session: BrowserSession) -> bytes:
         """Capture the current page viewport as WebP bytes."""
 
+        # Split timing so the verbose log can attribute slowness to the
+        # Chromium-side capture (CDP/Playwright protocol roundtrip + render)
+        # vs the Pillow encode (CPU-bound). With Navigator latency already
+        # logged in navigator_client, this gives a per-turn "LLM ms / capture
+        # ms / encode ms" breakdown when running with `verify -v`.
+        capture_started = time.perf_counter()
         image = await self._capture_screenshot_image(session)
-        return self._image_to_webp_bytes(image)
+        capture_ms = (time.perf_counter() - capture_started) * 1000
+
+        encode_started = time.perf_counter()
+        webp_bytes = self._image_to_webp_bytes(image)
+        encode_ms = (time.perf_counter() - encode_started) * 1000
+
+        logger.info(
+            "Screenshot capture %.0f ms / encode %.0f ms / size %d KB",
+            capture_ms,
+            encode_ms,
+            len(webp_bytes) // 1024,
+        )
+        return webp_bytes
 
     async def _capture_screenshot_image(self, session: BrowserSession) -> Image.Image:
-        if not self.headless:
-            # In headed Chromium, the default screenshot surface path can
-            # flash the live page. Prefer a view-backed CDP capture, then
-            # normalize the returned image back to CSS viewport size for
-            # Navigator's 1000x1000 coordinate system.
-            cdp_image = await self._capture_screenshot_image_via_cdp(session)
-            if cdp_image is not None:
-                return cdp_image
+        # CDP Page.captureScreenshot avoids re-rendering through Playwright's
+        # protocol bridge and reuses the existing compositor frame — typically
+        # 30–60% faster than page.screenshot() on a 1280×800 viewport. We use
+        # it in both headless and headed modes:
+        #   - In headed mode, it also avoids the visible flash that the
+        #     Playwright surface path can cause on the live page.
+        #   - In headless mode, the only motivation was the latency win.
+        # Either way, normalize the returned image back to CSS viewport size
+        # for Navigator's 1000x1000 coordinate system.
+        cdp_image = await self._capture_screenshot_image_via_cdp(session)
+        if cdp_image is not None:
+            return cdp_image
 
-        # If CDP capture is unavailable, fall back to Playwright screenshots.
-        # Keep animations disabled only in headless mode for deterministic
-        # evidence. In headed mode, disabling animations is itself visible and
-        # can create a separate flash on animated pages.
+        # CDP unavailable (older Chromium, detached context, etc.) — fall back
+        # to Playwright screenshots. Keep animations disabled only in headless
+        # mode for deterministic evidence. In headed mode, disabling
+        # animations is itself visible and can create a separate flash on
+        # animated pages.
         screenshot_kwargs: dict[str, Any] = {"type": "png"}
         if self.headless:
             screenshot_kwargs["animations"] = "disabled"
@@ -277,18 +325,20 @@ class BrowserManager:
         return image
 
     @staticmethod
-    def _image_to_jpeg_bytes(image: Image.Image) -> bytes:
-        buffer = io.BytesIO()
-        rgb_image = image.convert("RGB")
-        rgb_image.save(buffer, format="JPEG", quality=DEFAULT_SCREENSHOT_JPEG_QUALITY)
-        return buffer.getvalue()
-
-    @staticmethod
     def _image_to_webp_bytes(image: Image.Image) -> bytes:
-        jpeg_bytes = BrowserManager._image_to_jpeg_bytes(image)
-        jpeg_image = BrowserManager._image_from_bytes(jpeg_bytes)
+        # Encode WebP directly from the PIL.Image. The previous implementation
+        # round-tripped through JPEG (encode → decode → re-encode as WebP),
+        # which paid for two extra codec passes per screenshot and degraded
+        # the WebP input with JPEG quantization artifacts before the real
+        # encode. Chromium-sourced PNGs are RGB/RGBA, both of which WebP
+        # supports natively — no convert("RGB") needed; we keep alpha if it
+        # was present. The defensive convert below only trips for exotic
+        # modes (P, CMYK, etc.) that the screenshot path can't produce in
+        # practice but cost nothing to guard against.
+        if image.mode not in {"RGB", "RGBA"}:
+            image = image.convert("RGBA")
         buffer = io.BytesIO()
-        jpeg_image.save(buffer, format="WEBP", quality=DEFAULT_SCREENSHOT_WEBP_QUALITY)
+        image.save(buffer, format="WEBP", quality=DEFAULT_SCREENSHOT_WEBP_QUALITY)
         return buffer.getvalue()
 
     async def set_viewport(self, session_key: str, viewport: ViewportConfig) -> BrowserSession:
