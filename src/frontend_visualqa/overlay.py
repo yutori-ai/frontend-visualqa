@@ -18,11 +18,12 @@ logger = logging.getLogger(__name__)
 Z_INDEX = 2_147_483_646
 YUTORI_GREEN = "#1DCD98"
 EFFECT_DURATION_MS = 600
-BORDER_CYCLE_MS = 4000
+BORDER_CYCLE_MS = 1000
 
 PERSISTENT_ROOT_ID = "__n1PersistentRoot"
 TRANSIENT_ROOT_ID = "__n1TransientRoot"
 GRADIENT_BORDER_ID = "__n1GradientBorder"
+BORDER_STYLE_ID = "__n1BorderStyle"
 STATUS_CHIP_ID = "__n1StatusChip"
 THOUGHT_CARD_ID = "__n1ThoughtCard"
 THOUGHT_STYLE_ID = "__n1ThoughtStyle"
@@ -105,9 +106,37 @@ _PERSISTENT_ROOT_JS = f"""() => {{
     root.id = '{PERSISTENT_ROOT_ID}';
     root.style.cssText = '{_ROOT_STYLE}';
 
+    // Compositor-only animation: bake the gradient at peak intensity and
+    // pulse element opacity instead of animating background-image. Animating
+    // background-image would force a full-viewport repaint every frame on
+    // the main thread (gradient stops aren't compositor-friendly); pulsing
+    // opacity on a static layer runs entirely on the GPU compositor thread.
+    // The original lerp was alpha 0.25→0.4; baking α=0.4 and animating
+    // opacity 0.625→1.0 reproduces the same effective range (0.625 × 0.4
+    // = 0.25). Spread is locked at 6%; through filter:blur(4px) the
+    // dropped 3%↔6% pulse is visually negligible.
+    const borderStyle = document.createElement('style');
+    borderStyle.id = '{BORDER_STYLE_ID}';
+    borderStyle.textContent =
+        '@keyframes n1border{{' +
+            'from{{opacity:0.625}}' +
+            'to{{opacity:1}}' +
+        '}}';
+    root.appendChild(borderStyle);
+
     const border = document.createElement('div');
     border.id = '{GRADIENT_BORDER_ID}';
-    border.style.cssText = 'position:absolute;inset:0;pointer-events:none;filter:blur(4px);';
+    // will-change + translateZ promote the element to its own GPU layer so
+    // the opacity pulse never touches the page's compositor budget.
+    border.style.cssText =
+        'position:absolute;inset:0;pointer-events:none;filter:blur(4px);' +
+        'will-change:opacity;transform:translateZ(0);' +
+        'background-image:' +
+            'linear-gradient(to right, rgba(29,205,152,0.4) 0%, transparent 6%),' +
+            'linear-gradient(to left, rgba(29,205,152,0.4) 0%, transparent 6%),' +
+            'linear-gradient(to bottom, rgba(29,205,152,0.4) 0%, transparent 6%),' +
+            'linear-gradient(to top, rgba(29,205,152,0.4) 0%, transparent 6%);' +
+        'animation:n1border {BORDER_CYCLE_MS // 2}ms ease-in-out infinite alternate;';
     root.appendChild(border);
 
     const chip = document.createElement('div');
@@ -117,30 +146,6 @@ _PERSISTENT_ROOT_JS = f"""() => {{
     root.appendChild(chip);
 
     document.documentElement.appendChild(root);
-
-    const duration = {BORDER_CYCLE_MS};
-    const easeInOut = (value) => value < 0.5 ? 2 * value * value : 1 - Math.pow(-2 * value + 2, 2) / 2;
-    const lerp = (start, end, value) => start + (end - start) * value;
-    let startTime = null;
-
-    const animate = (timestamp) => {{
-        if (!startTime) startTime = timestamp;
-        const cycle = ((timestamp - startTime) % duration) / duration;
-        const pingPong = cycle < 0.5 ? cycle * 2 : 2 - cycle * 2;
-        const eased = easeInOut(pingPong);
-        const opacity = lerp(0.25, 0.4, eased);
-        const spread = lerp(3, 6, eased);
-        const borderElement = document.getElementById('{GRADIENT_BORDER_ID}');
-        if (!borderElement) return;
-        borderElement.style.background =
-            'linear-gradient(to right, rgba(29,205,152,' + opacity + ') 0%, transparent ' + spread + '%),' +
-            'linear-gradient(to left, rgba(29,205,152,' + opacity + ') 0%, transparent ' + spread + '%),' +
-            'linear-gradient(to bottom, rgba(29,205,152,' + opacity + ') 0%, transparent ' + spread + '%),' +
-            'linear-gradient(to top, rgba(29,205,152,' + opacity + ') 0%, transparent ' + spread + '%)';
-        root.__n1AnimationFrame = requestAnimationFrame(animate);
-    }};
-
-    root.__n1AnimationFrame = requestAnimationFrame(animate);
 }}"""
 
 _THOUGHT_CARD_JS = f"""(args) => {{
@@ -207,13 +212,12 @@ _TRANSIENT_ROOT_JS = f"""() => {{
 _REMOVE_ALL_JS = f"""() => {{
     const persistent = document.getElementById('{PERSISTENT_ROOT_ID}');
     if (persistent) {{
-        if (persistent.__n1AnimationFrame) cancelAnimationFrame(persistent.__n1AnimationFrame);
         if (persistent.__n1ThoughtTimer) clearTimeout(persistent.__n1ThoughtTimer);
         persistent.remove();
     }}
     const transient = document.getElementById('{TRANSIENT_ROOT_ID}');
     if (transient) transient.remove();
-    for (const styleId of ['{CLICK_STYLE_ID}', '{SCROLL_STYLE_ID}', '{TYPE_STYLE_ID}', '{DRAG_STYLE_ID}', '{THOUGHT_STYLE_ID}']) {{
+    for (const styleId of ['{BORDER_STYLE_ID}', '{CLICK_STYLE_ID}', '{SCROLL_STYLE_ID}', '{TYPE_STYLE_ID}', '{DRAG_STYLE_ID}', '{THOUGHT_STYLE_ID}']) {{
         const style = document.getElementById(styleId);
         if (style) style.remove();
     }}
@@ -262,10 +266,28 @@ class OverlayController:
         self._page = page
         self._active = False
         self._current_status = "Analyzing"
+        # Bound handler kept on self so claim_ended can detach exactly the
+        # listener we attached (anonymous lambdas would leak and survive
+        # past the claim, re-injecting overlay into unrelated pages).
+        self._navigation_handler: Any | None = None
 
     async def claim_started(self) -> None:
         self._active = True
         self._current_status = "Analyzing"
+        # Re-mount the overlay after every main-frame navigation. Without
+        # this, page.goto / link clicks tear down the DOM and the persistent
+        # root only reappears the next time set_status or show_thought
+        # happens to fire — visible "appears and disappears" flicker.
+        # _inject_persistent_root is idempotent (id guard), so spurious
+        # firings are harmless.
+        self._navigation_handler = lambda _frame=None: asyncio.create_task(
+            self._reinject_after_navigation()
+        )
+        try:
+            self._page.on("domcontentloaded", self._navigation_handler)
+        except Exception:
+            logger.debug("Failed to attach overlay navigation listener", exc_info=True)
+            self._navigation_handler = None
         await self._inject_persistent_root()
         await self._ensure_transient_root()
 
@@ -273,7 +295,20 @@ class OverlayController:
         if not self._active:
             return
         self._active = False
+        if self._navigation_handler is not None:
+            try:
+                self._page.remove_listener("domcontentloaded", self._navigation_handler)
+            except Exception:
+                logger.debug("Failed to detach overlay navigation listener", exc_info=True)
+            self._navigation_handler = None
         await self._eval(_REMOVE_ALL_JS)
+
+    async def _reinject_after_navigation(self) -> None:
+        """Re-mount the overlay after a main-frame navigation tore down the DOM."""
+        if not self._active:
+            return
+        await self._inject_persistent_root()
+        await self._ensure_transient_root()
 
     async def preview_action(
         self,
@@ -417,8 +452,8 @@ class OverlayController:
                     const delay = i * {gap};
                     const el = document.createElement('div');
                     el.style.cssText = 'position:fixed;left:{x}px;top:{y}px;width:5px;height:5px;background:{YUTORI_GREEN};border-radius:50%;pointer-events:none;z-index:{Z_INDEX};transform:translate(-50%,-50%);animation:n1click {CLICK_DURATION_MS}ms ease-out forwards;animation-delay:' + delay + 'ms;opacity:0;';
+                    el.addEventListener('animationend', () => el.remove(), {{once: true}});
                     root.appendChild(el);
-                    setTimeout(() => el.remove(), delay + {CLICK_DURATION_MS} + 100);
                 }}
             }}"""
         )
@@ -445,8 +480,8 @@ class OverlayController:
                 const chevron = document.createElement('div');
                 chevron.style.cssText = 'position:absolute;left:50%;top:50%;width:10px;height:10px;border-right:2px solid {YUTORI_GREEN};border-bottom:2px solid {YUTORI_GREEN};transform:translate(-50%,-70%) rotate(45deg);';
                 container.appendChild(chevron);
+                container.addEventListener('animationend', () => {{ container.remove(); style.remove(); }}, {{once: true}});
                 root.appendChild(container);
-                setTimeout(() => {{ container.remove(); style.remove(); }}, {SCROLL_DURATION_MS} + 100);
             }}"""
         )
 
@@ -487,8 +522,10 @@ class OverlayController:
                 }}
                 container.appendChild(dots);
 
+                // Caret/dots run on infinite animations (never fire animationend),
+                // so this listener triggers exactly once when n1tfade completes.
+                container.addEventListener('animationend', () => {{ container.remove(); style.remove(); }}, {{once: true}});
                 root.appendChild(container);
-                setTimeout(() => {{ container.remove(); style.remove(); }}, {EFFECT_DURATION_MS} + 100);
             }}"""
         )
 
@@ -517,7 +554,9 @@ class OverlayController:
                 trail.style.cssText = 'position:fixed;left:{start_x}px;top:{start_y}px;width:' + length + 'px;height:2px;background:linear-gradient(to right,{YUTORI_GREEN},transparent);transform-origin:0 50%;transform:translateY(-50%) rotate(' + angle + 'deg);pointer-events:none;z-index:{Z_INDEX};animation:n1dtrail {DRAG_DURATION_MS + 200}ms ease-out forwards;';
                 root.appendChild(trail);
 
-                setTimeout(() => {{ pressed.remove(); trail.remove(); style.remove(); }}, {DRAG_DURATION_MS + 300});
+                // Trail animation outlasts the pressed dot, so its animationend
+                // is the right signal to tear down both elements + the style.
+                trail.addEventListener('animationend', () => {{ pressed.remove(); trail.remove(); style.remove(); }}, {{once: true}});
             }}"""
         )
 
