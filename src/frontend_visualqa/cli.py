@@ -6,6 +6,7 @@ import argparse
 import asyncio
 import json
 import logging
+import os
 import sys
 import threading
 from pathlib import Path
@@ -228,7 +229,9 @@ def _handle_verify(args: argparse.Namespace) -> int:
         print(str(exc), file=sys.stderr)
         return 1
     _emit_json(result)
-    return _verify_exit_code(result)
+    exit_code = _verify_exit_code(result)
+    _print_run_summary(result, all_passed=exit_code == 0)
+    return exit_code
 
 
 def _handle_screenshot(args: argparse.Namespace) -> int:
@@ -335,6 +338,40 @@ async def _preflight_verify_auth() -> None:
 def _verify_exit_code(result: dict[str, Any]) -> int:
     statuses = [item.get("status") for item in result.get("results", [])]
     return 0 if statuses and all(status == "passed" for status in statuses) else 1
+
+
+def _stderr_supports_color() -> bool:
+    """Whether ANSI color codes should be emitted on stderr.
+
+    Honors the de-facto standards (NO_COLOR / FORCE_COLOR env vars) and falls
+    back to TTY detection. We never colorize when stderr is being captured by
+    a file or pipe, since most consumers don't strip escape sequences.
+    """
+    if os.environ.get("NO_COLOR"):
+        return False
+    if os.environ.get("FORCE_COLOR"):
+        return True
+    return sys.stderr.isatty()
+
+
+def _print_run_summary(result: dict[str, Any], *, all_passed: bool) -> None:
+    """Print the run summary at end-of-verify, green if all passed else red.
+
+    Goes to stderr so the JSON on stdout stays clean for piping. Skips
+    silently when the result has no summary (e.g., a configuration failure
+    that short-circuited before the runner produced one).
+    """
+    summary = result.get("summary")
+    if not summary:
+        return
+    glyph = "✓" if all_passed else "✗"
+    text = f"{glyph} {summary}"
+    if _stderr_supports_color():
+        # 1 = bold, 32 = green, 31 = red. Bold helps the line stand out at
+        # the end of a verbose run without being shouty.
+        color = "32" if all_passed else "31"
+        text = f"\x1b[1;{color}m{text}\x1b[0m"
+    print(text, file=sys.stderr, flush=True)
 
 
 def _truncate_for_progress(text: str, limit: int = 120) -> str:
