@@ -373,8 +373,15 @@ class ClaimVerifier:
         model_tools = self._model_tools()
         await self._safe_hook_call("on_llm_start", messages=messages, tools=model_tools)
         await self._best_effort_overlay_call("set_status", "Analyzing")
+        # already_trimmed=True: _prepare_messages_for_request just trimmed.
+        # Without this flag NavigatorClient.create would re-run the trim
+        # (which JSON-serializes the entire message list to estimate size —
+        # multi-MB on screenshot-heavy traces) on every turn.
         response = await self.navigator_client.create(
-            messages, tools=model_tools, json_schema=VERDICT_JSON_SCHEMA,
+            messages,
+            tools=model_tools,
+            json_schema=VERDICT_JSON_SCHEMA,
+            already_trimmed=True,
         )
         assistant_message = response.choices[0].message
         await self._safe_hook_call("on_llm_end", response=assistant_message)
