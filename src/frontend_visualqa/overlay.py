@@ -167,9 +167,10 @@ _PERSISTENT_ROOT_JS = f"""() => {{
     document.documentElement.appendChild(root);
 }}"""
 
+
 # Lightweight markdown→HTML renderer ported from yutori-ai/yutori
 # navigator-browser-extension/sidepanel.js (renderMarkdown + escapeHtml).
-# Kept as a raw triple-quoted string so backslash escapes (\n, \d, \w, \u0000,
+# Kept as a raw triple-quoted string so backslash escapes (\n, \d, \w,  ,
 # etc.) reach the JS engine literally. Injected into _THOUGHT_CARD_JS via
 # f-string interpolation — the substituted contents' braces are NOT re-parsed
 # as f-string fields, which is why this file can stay readable.
@@ -199,12 +200,12 @@ function n1renderMarkdown(text) {
     const codeBlocks = [];
     text = text.replace(/```(\w*)\r?\n?([\s\S]*?)```/g, (_m, lang, code) => {
         const idx = codeBlocks.push({ lang, code }) - 1;
-        return '\u0000CB' + idx + '\u0000';
+        return ' CB' + idx + ' ';
     });
     const inlineCodes = [];
     text = text.replace(/`([^`]+)`/g, (_m, code) => {
         const idx = inlineCodes.push(code) - 1;
-        return '\u0000IC' + idx + '\u0000';
+        return ' IC' + idx + ' ';
     });
     let html = n1escapeHtml(text);
     html = html.replace(/\[([^\]]+)\]\(([^)\s'"]+)\)/g, (m, label, url) => {
@@ -232,121 +233,13 @@ function n1renderMarkdown(text) {
     html = html.replace(/(<\/li>)(?!\s*<li>)/g, '$1</ul>');
     html = html.replace(/\n(?!<\/?(?:h[1-6]|ul|li|p|pre))/g, '<br>');
     html = html.replace(/(<br>){3,}/g, '<br><br>');
-    html = html.replace(/\u0000CB(\d+)\u0000/g, (_m, idx) => {
+    html = html.replace(/ CB(\d+) /g, (_m, idx) => {
         const block = codeBlocks[Number(idx)];
         const langClass = block.lang ? ' class="language-' + n1escapeHtml(block.lang) + '"' : '';
         const body = n1escapeHtml(block.code.replace(/\n$/, ''));
         return '<pre><code' + langClass + '>' + body + '</code></pre>';
     });
-    html = html.replace(/\u0000IC(\d+)\u0000/g, (_m, idx) => {
-        return '<code>' + n1escapeHtml(inlineCodes[Number(idx)]) + '</code>';
-    });
-    return html;
-}
-"""
-
-# Yutori wordmark (Logotype, March 2025) sourced from yutori-ai/yutori
-# navigator-browser-extension/icons/Yutori.Logotype.03.14.2025.svg. Inlined
-# into the DOM (rather than loaded as an <img> data URI) so currentColor
-# resolves — the original asset uses #334155 which would be invisible on the
-# dark thought-card background. Single-quoted Python string with only
-# double quotes inside makes Python's repr() emit a JS-valid string literal
-# at f-string-substitution time.
-_YUTORI_LOGOTYPE_SVG = '<svg width="248" height="63" viewBox="0 0 248 63" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M234.52 13.9307C232.514 13.9307 230.851 13.2714 229.533 11.9529C228.214 10.6343 227.555 8.97182 227.555 6.96534C227.555 4.95887 228.214 3.29636 229.533 1.97781C230.851 0.659272 232.514 0 234.52 0C236.527 0 238.189 0.659272 239.508 1.97781C240.826 3.29636 241.485 4.95887 241.485 6.96534C241.485 8.97182 240.826 10.6343 239.508 11.9529C238.189 13.2714 236.527 13.9307 234.52 13.9307ZM221.019 61.5702V60.1943L226.953 57.4426V30.9571L221.277 27.2594V25.8836L241.055 21.154H242.431V57.4426L247.333 60.1943V61.5702H221.019Z" fill="currentColor"/><path d="M182.034 61.5702V60.1943L187.968 57.4426V31.817L182.292 28.1194V26.7435L201.21 21.154H202.586L203.36 29.1513H203.79C205.281 26.9155 206.57 25.2243 207.66 24.0777C208.749 22.9312 209.752 22.1573 210.669 21.756C211.644 21.3547 212.733 21.154 213.937 21.154C214.453 21.154 214.998 21.2113 215.571 21.326C216.144 21.4407 216.689 21.584 217.205 21.756C218.179 22.0426 218.839 22.4152 219.183 22.8739C219.584 23.2751 219.785 23.7338 219.785 24.2497C219.785 24.651 219.699 25.1096 219.527 25.6256L217.205 32.161H216.603L215.055 31.645C214.08 31.3011 213.221 31.0718 212.475 30.9571C211.787 30.7851 210.899 30.6991 209.81 30.6991C208.548 30.6991 207.373 31.0144 206.284 31.645C205.195 32.2183 204.249 32.9636 203.446 33.8808V57.4426L210.927 60.1943V61.5702H182.034Z" fill="currentColor"/><path d="M158.321 62.4301C154.079 62.4301 150.324 61.4842 147.056 59.5924C143.789 57.6432 141.237 55.1208 139.403 52.0251C137.626 48.8721 136.737 45.4611 136.737 41.7921C136.737 38.1231 137.626 34.7121 139.403 31.559C141.237 28.406 143.789 25.8836 147.056 23.9917C150.324 22.0999 154.079 21.154 158.321 21.154C162.563 21.154 166.318 22.0999 169.586 23.9917C172.854 25.8836 175.376 28.406 177.153 31.559C178.988 34.7121 179.905 38.1231 179.905 41.7921C179.905 45.4611 178.988 48.8721 177.153 52.0251C175.376 55.1208 172.854 57.6432 169.586 59.5924C166.318 61.4842 162.563 62.4301 158.321 62.4301ZM159.095 57.8726C160.299 57.8726 161.302 57.2133 162.105 55.8948C162.907 54.5762 163.481 52.8564 163.825 50.7352C164.226 48.5568 164.427 46.149 164.427 43.5119C164.427 40.3015 164.197 37.3492 163.739 34.6547C163.28 31.9603 162.535 29.7819 161.503 28.1194C160.528 26.4569 159.267 25.6256 157.719 25.6256C156.401 25.6256 155.34 26.2849 154.538 27.6034C153.735 28.8646 153.133 30.5845 152.732 32.7629C152.388 34.8841 152.216 37.2918 152.216 39.9862C152.216 43.1393 152.445 46.0917 152.904 48.8434C153.42 51.5378 154.165 53.7163 155.139 55.3788C156.171 57.0413 157.49 57.8726 159.095 57.8726Z" fill="currentColor"/><path d="M123.627 62.4301C119.499 62.4301 116.174 61.6849 113.652 60.1943C111.129 58.7038 109.868 56.6113 109.868 53.9169V25.7976H104.279V24.1637L112.62 22.0139L122.853 12.5548H125.347V22.0139H137.557V25.7976H125.347V51.2512C125.347 52.7417 125.949 53.8309 127.152 54.5189C128.414 55.2068 129.876 55.5508 131.538 55.5508C132.57 55.5508 133.459 55.4934 134.204 55.3788C135.006 55.2641 135.838 55.1208 136.698 54.9488L136.956 55.1208V57.0126C135.809 58.4458 133.946 59.7071 131.366 60.7963C128.844 61.8855 126.264 62.4301 123.627 62.4301Z" fill="currentColor"/><path d="M71.4835 62.4301C67.9865 62.4301 65.1201 61.5129 62.8843 59.6784C60.7058 57.8439 59.6166 55.1208 59.6166 51.5092V26.1415L53.6831 23.3898V22.0139H75.0951V48.3275C75.0951 49.99 75.5251 51.2798 76.385 52.1971C77.2449 53.057 78.3342 53.487 79.6527 53.487C80.398 53.487 81.1719 53.315 81.9745 52.971C82.8344 52.6271 83.6083 52.2258 84.2963 51.7671V26.1415L79.6527 23.3898V22.0139H99.7748V57.4426L104.676 60.1943V61.5702H84.2963V56.0667H83.9523C82.0605 57.9585 80.1973 59.5064 78.3628 60.7103C76.5283 61.8569 74.2352 62.4301 71.4835 62.4301Z" fill="currentColor"/><path d="M17.1124 61.5702V60.1943L24.7657 56.5827V35.0847L6.19142 9.80308L0 6.19142V4.81555H30.3551V6.19142L23.7338 9.5451V9.88907L38.4384 29.6672L51.5951 10.0611V9.71709L44.7158 6.19142V4.81555H65.1819V6.19142L59.2484 9.02915L41.1041 35.0847V56.5827L48.7574 60.1943V61.5702H17.1124Z" fill="currentColor"/></svg>'
-
-# Markdown styles scoped to the thought card. The shimmer keyframe stays here
-# so the existing single-style-element teardown still cleans everything up.
-_THOUGHT_STYLE_CSS = (
-    "@keyframes n1thoughtShimmer{0%{background-position:0% 50%}100%{background-position:200% 50%}}"
-    f"#{THOUGHT_CARD_ID} strong{{font-weight:700}}"
-    f"#{THOUGHT_CARD_ID} em{{font-style:italic}}"
-    f"#{THOUGHT_CARD_ID} a{{color:{YUTORI_GREEN};text-decoration:underline;text-underline-offset:2px}}"
-    f"#{THOUGHT_CARD_ID} code{{background:rgba(255,255,255,0.08);padding:1px 5px;border-radius:4px;"
-    "font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;font-size:0.92em}"
-    f"#{THOUGHT_CARD_ID} pre{{background:rgba(0,0,0,0.32);border-radius:8px;padding:10px 12px;"
-    "overflow-x:auto;margin:8px 0}"
-    f"#{THOUGHT_CARD_ID} pre code{{background:transparent;padding:0;font-size:0.9em}}"
-    f"#{THOUGHT_CARD_ID} ul{{padding-left:18px;margin:6px 0}}"
-    f"#{THOUGHT_CARD_ID} li{{margin:2px 0}}"
-    f"#{THOUGHT_CARD_ID} h2,#{THOUGHT_CARD_ID} h3,#{THOUGHT_CARD_ID} h4{{"
-    "margin:8px 0 4px;font-weight:700;line-height:1.3}"
-    f"#{THOUGHT_CARD_ID} h2{{font-size:1.18em}}"
-    f"#{THOUGHT_CARD_ID} h3{{font-size:1.08em}}"
-    f"#{THOUGHT_CARD_ID} h4{{font-size:1em;opacity:0.9}}"
-)
-
-# Lightweight markdown→HTML renderer ported from yutori-ai/yutori
-# navigator-browser-extension/sidepanel.js (renderMarkdown + escapeHtml).
-# Kept as a raw triple-quoted string so backslash escapes (\n, \d, \w, \u0000,
-# etc.) reach the JS engine literally. Injected into _THOUGHT_CARD_JS via
-# f-string interpolation — the substituted contents' braces are NOT re-parsed
-# as f-string fields, which is why this file can stay readable.
-#
-# Coverage: fenced code blocks, inline code, [text](url) with scheme allow-list
-# (https/mailto only), bare-URL linkification, ATX headers, **bold**, *italic*,
-# - / 1. lists, soft line breaks. Sentinel-extracts code blocks/spans BEFORE
-# escapeHtml so backtick contents survive the link/list/emphasis passes.
-#
-# Trust model: thought text comes from the Navigator LLM, not from the page
-# being verified. escapeHtml runs on everything that isn't a fenced/inline code
-# capture; link hrefs are scheme-checked; non-allow-listed schemes fall through
-# as plain text. We render with innerHTML in good conscience.
-_RENDER_MARKDOWN_JS = r"""
-function n1escapeHtml(text) {
-    if (!text) return '';
-    return String(text)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-}
-const N1_SAFE_LINK_SCHEME = /^(?:https?:\/\/|mailto:)/i;
-function n1renderMarkdown(text) {
-    if (!text) return '';
-    const codeBlocks = [];
-    text = text.replace(/```(\w*)\r?\n?([\s\S]*?)```/g, (_m, lang, code) => {
-        const idx = codeBlocks.push({ lang, code }) - 1;
-        return '\u0000CB' + idx + '\u0000';
-    });
-    const inlineCodes = [];
-    text = text.replace(/`([^`]+)`/g, (_m, code) => {
-        const idx = inlineCodes.push(code) - 1;
-        return '\u0000IC' + idx + '\u0000';
-    });
-    let html = n1escapeHtml(text);
-    html = html.replace(/\[([^\]]+)\]\(([^)\s'"]+)\)/g, (m, label, url) => {
-        if (!N1_SAFE_LINK_SCHEME.test(url)) return m;
-        return '<a href="' + url + '" target="_blank" rel="noopener noreferrer">' + label + '</a>';
-    });
-    html = html.replace(
-        /(^|[^"'>=])(https?:\/\/[^\s<>"']+)/g,
-        (_m, pre, url) => pre + '<a href="' + url + '" target="_blank" rel="noopener noreferrer">' + url + '</a>'
-    );
-    html = html.replace(/^### (.+)$/gm, '<h4>$1</h4>');
-    html = html.replace(/^## (.+)$/gm, '<h3>$1</h3>');
-    html = html.replace(/^# (.+)$/gm, '<h2>$1</h2>');
-    html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-    html = html.replace(/__([^_]+)__/g, '<strong>$1</strong>');
-    html = html.replace(/(?<![*\w])\*([^*]+)\*(?![*\w])/g, '<em>$1</em>');
-    html = html.replace(/(?<![_\w])_([^_]+)_(?![_\w])/g, '<em>$1</em>');
-    html = html.replace(/^[-*] (.+)$/gm, '<li>$1</li>');
-    html = html.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
-    html = html.replace(/(<li>[\s\S]*?<\/li>)(?=\s*(?:<li>|$))/g, (_match, content, offset, string) => {
-        const before = string.substring(0, offset);
-        const isFirstInList = !before.endsWith('</li>\n') && !before.endsWith('</li>');
-        return isFirstInList ? '<ul>' + content : content;
-    });
-    html = html.replace(/(<\/li>)(?!\s*<li>)/g, '$1</ul>');
-    html = html.replace(/\n(?!<\/?(?:h[1-6]|ul|li|p|pre))/g, '<br>');
-    html = html.replace(/(<br>){3,}/g, '<br><br>');
-    html = html.replace(/\u0000CB(\d+)\u0000/g, (_m, idx) => {
-        const block = codeBlocks[Number(idx)];
-        const langClass = block.lang ? ' class="language-' + n1escapeHtml(block.lang) + '"' : '';
-        const body = n1escapeHtml(block.code.replace(/\n$/, ''));
-        return '<pre><code' + langClass + '>' + body + '</code></pre>';
-    });
-    html = html.replace(/\u0000IC(\d+)\u0000/g, (_m, idx) => {
+    html = html.replace(/ IC(\d+) /g, (_m, idx) => {
         return '<code>' + n1escapeHtml(inlineCodes[Number(idx)]) + '</code>';
     });
     return html;
@@ -544,12 +437,7 @@ class OverlayController:
         # was called twice without claim_ended between (page.on appends — it
         # doesn't replace). Detach first so we never leak a handler that
         # claim_ended can no longer reference.
-        if self._navigation_handler is not None:
-            try:
-                self._page.remove_listener("domcontentloaded", self._navigation_handler)
-            except Exception:
-                logger.debug("Failed to detach previous overlay navigation listener", exc_info=True)
-            self._navigation_handler = None
+        self._detach_navigation_listener()
         self._navigation_handler = lambda _frame=None: asyncio.create_task(
             self._reinject_after_navigation()
         )
@@ -566,13 +454,16 @@ class OverlayController:
         if not self._active:
             return
         self._active = False
+        self._detach_navigation_listener()
+        await self._eval(_REMOVE_ALL_JS)
+
+    def _detach_navigation_listener(self) -> None:
         if self._navigation_handler is not None:
             try:
                 self._page.remove_listener("domcontentloaded", self._navigation_handler)
             except Exception:
                 logger.debug("Failed to detach overlay navigation listener", exc_info=True)
             self._navigation_handler = None
-        await self._eval(_REMOVE_ALL_JS)
 
     async def _reinject_after_navigation(self) -> None:
         """Re-mount the overlay after a main-frame navigation tore down the DOM."""
@@ -634,6 +525,7 @@ class OverlayController:
         # and teleports instead of transitioning.
         center: dict[str, int] | None = None
         moved = False
+        teleported = False
         if action_type == "type":
             center = await self._get_focused_element_center()
             if center:

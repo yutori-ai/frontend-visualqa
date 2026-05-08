@@ -700,7 +700,7 @@ class VisualQARunner:
             return f"{int(timeout_seconds)}s"
         if timeout_seconds >= 1:
             return f"{timeout_seconds:.1f}s"
-        return f"{timeout_seconds:.2f}s".rstrip("0").rstrip(".") + "s"
+        return f"{timeout_seconds:.2f}".rstrip("0").rstrip(".") + "s"
 
     def _write_reports(
         self,
