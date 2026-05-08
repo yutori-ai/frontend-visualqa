@@ -187,10 +187,20 @@ class VisualQARunner:
                 )
 
             try:
+                # Plumb video recording into the Playwright context if the
+                # browser config opts in. Videos go under <run_dir>/videos/
+                # so the recordings are co-located with screenshots, traces,
+                # and reports for the same run. .webm files are finalized
+                # when the context closes (end of run for ephemeral, page
+                # close for persistent).
+                record_video_dir: str | None = None
+                if self.browser_manager.config.record_video:
+                    record_video_dir = str(Path(run_artifacts.run_dir) / "videos")
                 session = await self.browser_manager.get_session(
                     request.session_key,
                     viewport=request.viewport,
                     reuse_session=request.reuse_session,
+                    record_video_dir=record_video_dir,
                 )
             except Exception as exc:
                 return self._finalize_not_testable_run(
@@ -313,6 +323,7 @@ class VisualQARunner:
                 if claim_results and all(result.status == "not_testable" for result in claim_results)
                 else "completed"
             )
+            video_paths = await self._save_session_video(session, run_artifacts)
             run_result = RunResult(
                 overall_status=overall_status,
                 started_at=run_started_at,
@@ -322,6 +333,7 @@ class VisualQARunner:
                 results=claim_results,
                 summary=summary,
                 artifacts_dir=str(run_artifacts.run_dir),
+                video_paths=video_paths,
             )
             self._write_reports(run_result, str(run_artifacts.run_dir), claims_file=claims_file)
             return run_result
@@ -576,6 +588,55 @@ class VisualQARunner:
 
         await self.browser_manager.close()
         await self.navigator_client.close()
+
+    async def _save_session_video(self, session: Any, run_artifacts: RunArtifacts) -> list[str]:
+        """Close the session and rename its auto-named .webm to ``<run_id>.webm``.
+
+        Playwright finalizes a video only when its BrowserContext closes —
+        ``page.video.save_as`` blocks indefinitely if the context is still
+        alive. So when video recording is enabled, we proactively close the
+        session at the end of the run loop so the video can be moved to a
+        predictable filename. This means ``record_video=True`` overrides
+        ``reuse_session`` semantics: the context goes away at end-of-run.
+
+        Otherwise Playwright assigns each video a random hash like
+        ``754f83068b291581198924685de3bdaf.webm``, which is hard to correlate
+        with a specific run from log output or CI artifacts.
+
+        Returns the list of saved paths (single-element today since we have
+        one page per session, but the list shape leaves room for multi-page
+        sessions later). Best-effort — never raises; on any failure we log
+        DEBUG and return an empty list so the caller still gets the rest of
+        the RunResult.
+        """
+        if not self.browser_manager.config.record_video:
+            return []
+        page = getattr(session, "page", None)
+        video = getattr(page, "video", None) if page is not None else None
+        if video is None:
+            return []
+        target = Path(run_artifacts.run_dir) / "videos" / f"{run_artifacts.run_id}.webm"
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            # Close session first so the BrowserContext closes and the video
+            # finalizes. save_as blocks waiting for finalization, so calling
+            # it on a still-recording context would hang.
+            await self.browser_manager.close_session(session.session_key)
+            await video.save_as(str(target))
+            # save_as is a copy operation, so Playwright's auto-named .webm
+            # (a 32-char hex hash) stays behind. Remove any sibling .webm
+            # that isn't our target so the videos/ dir contains exactly the
+            # predictably-named files.
+            for sibling in target.parent.glob("*.webm"):
+                if sibling != target:
+                    try:
+                        sibling.unlink()
+                    except OSError:
+                        logger.debug("Could not remove leftover video %s", sibling, exc_info=True)
+            return [str(target)]
+        except Exception:
+            logger.debug("Failed to save session video to %s", target, exc_info=True)
+            return []
 
     @staticmethod
     def _summarize_results(results: list[ClaimResult]) -> str:

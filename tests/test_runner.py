@@ -63,7 +63,9 @@ class FakeBrowserManager:
         *,
         viewport: ViewportConfig | None = None,
         reuse_session: bool = True,
+        record_video_dir: str | None = None,
     ) -> FakeSession:
+        del record_video_dir  # accepted for parity; no recording in fakes
         self.get_session_calls.append((session_key, reuse_session))
         desired = viewport or self.viewport
         session = self.sessions.get(session_key)
