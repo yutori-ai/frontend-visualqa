@@ -123,6 +123,12 @@ class BrowserConfig(FrontendVisualQABaseModel):
     visualize: bool = False
     navigation_timeout_ms: int = Field(default=20_000, ge=1)
     settle_delay_seconds: float = Field(default=1.0, ge=0, le=60)
+    # When True, Playwright records a video of every browser context for the
+    # run. The runner derives the destination directory from the run's
+    # artifacts dir and passes it to BrowserManager.get_session at session
+    # creation time. Each Playwright Page produces one .webm; finalized when
+    # the context closes.
+    record_video: bool = False
 
     @field_validator("user_data_dir")
     @classmethod
@@ -220,6 +226,11 @@ class RunResult(FrontendVisualQABaseModel):
     results: list[ClaimResult] = Field(default_factory=list)
     summary: str
     artifacts_dir: str
+    # Predictable .webm path(s) when ``BrowserConfig.record_video`` was set.
+    # Empty list when video recording was disabled. The runner saves each
+    # session's video to ``<artifacts_dir>/videos/<run_id>.webm`` via
+    # ``page.video.save_as`` before returning the result.
+    video_paths: list[str] = Field(default_factory=list)
 
 
 class ScreenshotResult(FrontendVisualQABaseModel):

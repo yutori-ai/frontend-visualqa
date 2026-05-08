@@ -97,6 +97,16 @@ def build_parser() -> argparse.ArgumentParser:
             "-vv: DEBUG (per-action timing, screenshot fallbacks, low-level SDK chatter)."
         ),
     )
+    verify_parser.add_argument(
+        "--video",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Record a Playwright video of the browser session. Saved as "
+            ".webm files under <run-artifacts>/videos/. One video per "
+            "Playwright page; finalized when the context closes."
+        ),
+    )
     verify_parser.set_defaults(handler=_handle_verify)
 
     screenshot_parser = subparsers.add_parser("screenshot", help="Capture a screenshot for a target URL.")
@@ -208,6 +218,7 @@ def _build_browser_config(
         user_data_dir=getattr(args, "user_data_dir", None),
         headless=not headed,
         visualize=visualize,
+        record_video=bool(getattr(args, "video", False)),
     )
 
 
