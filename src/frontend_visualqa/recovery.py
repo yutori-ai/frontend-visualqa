@@ -26,18 +26,11 @@ def wrong_page_recovered(
 
     base = _base_url(target_url)
     bases = {u: _base_url(u) for u in url_history}
-    is_shell = any(
-        bases[u] == base
-        and urlsplit(_strip_trailing_hash(u)).fragment.startswith("/")
-        for u in url_history
-    )
+    is_shell = any(bases[u] == base and urlsplit(_strip_trailing_hash(u)).fragment.startswith("/") for u in url_history)
 
     target = _parse(target_url, shell=is_shell)
     start = _parse(url_history[0], shell=is_shell and bases[url_history[0]] == base)
-    rest = [
-        _parse(u, shell=is_shell and bases[u] == base)
-        for u in url_history[1:]
-    ]
+    rest = [_parse(u, shell=is_shell and bases[u] == base) for u in url_history[1:]]
 
     if start == target:
         return any(loc.context == target.context and _is_descendant(loc.route, target.route) for loc in rest)
@@ -46,15 +39,14 @@ def wrong_page_recovered(
         return any(loc.context == target.context and _is_descendant(loc.route, start.route) for loc in rest)
 
     return any(
-        loc.context == target.context
-        and (loc == target or _is_descendant(loc.route, target.route))
-        for loc in rest
+        loc.context == target.context and (loc == target or _is_descendant(loc.route, target.route)) for loc in rest
     )
 
 
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
 
 @dataclass(slots=True)
 class _Location:
@@ -63,7 +55,7 @@ class _Location:
 
 
 def _strip_trailing_hash(url: str) -> str:
-    return url[:-1] if url.endswith("#") else url
+    return url.removesuffix("#")
 
 
 def _base_url(url: str) -> str:
@@ -76,10 +68,11 @@ def _parse(url: str, *, shell: bool = False) -> _Location:
     p = urlsplit(_strip_trailing_hash(url))
     path = p.path or "/"
     q = f"?{p.query}" if p.query else ""
+    has_hash_route = p.fragment.startswith("/")
 
-    if p.fragment.startswith("/") or path.endswith(".html") or shell:
+    if has_hash_route or path.endswith(".html") or shell:
         context = f"{p.scheme}://{p.netloc}{path}{q}"
-        route_src = p.fragment if p.fragment.startswith("/") else ""
+        route_src = p.fragment if has_hash_route else ""
     else:
         context = f"{p.scheme}://{p.netloc}"
         route_src = path
