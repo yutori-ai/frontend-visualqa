@@ -761,10 +761,8 @@ class VisualQARunner:
                 visualize=visualize,
             )
 
-        if request.claim_timeout_seconds:
-            async with asyncio.timeout(request.claim_timeout_seconds):
-                return await _call_verifier()
-        return await _call_verifier()
+        async with asyncio.timeout(request.claim_timeout_seconds or None):
+            return await _call_verifier()
 
     @staticmethod
     def _navigation_hint_for_claim(request: VerifyVisualClaimsInput, claim_index: int) -> str | None:
