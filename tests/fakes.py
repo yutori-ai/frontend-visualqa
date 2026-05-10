@@ -115,24 +115,24 @@ class FakeArtifactManager:
         del prefix, run_id
         return self.run
 
-    def save_screenshot(self, run: RunArtifacts, claim_index: int, label: str, image_bytes: bytes) -> str:
+    @staticmethod
+    def _claim_dir(run: RunArtifacts, claim_index: int) -> Path:
         claim_dir = run.run_dir / f"claim-{claim_index:02d}"
         claim_dir.mkdir(parents=True, exist_ok=True)
-        path = claim_dir / f"{label}.webp"
+        return claim_dir
+
+    def save_screenshot(self, run: RunArtifacts, claim_index: int, label: str, image_bytes: bytes) -> str:
+        path = self._claim_dir(run, claim_index) / f"{label}.webp"
         path.write_bytes(image_bytes)
         return str(path)
 
     def save_rich_trace(self, run: RunArtifacts, claim_index: int, events: list[dict[str, Any]]) -> str:
-        claim_dir = run.run_dir / f"claim-{claim_index:02d}"
-        claim_dir.mkdir(parents=True, exist_ok=True)
-        path = claim_dir / "trace.json"
+        path = self._claim_dir(run, claim_index) / "trace.json"
         path.write_text(json.dumps(events))
         return str(path)
 
     def save_proof_text(self, run: RunArtifacts, claim_index: int, label: str, text: str) -> str:
-        claim_dir = run.run_dir / f"claim-{claim_index:02d}"
-        claim_dir.mkdir(parents=True, exist_ok=True)
-        path = claim_dir / f"{label}.txt"
+        path = self._claim_dir(run, claim_index) / f"{label}.txt"
         path.write_text(text, encoding="utf-8")
         return str(path)
 
