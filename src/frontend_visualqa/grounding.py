@@ -358,6 +358,24 @@ def _check_dialog_title_match(
     )
 
 
+def _no_visible_button_failure(
+    grounding_state: GroundingState, label: str
+) -> tuple[ClaimStatus, str]:
+    """Build the shared "no visible button matched" failed-tuple.
+
+    Used by ``_check_button_match`` and ``_check_button_fully_visible`` for the
+    branch where ``label`` matches none of the visible buttons. Listing the
+    full ``visibleButtons`` set in the message is intentional — it gives the
+    LLM grading the trajectory enough context to distinguish a missing button
+    from a label-mismatch.
+    """
+    visible_buttons = grounding_state.get("visibleButtons", [])
+    return (
+        "failed",
+        f"No visible button label matched {label!r}. Visible buttons: {visible_buttons or ['<none>']}.",
+    )
+
+
 def _check_button_match(
     grounding_state: GroundingState,
     groups: dict[str, str],
@@ -378,10 +396,7 @@ def _check_button_match(
     for candidate in visible_buttons:
         if matches(candidate):
             return "passed", f"Visible button label matched {groups['label']!r}: {candidate!r}."
-    return (
-        "failed",
-        f"No visible button label matched {groups['label']!r}. Visible buttons: {visible_buttons or ['<none>']}.",
-    )
+    return _no_visible_button_failure(grounding_state, groups["label"])
 
 
 def _check_button_fully_visible(
@@ -390,11 +405,7 @@ def _check_button_fully_visible(
 ) -> tuple[ClaimStatus, str] | None:
     matched_states = _matching_button_states(grounding_state, groups["label"])
     if not matched_states:
-        visible_buttons = grounding_state.get("visibleButtons", [])
-        return (
-            "failed",
-            f"No visible button label matched {groups['label']!r}. Visible buttons: {visible_buttons or ['<none>']}.",
-        )
+        return _no_visible_button_failure(grounding_state, groups["label"])
 
     if any(state.get("fullyVisible", False) for state in matched_states):
         candidate = next(state.get("text", groups["label"]) for state in matched_states if state.get("fullyVisible", False))
