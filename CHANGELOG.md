@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- `-v`/`--verbose` flag for service-responsiveness logging (INFO and DEBUG levels)
+- End-of-run verification summary with ANSI color support (respects `NO_COLOR`/`FORCE_COLOR`)
+- HTTP/2 transport for Navigator API requests (`httpx[http2]`)
+
+### Changed
+- Overlay cursor persists across page navigations
+- Scroll effect uses directional arrow animation instead of dots
+- Screenshots encoded directly to WebP format
+
+### Fixed
+- Unnecessary message re-trimming during request creation (`already_trimmed` flag)
+- Navigation listener leak in overlay controller
+
 ## [0.8.0] - 2026-04-14
 
 ### Breaking

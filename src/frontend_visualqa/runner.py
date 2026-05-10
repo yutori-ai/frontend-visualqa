@@ -176,38 +176,15 @@ class VisualQARunner:
             run_started_at = time.time()
             run_artifacts = self.artifact_manager.create_run(prefix="run")
 
-            preflight_error = await self._preflight_url(request.url)
-            if preflight_error is not None:
+            session: Any = None
+            finding = await self._preflight_url(request.url)
+            if finding is None:
+                session, finding = await self._open_session_for_request(request)
+            if finding is not None:
                 return self._finalize_not_testable_run(
                     request=request,
                     run_artifacts=run_artifacts,
-                    finding=preflight_error,
-                    started_at=run_started_at,
-                    claims_file=claims_file,
-                )
-
-            try:
-                session = await self.browser_manager.get_session(
-                    request.session_key,
-                    viewport=request.viewport,
-                    reuse_session=request.reuse_session,
-                )
-            except Exception as exc:
-                return self._finalize_not_testable_run(
-                    request=request,
-                    run_artifacts=run_artifacts,
-                    finding=f"Could not start a browser session for {request.url}: {exc}",
-                    started_at=run_started_at,
-                    claims_file=claims_file,
-                )
-
-            try:
-                await self.browser_manager.goto(session, request.url)
-            except Exception as exc:
-                return self._finalize_not_testable_run(
-                    request=request,
-                    run_artifacts=run_artifacts,
-                    finding=f"Could not navigate to {request.url}: {exc}",
+                    finding=finding,
                     started_at=run_started_at,
                     claims_file=claims_file,
                 )
@@ -715,6 +692,32 @@ class VisualQARunner:
                 reporter.write(run_result, output_dir, claims_file=claims_file)
             except Exception:
                 logger.warning("Reporter %s failed to write", reporter.name, exc_info=True)
+
+    async def _open_session_for_request(
+        self, request: VerifyVisualClaimsInput
+    ) -> tuple[Any, str | None]:
+        """Open a browser session for ``request`` and navigate to its URL.
+
+        Returns ``(session, None)`` on success and ``(None, finding)`` on
+        failure. ``finding`` distinguishes the two failure modes (session
+        creation vs. navigation) so the caller can render a user-facing
+        ``not_testable`` result.
+        """
+        try:
+            session = await self.browser_manager.get_session(
+                request.session_key,
+                viewport=request.viewport,
+                reuse_session=request.reuse_session,
+            )
+        except Exception as exc:
+            return None, f"Could not start a browser session for {request.url}: {exc}"
+
+        try:
+            await self.browser_manager.goto(session, request.url)
+        except Exception as exc:
+            return None, f"Could not navigate to {request.url}: {exc}"
+
+        return session, None
 
     async def _preflight_url(self, url: str) -> str | None:
         try:

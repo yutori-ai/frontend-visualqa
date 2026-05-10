@@ -355,7 +355,7 @@ frontend-visualqa verify <url> --claims-file claims.md [options]
 | `--width` / `--height` | 1280 / 800 | Viewport size |
 | `--device-scale-factor` | 1.0 | DPR |
 | `--headed` | off | Show the browser (implies `--visualize`) |
-| `--visualize` / `--no-visualize` | on when headed | Show in-browser action overlay (cursor, click pulses, scroll dots, status chip) |
+| `--visualize` / `--no-visualize` | on when headed | Show in-browser action overlay (cursor, click pulses, scroll arrows, status chip) |
 | `--browser-mode` | ephemeral | `ephemeral` or `persistent` |
 | `--user-data-dir` | | Custom profile directory |
 | `--session-key` | default | Named browser session. Persistent mode supports one named session at a time. |
@@ -363,6 +363,8 @@ frontend-visualqa verify <url> --claims-file claims.md [options]
 | `--max-steps-per-claim` | 12 | Max actions per claim |
 | `--claim-timeout-seconds` | 120 | Per-claim timeout |
 | `--run-timeout-seconds` | 300 | Whole-run timeout |
+| `--verbose`, `-v` | off | Stream service-responsiveness logs to stderr. -v for INFO, -vv for DEBUG. |
+| `--reset-between-claims` / `--no-reset-between-claims` | on | Return to the base URL between claims. |
 | `--reporter` | native | Output reporter (`native`, `ctrf`, `markdown`). Repeat for multiple. |
 
 </details>
@@ -482,6 +484,8 @@ If a claim requires interaction first, use `--navigation-hint` instead of encodi
 | `not_testable` | Environment blocked verification (server down, auth wall) |
 
 For the CLI, `frontend-visualqa verify` exits `0` only when every claim passes. It exits `1` if any claim is `failed`, `inconclusive`, or `not_testable`. Usage errors still exit with argparse's standard `2`.
+
+After the JSON output, verify prints a colored summary line to stderr with a checkmark or cross glyph. Colors respect NO_COLOR and FORCE_COLOR environment variables.
 
 ## Reporters
 
