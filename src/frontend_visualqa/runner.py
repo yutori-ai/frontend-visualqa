@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import importlib
 import logging
 import time
 from collections import Counter
@@ -55,22 +56,29 @@ _TIMEOUT_FINDING_TEMPLATES: dict[_TimeoutScope, tuple[str, str]] = {
 }
 
 
-def _load_claim_verifier_class() -> Any:
-    global ClaimVerifier
-    if ClaimVerifier is None:
-        from frontend_visualqa.claim_verifier import ClaimVerifier as loaded_claim_verifier
+# Map deferred class name -> source module. The imports are deferred to
+# runtime (rather than top-of-file) to break circular-import paths between
+# runner.py and the claim_verifier / navigator_client modules.
+_DEFERRED_IMPORTS: dict[str, str] = {
+    "ClaimVerifier": "frontend_visualqa.claim_verifier",
+    "NavigatorClient": "frontend_visualqa.navigator_client",
+}
 
-        ClaimVerifier = loaded_claim_verifier  # type: ignore[assignment]
-    return ClaimVerifier
 
+def _load_class(name: str) -> Any:
+    """Return ``frontend_visualqa.<module>.<name>``, importing on first use.
 
-def _load_navigator_client_class() -> Any:
-    global NavigatorClient
-    if NavigatorClient is None:
-        from frontend_visualqa.navigator_client import NavigatorClient as loaded_navigator_client
-
-        NavigatorClient = loaded_navigator_client  # type: ignore[assignment]
-    return NavigatorClient
+    Caches the resolved class as a module-level attribute so that
+    ``monkeypatch.setattr(runner, name, ...)``-based test substitutions
+    remain effective: any value already bound at module scope (placeholder
+    ``None``, real class, or test fake) takes precedence over re-import.
+    """
+    cached = globals().get(name)
+    if cached is not None:
+        return cached
+    loaded = getattr(importlib.import_module(_DEFERRED_IMPORTS[name]), name)
+    globals()[name] = loaded
+    return loaded
 
 
 class VisualQARunner:
@@ -100,12 +108,12 @@ class VisualQARunner:
         self._login_override_active = False
         self.artifact_manager = artifact_manager or ArtifactManager(artifacts_dir)
         if navigator_client is None:
-            navigator_client_class = _load_navigator_client_class()
+            navigator_client_class = _load_class("NavigatorClient")
             self.navigator_client = navigator_client_class()
         else:
             self.navigator_client = navigator_client
         if claim_verifier is None:
-            claim_verifier_class = _load_claim_verifier_class()
+            claim_verifier_class = _load_class("ClaimVerifier")
             self.claim_verifier = claim_verifier_class(
                 browser_manager=self.browser_manager,
                 artifact_manager=self.artifact_manager,
