@@ -78,6 +78,10 @@ def _user_text_message(text: str) -> dict[str, Any]:
     return {"role": "user", "content": [{"type": "text", "text": text}]}
 
 
+def _finding_matches_any(finding: str, patterns: tuple[re.Pattern[str], ...]) -> bool:
+    return any(pattern.search(finding) for pattern in patterns)
+
+
 @dataclass
 class _VerificationProgress:
     claim: str
@@ -740,12 +744,12 @@ class ClaimVerifier:
 
     @staticmethod
     def _finding_has_failure_cue(finding: str) -> bool:
-        return any(pattern.search(finding) for pattern in FAILED_FINDING_PATTERNS)
+        return _finding_matches_any(finding, FAILED_FINDING_PATTERNS)
 
     @staticmethod
     def _finding_has_inconclusive_cue(finding: str) -> bool:
-        return any(pattern.search(finding) for pattern in INCONCLUSIVE_FINDING_PATTERNS)
+        return _finding_matches_any(finding, INCONCLUSIVE_FINDING_PATTERNS)
 
     @staticmethod
     def _finding_says_action_is_needed(finding: str) -> bool:
-        return any(pattern.search(finding) for pattern in ACTION_NEEDED_FINDING_PATTERNS)
+        return _finding_matches_any(finding, ACTION_NEEDED_FINDING_PATTERNS)
