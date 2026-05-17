@@ -349,46 +349,39 @@ class VisualQARunner:
             viewport_config = coerce_viewport(viewport)
             run_artifacts = self.artifact_manager.create_run(prefix="screenshot")
 
+            def _not_testable(summary: str) -> ScreenshotResult:
+                return ScreenshotResult(
+                    status="not_testable",
+                    session_key=session_key,
+                    run_name=run_name,
+                    final_url=url,
+                    viewport=viewport_config,
+                    screenshot_path=None,
+                    summary=summary,
+                )
+
             preflight_error = await self._preflight_url(url)
             if preflight_error is not None:
-                result = ScreenshotResult(
-                    status="not_testable",
-                    session_key=session_key,
-                    run_name=run_name,
-                    final_url=url,
-                    viewport=viewport_config,
-                    screenshot_path=None,
-                    summary=preflight_error,
-                )
-                self.artifact_manager.save_json(run_artifacts, "screenshot_result.json", result.model_dump())
-                return result
-
-            try:
-                session = await self.browser_manager.get_session(
-                    session_key, viewport=viewport_config, reuse_session=reuse_session
-                )
-                await self.browser_manager.goto(session, url)
-                image_bytes = await self.browser_manager.capture_screenshot(session)
-                screenshot_path = self.artifact_manager.save_screenshot(run_artifacts, 1, "screenshot", image_bytes)
-                result = ScreenshotResult(
-                    status="completed",
-                    session_key=session_key,
-                    run_name=run_name,
-                    final_url=session.page.url,
-                    viewport=session.viewport,
-                    screenshot_path=screenshot_path,
-                    summary="Captured the current page state successfully.",
-                )
-            except Exception as exc:
-                result = ScreenshotResult(
-                    status="not_testable",
-                    session_key=session_key,
-                    run_name=run_name,
-                    final_url=url,
-                    viewport=viewport_config,
-                    screenshot_path=None,
-                    summary=f"Could not capture a screenshot for {url}: {exc}",
-                )
+                result: ScreenshotResult = _not_testable(preflight_error)
+            else:
+                try:
+                    session = await self.browser_manager.get_session(
+                        session_key, viewport=viewport_config, reuse_session=reuse_session
+                    )
+                    await self.browser_manager.goto(session, url)
+                    image_bytes = await self.browser_manager.capture_screenshot(session)
+                    screenshot_path = self.artifact_manager.save_screenshot(run_artifacts, 1, "screenshot", image_bytes)
+                    result = ScreenshotResult(
+                        status="completed",
+                        session_key=session_key,
+                        run_name=run_name,
+                        final_url=session.page.url,
+                        viewport=session.viewport,
+                        screenshot_path=screenshot_path,
+                        summary="Captured the current page state successfully.",
+                    )
+                except Exception as exc:
+                    result = _not_testable(f"Could not capture a screenshot for {url}: {exc}")
             self.artifact_manager.save_json(run_artifacts, "screenshot_result.json", result.model_dump())
             return result
 
@@ -701,9 +694,7 @@ class VisualQARunner:
             except Exception:
                 logger.warning("Reporter %s failed to write", reporter.name, exc_info=True)
 
-    async def _open_session_for_request(
-        self, request: VerifyVisualClaimsInput
-    ) -> tuple[Any, str | None]:
+    async def _open_session_for_request(self, request: VerifyVisualClaimsInput) -> tuple[Any, str | None]:
         """Open a browser session for ``request`` and navigate to its URL.
 
         Returns ``(session, None)`` on success and ``(None, finding)`` on
