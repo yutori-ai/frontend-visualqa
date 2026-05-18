@@ -9,8 +9,9 @@ import logging
 import os
 import sys
 import threading
+from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, AsyncIterator
 
 from frontend_visualqa import __version__
 from frontend_visualqa.browser import BrowserManager
@@ -343,11 +344,10 @@ async def _run_verify(args: argparse.Namespace) -> dict[str, Any]:
         claims = list(args.claims)
     await _preflight_verify_auth()
 
-    runner = _new_runner(
+    async with _runner_scope(
         browser_config=_build_browser_config(args),
         reporters=args.reporter,
-    )
-    try:
+    ) as runner:
         total_claims = len(claims)
 
         def _progress_start(index: int, claim: str) -> None:
@@ -378,8 +378,6 @@ async def _run_verify(args: argparse.Namespace) -> dict[str, Any]:
             on_claim_complete=_progress_complete,
         )
         return serialize_result(result)
-    finally:
-        await runner.close()
 
 
 async def _preflight_verify_auth() -> None:
@@ -460,8 +458,7 @@ def _truncate_for_progress(text: str, limit: int = 120) -> str:
 
 
 async def _run_screenshot(args: argparse.Namespace) -> dict[str, Any]:
-    runner = _new_runner(browser_config=_build_browser_config(args))
-    try:
+    async with _runner_scope(browser_config=_build_browser_config(args)) as runner:
         result = await runner.take_screenshot(
             url=args.url,
             viewport=_build_viewport(args),
@@ -470,8 +467,6 @@ async def _run_screenshot(args: argparse.Namespace) -> dict[str, Any]:
             reuse_session=args.reuse_session,
         )
         return serialize_result(result)
-    finally:
-        await runner.close()
 
 
 async def _run_login(args: argparse.Namespace) -> int:
@@ -520,18 +515,26 @@ async def _run_login(args: argparse.Namespace) -> int:
 
 
 async def _run_status() -> dict[str, Any]:
-    runner = _new_runner()
-    try:
+    async with _runner_scope() as runner:
         result = await runner.manage_browser(action="status")
         return serialize_result(result)
-    finally:
-        await runner.close()
 
 
 def _new_runner(*, browser_config: BrowserConfig | None = None, reporters: list[str] | None = None) -> Any:
     from frontend_visualqa.runner import VisualQARunner
 
     return VisualQARunner(browser_config=browser_config, reporters=reporters)
+
+
+@asynccontextmanager
+async def _runner_scope(
+    *, browser_config: BrowserConfig | None = None, reporters: list[str] | None = None
+) -> AsyncIterator[Any]:
+    runner = _new_runner(browser_config=browser_config, reporters=reporters)
+    try:
+        yield runner
+    finally:
+        await runner.close()
 
 
 if __name__ == "__main__":
