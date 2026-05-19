@@ -226,7 +226,7 @@ def test_handle_screenshot_closes_runner_and_forwards_browser_config(monkeypatch
     emitted: list[dict[str, Any]] = []
     browser_configs: list[BrowserConfig | None] = []
 
-    def _fake_new_runner(*, browser_config: BrowserConfig | None = None) -> FakeRunner:
+    def _fake_new_runner(*, browser_config: BrowserConfig | None = None, reporters: list[str] | None = None) -> FakeRunner:
         browser_configs.append(browser_config)
         return fake_runner
 
