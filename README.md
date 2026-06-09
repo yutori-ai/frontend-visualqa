@@ -114,9 +114,8 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
    ```bash
    uv tool uninstall frontend-visualqa
    npx skills remove -g frontend-visualqa
+   npx add-mcp remove frontend-visualqa
    ```
-
-   `add-mcp` has no remove command. Delete the `frontend-visualqa` entry from your client's MCP config (e.g. `~/.mcp.json`).
    </details>
 
 ![Skill demo in Claude Code](docs/images/skill-demo.gif)
@@ -171,11 +170,15 @@ For development, or to run unreleased changes from a local checkout:
 ```bash
 git clone https://github.com/yutori-ai/frontend-visualqa.git
 cd frontend-visualqa
-uv sync
-uv tool install --editable .   # so the checked-in .mcp.json runs your local source
-uv run playwright install chromium
-uv run yutori auth login
+uv sync   # dev environment for tests and lint (see CONTRIBUTING.md)
+uv tool install --editable . \
+  --with-executables-from yutori \
+  --with-executables-from playwright   # so the checked-in .mcp.json runs your local source
+playwright install chromium   # browser for the Playwright the installed CLI uses
+yutori auth login
 ```
+
+Install Chromium with the `playwright` exposed by the editable tool install above — **not** `uv run playwright install`. `uv tool install` resolves its own dependency versions, which can differ from the pinned Playwright in `.venv`, and the `frontend-visualqa` command runs from the tool environment — so its browser must come from there too. Using `uv run` installs Chromium into `.venv` instead, leaving the CLI without a matching browser and producing a `not_testable` "Executable doesn't exist" error at run time.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for tests and lint.
 
@@ -294,7 +297,8 @@ Scrolling to find off-screen content:
 ```bash
 frontend-visualqa verify http://localhost:8000/analytics_dashboard.html \
   --headed \
-  --claims 'The /api/v1/webhooks endpoint returned a 200 OK status'
+  --claims 'The /api/v1/webhooks endpoint returned a 200 OK status' \
+  --navigation-hint 'Scroll down to the Recent Requests table and inspect the row for /api/v1/webhooks.'
 # → fails: Navigator scrolls to the request table and finds a 500 Error
 ```
 
@@ -366,6 +370,7 @@ frontend-visualqa verify <url> --claims-file claims.md [options]
 | `--user-data-dir` | | Custom profile directory |
 | `--session-key` | default | Named browser session. Persistent mode supports one named session at a time. |
 | `--run-name` | | Optional label included in JSON output and reports |
+| `--reuse-session` / `--no-reuse-session` | on | Reuse the named browser session if it already exists. |
 | `--max-steps-per-claim` | 12 | Max actions per claim |
 | `--claim-timeout-seconds` | 120 | Per-claim timeout |
 | `--run-timeout-seconds` | 300 | Whole-run timeout |
@@ -395,7 +400,9 @@ Per-claim metadata can live under an individual claim bullet:
 ```
 
 ```bash
-frontend-visualqa verify http://localhost:8000/analytics_dashboard.html \
+frontend-visualqa verify http://localhost:8000/yutori_login.html \
+  --no-reset-between-claims \
+  --max-steps-per-claim 20 \
   --claims-file examples/login_flow_claims.md \
   --reporter native \
   --reporter markdown
