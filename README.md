@@ -6,7 +6,7 @@
 
 Gives coding agents eyes for frontend work — visual QA and verification powered by [Yutori Navigator](https://yutori.com/api).
 
-![CLI demo](docs/images/cli-demo.gif)
+![CLI demo](https://raw.githubusercontent.com/yutori-ai/frontend-visualqa/main/docs/images/cli-demo.gif)
 
 ## What it does
 
@@ -26,16 +26,16 @@ Navigator is an AI agent powered by a computer-use model (n1.5) that perceives a
 - **Self-correcting navigation** — Point the agent at the product catalog instead of a specific product page and Navigator recognizes the wrong page, clicks through to the right one, and reports `trace.wrong_page_recovered: true`. Playwright MCP would run assertions on the wrong page and silently pass — garbage in, garbage out.
 
   <table border="0" cellspacing="0" cellpadding="8"><tr>
-    <td align="center" width="47%"><img src="docs/images/nav-step0-wrong-page.webp" alt="Product catalog — wrong page" width="100%"><br><em>Navigator lands on the product catalog</em></td>
+    <td align="center" width="47%"><img src="https://raw.githubusercontent.com/yutori-ai/frontend-visualqa/main/docs/images/nav-step0-wrong-page.webp" alt="Product catalog — wrong page" width="100%"><br><em>Navigator lands on the product catalog</em></td>
     <td align="center" width="6%"><strong>→</strong></td>
-    <td align="center" width="47%"><img src="docs/images/nav-step6-correct-page.webp" alt="Product detail — correct page" width="100%"><br><em>Navigated to the correct product page</em></td>
+    <td align="center" width="47%"><img src="https://raw.githubusercontent.com/yutori-ai/frontend-visualqa/main/docs/images/nav-step6-correct-page.webp" alt="Product detail — correct page" width="100%"><br><em>Navigated to the correct product page</em></td>
   </tr></table>
 
 - **Rich visual evaluation** — On the cart page, both items show sale prices ($149.99 and $79.99) but Navigator caught that the subtotal of $279.98 uses the original prices — the discount was never applied. On the API dashboard, the quota label reads "100%" but the progress bar is visibly only two-thirds full. Playwright MCP would pass both — the DOM text is consistent and the progress bar width is just a CSS value.
 
   <table border="0" cellspacing="0" cellpadding="8"><tr>
-    <td align="center" width="50%"><img src="docs/images/cart-pricing-bug.webp" alt="Cart — sale prices shown but subtotal uses original prices" width="100%"><br><em>Navigator catches the discount-not-applied bug</em></td>
-    <td align="center" width="50%"><img src="docs/images/dashboard-quota.webp" alt="Dashboard — label says 100% but bar is 65%" width="100%"><br><em>Label says 100% but the bar is only about two-thirds full</em></td>
+    <td align="center" width="50%"><img src="https://raw.githubusercontent.com/yutori-ai/frontend-visualqa/main/docs/images/cart-pricing-bug.webp" alt="Cart — sale prices shown but subtotal uses original prices" width="100%"><br><em>Navigator catches the discount-not-applied bug</em></td>
+    <td align="center" width="50%"><img src="https://raw.githubusercontent.com/yutori-ai/frontend-visualqa/main/docs/images/dashboard-quota.webp" alt="Dashboard — label says 100% but bar is 65%" width="100%"><br><em>Label says 100% but the bar is only about two-thirds full</em></td>
   </tr></table>
 
 <details>
@@ -118,7 +118,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
    ```
    </details>
 
-![Skill demo in Claude Code](docs/images/skill-demo.gif)
+![Skill demo in Claude Code](https://raw.githubusercontent.com/yutori-ai/frontend-visualqa/main/docs/images/skill-demo.gif)
 
 ### Manual per-client setup
 
