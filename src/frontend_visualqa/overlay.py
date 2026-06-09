@@ -170,7 +170,7 @@ _PERSISTENT_ROOT_JS = f"""() => {{
 
 # Lightweight markdown→HTML renderer ported from yutori-ai/yutori
 # navigator-browser-extension/sidepanel.js (renderMarkdown + escapeHtml).
-# Kept as a raw triple-quoted string so backslash escapes (\n, \d, \w,  ,
+# Kept as a raw triple-quoted string so backslash escapes (\n, \d, \w, \x00,
 # etc.) reach the JS engine literally. Injected into _THOUGHT_CARD_JS via
 # f-string interpolation — the substituted contents' braces are NOT re-parsed
 # as f-string fields, which is why this file can stay readable.
@@ -200,12 +200,12 @@ function n1renderMarkdown(text) {
     const codeBlocks = [];
     text = text.replace(/```(\w*)\r?\n?([\s\S]*?)```/g, (_m, lang, code) => {
         const idx = codeBlocks.push({ lang, code }) - 1;
-        return ' CB' + idx + ' ';
+        return '\x00CB' + idx + '\x00';
     });
     const inlineCodes = [];
     text = text.replace(/`([^`]+)`/g, (_m, code) => {
         const idx = inlineCodes.push(code) - 1;
-        return ' IC' + idx + ' ';
+        return '\x00IC' + idx + '\x00';
     });
     let html = n1escapeHtml(text);
     html = html.replace(/\[([^\]]+)\]\(([^)\s'"]+)\)/g, (m, label, url) => {
@@ -233,13 +233,13 @@ function n1renderMarkdown(text) {
     html = html.replace(/(<\/li>)(?!\s*<li>)/g, '$1</ul>');
     html = html.replace(/\n(?!<\/?(?:h[1-6]|ul|li|p|pre))/g, '<br>');
     html = html.replace(/(<br>){3,}/g, '<br><br>');
-    html = html.replace(/ CB(\d+) /g, (_m, idx) => {
+    html = html.replace(/\x00CB(\d+)\x00/g, (_m, idx) => {
         const block = codeBlocks[Number(idx)];
         const langClass = block.lang ? ' class="language-' + n1escapeHtml(block.lang) + '"' : '';
         const body = n1escapeHtml(block.code.replace(/\n$/, ''));
         return '<pre><code' + langClass + '>' + body + '</code></pre>';
     });
-    html = html.replace(/ IC(\d+) /g, (_m, idx) => {
+    html = html.replace(/\x00IC(\d+)\x00/g, (_m, idx) => {
         return '<code>' + n1escapeHtml(inlineCodes[Number(idx)]) + '</code>';
     });
     return html;
