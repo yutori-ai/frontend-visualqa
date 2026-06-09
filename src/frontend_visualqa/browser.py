@@ -28,6 +28,7 @@ DEFAULT_SETTLE_DELAY_SECONDS = 1.0
 # after the initial wait while staying well under DEFAULT_NAVIGATION_TIMEOUT_MS.
 DEFAULT_PAGE_READY_TIMEOUT_SECONDS = 8
 DEFAULT_SCREENSHOT_WEBP_QUALITY = 75
+DEFAULT_CDP_SCREENSHOT_TIMEOUT_SECONDS = 5.0
 logger = logging.getLogger(__name__)
 PERSISTENT_SESSION_KEY_ERROR = (
     "Persistent browser mode supports exactly one named session at a time. "
@@ -258,9 +259,12 @@ class BrowserManager:
             cdp_session = await session.context.new_cdp_session(session.page)
             layout_metrics = await cdp_session.send("Page.getLayoutMetrics")
             capture_params, target_size = self._build_cdp_capture_request(layout_metrics)
-            result = await cdp_session.send(
-                "Page.captureScreenshot",
-                capture_params,
+            result = await asyncio.wait_for(
+                cdp_session.send(
+                    "Page.captureScreenshot",
+                    capture_params,
+                ),
+                timeout=DEFAULT_CDP_SCREENSHOT_TIMEOUT_SECONDS,
             )
             data = result.get("data")
             if not data:
@@ -287,7 +291,7 @@ class BrowserManager:
                 {
                     "format": "png",
                     "captureBeyondViewport": False,
-                    "fromSurface": False,
+                    "fromSurface": True,
                     "clip": {
                         "x": float(css_viewport.get("pageX") or 0),
                         "y": float(css_viewport.get("pageY") or 0),
@@ -304,7 +308,7 @@ class BrowserManager:
             {
                 "format": "png",
                 "captureBeyondViewport": False,
-                "fromSurface": False,
+                "fromSurface": True,
             },
             None,
         )
