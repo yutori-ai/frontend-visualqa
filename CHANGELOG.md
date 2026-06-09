@@ -4,8 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.8.3] - 2026-06-09
+
 ### Changed
 - Source distribution no longer bundles `docs/` demo assets (two ~8 MB README GIFs), shrinking the published sdist from ~17 MB to under 1 MB. The wheel and installed package are unchanged.
+- README embeds its demo images by absolute URL so they render on the PyPI project page (relative paths only resolved on GitHub).
 
 ## [0.8.2] - 2026-06-09
 
