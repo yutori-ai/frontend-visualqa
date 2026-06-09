@@ -45,7 +45,8 @@ frontend-visualqa verify http://localhost:8000/analytics_dashboard.html \
 
 # Scrolling to find off-screen content
 frontend-visualqa verify http://localhost:8000/analytics_dashboard.html \
-  --claims 'The /api/v1/webhooks endpoint returned a 200 OK status'
+  --claims 'The /api/v1/webhooks endpoint returned a 200 OK status' \
+  --navigation-hint 'Scroll down to the Recent Requests table and inspect the row for /api/v1/webhooks.'
 # → failed: endpoint shows 500 Error (3/3)
 ```
 
