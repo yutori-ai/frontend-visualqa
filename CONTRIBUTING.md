@@ -8,7 +8,8 @@ Thanks for your interest in contributing! Here's how to get started.
 git clone https://github.com/yutori-ai/frontend-visualqa.git
 cd frontend-visualqa
 uv sync
-uv run playwright install chromium
+uv tool install --editable . --with-executables-from playwright
+playwright install chromium   # from the editable tool install, NOT uv run
 ```
 
 Run the tests:
