@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-06-09
+
 ### Fixed
 - Concurrent `verify`/`screenshot` processes could hang indefinitely on some macOS/Chromium builds: the CDP `Page.captureScreenshot` path requested `fromSurface: false`, which stalls under concurrent headless Chromium (browser launch and navigation complete; the capture call wedges). Switched to `fromSurface: true` (the CDP default) and wrapped the CDP capture in a 5s timeout that falls back to Playwright's `page.screenshot()` if it stalls.
 
