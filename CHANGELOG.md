@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-06-08
+
 ### Added
 - `-v`/`--verbose` flag for service-responsiveness logging (INFO and DEBUG levels)
 - End-of-run verification summary with ANSI color support (respects `NO_COLOR`/`FORCE_COLOR`)
@@ -15,6 +17,7 @@ All notable changes to this project will be documented in this file.
 - Screenshots encoded directly to WebP format
 
 ### Fixed
+- Headed-mode visualization crash from literal NUL bytes in the overlay markdown renderer (`source code string cannot contain null bytes` on import)
 - Unnecessary message re-trimming during request creation (`already_trimmed` flag)
 - Navigation listener leak in overlay controller
 
