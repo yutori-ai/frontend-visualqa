@@ -86,9 +86,12 @@ jobs:
             --reporter native --reporter ctrf | tee visualqa-login-validation.json
 
       # ── Dashboard — login once, verify claims without re-navigating ──
-      # The navigation hint applies to claim 1 (login). Claims 2-3 run on the
-      # already-loaded dashboard thanks to --no-reset-between-claims. Navigator correctly
-      # ignores the hint for claims that don't need it.
+      # Uses a claims file so the login navigation hint attaches to claim 1 only.
+      # Claims 2-3 then run on the already-loaded dashboard (--no-reset-between-claims).
+      # A single global --navigation-hint would attach to EVERY claim and make the
+      # runner demand interaction even for claims that need none (e.g. reading a
+      # visible stat value), intermittently marking them inconclusive and failing
+      # the >=2-passed assertion below.
 
       - name: Visual QA — Login and verify dashboard
         run: |
@@ -96,11 +99,7 @@ jobs:
           exit_code=0
           frontend-visualqa verify http://localhost:8000/yutori_login.html \
             --no-reset-between-claims \
-            --claims \
-            'After logging in, the dashboard shows "Welcome back, Developer"' \
-            'The API Calls Today stat card shows the value 1,247' \
-            'The Monthly Quota progress bar fill matches the percentage shown in the label' \
-            --navigation-hint 'Type "test@yutori.com" in the email field, type "password123" in the password field, then click Continue. Wait for the dashboard to load.' \
+            --claims-file examples/login_flow_claims.md \
             --max-steps-per-claim 20 \
             --claim-timeout-seconds 180 \
             --run-timeout-seconds 300 \
