@@ -164,14 +164,20 @@ Use the checked-in `.mcp.json`, or point your client at `frontend-visualqa serve
 </details>
 
 <details>
-<summary><strong>From source</strong></summary>
+<summary><strong>From source (and development)</strong></summary>
+
+For development, or to run unreleased changes from a local checkout:
 
 ```bash
+git clone https://github.com/yutori-ai/frontend-visualqa.git
+cd frontend-visualqa
 uv sync
+uv tool install --editable .   # so the checked-in .mcp.json runs your local source
 uv run playwright install chromium
+uv run yutori auth login
 ```
 
-Register the MCP server with your client using `uvx --from /absolute/path/to/frontend-visualqa frontend-visualqa serve` as the command.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for tests and lint.
 
 </details>
 
@@ -629,18 +635,4 @@ To verify that frontend-visualqa catches known bugs, capture the exit code and v
     "; then exit 1; fi
 
     echo "Expected failure: visual bug detected"
-```
-
-## Development
-
-```bash
-uv sync
-uv run playwright install chromium
-uv run frontend-visualqa --help
-```
-
-Editable install:
-
-```bash
-uv pip install -e .
 ```
