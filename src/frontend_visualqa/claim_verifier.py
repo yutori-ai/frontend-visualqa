@@ -10,10 +10,9 @@ from dataclasses import dataclass
 from typing import Any, TYPE_CHECKING
 
 from frontend_visualqa.actions import (
+    REDACTED_TYPE_TEXT,
     ActionExecutor,
     focused_element_is_password,
-    redact_element_value,
-    redact_type_text,
     referenced_element_is_password,
 )
 from frontend_visualqa.artifacts import ArtifactManager, RunArtifacts
@@ -80,6 +79,9 @@ MAX_INLINE_PROOF_TEXT_LINES = 6
 
 VERDICT_SOURCE_JSON = "json_schema"
 VERDICT_SOURCE_FORCE_STOP = "force_stop"
+
+# Tool-call argument that may carry a credential, per tool name.
+_SENSITIVE_TOOL_ARGUMENTS = {"type": "text", "set_element_value": "value"}
 
 
 def _user_text_message(text: str) -> dict[str, Any]:
@@ -283,48 +285,16 @@ class ClaimVerifier:
                 # bounded by a single turn's tool calls.
                 for tool_call in tool_calls:
                     tool_name = tool_call_name(tool_call)
-                    sensitive_text_to_redact: str | None = None
-                    parse_failed = False
-                    try:
-                        tool_arguments = parse_tool_arguments(tool_call)
-                    except BrowserActionError:
-                        # The executor re-parses and reports the same failure as
-                        # an [ERROR] tool result; hooks just see empty args.
-                        parse_failed = True
-                        tool_arguments = {}
-                    if tool_name == "type" and await focused_element_is_password(session.page):
-                        # Mirror the executor's trace masking for hook events so
-                        # credentials never land in trace.json or the next model
-                        # transcript either.
-                        if parse_failed:
-                            sensitive_text_to_redact = self._tool_call_arguments_as_text(tool_call)
-                            tool_arguments = {"text": "[redacted]"}
-                        elif tool_arguments.get("text"):
-                            sensitive_text_to_redact = str(tool_arguments.get("text", ""))
-                            tool_arguments = redact_type_text(tool_arguments)
-                        if sensitive_text_to_redact:
-                            self._redact_tool_call_arguments_in_latest_assistant_message(
-                                messages,
-                                tool_call_id=tool_call.id,
-                                redacted_arguments=tool_arguments,
-                            )
-                    elif (
-                        tool_name == "set_element_value"
-                        and tool_arguments.get("value")
-                        and tool_arguments.get("ref")
-                        and await referenced_element_is_password(session.page, str(tool_arguments.get("ref")))
-                    ):
-                        sensitive_text_to_redact = str(tool_arguments.get("value", ""))
-                        tool_arguments = redact_element_value(tool_arguments)
-                        self._redact_tool_call_arguments_in_latest_assistant_message(
-                            messages,
-                            tool_call_id=tool_call.id,
-                            redacted_arguments=tool_arguments,
-                        )
+                    tool_arguments, sensitive_text = await self._sanitize_tool_arguments(
+                        session=session,
+                        tool_call=tool_call,
+                        tool_name=tool_name,
+                        messages=messages,
+                    )
                     await self._safe_hook_call("on_tool_start", name=tool_name, arguments=tool_arguments)
                     execution = await self._execute_tool_call(session, tool_call)
-                    if sensitive_text_to_redact is not None:
-                        execution = self._redact_sensitive_execution(execution, sensitive_text_to_redact)
+                    if sensitive_text is not None:
+                        execution = self._redact_sensitive_execution(execution, sensitive_text)
                     trace = execution["trace"]
                     progress.action_trace.append(trace)
                     output_text = execution.get("output_text")
@@ -684,31 +654,109 @@ class ClaimVerifier:
             return message
         raise TypeError(f"Unsupported assistant message type: {type(message)!r}")
 
+    async def _sanitize_tool_arguments(
+        self,
+        *,
+        session: BrowserSession,
+        tool_call: Any,
+        tool_name: str,
+        messages: list[dict[str, Any]],
+    ) -> tuple[dict[str, Any], str | None]:
+        """Parse tool arguments and mask credential payloads before they are recorded.
+
+        Returns ``(arguments_for_records, sensitive_text)``: the arguments to
+        hand to hooks and trace events (masked when sensitive), and the raw text
+        to scrub from the execution output — ``None`` when nothing is sensitive.
+        Also rewrites the stored assistant message in ``messages`` so masked
+        arguments are what get re-sent to the model on later turns.
+        """
+        try:
+            tool_arguments = parse_tool_arguments(tool_call)
+            parse_failed = False
+        except BrowserActionError:
+            # The executor re-parses and reports the same failure as an
+            # [ERROR] tool result; hooks just see the placeholder arguments.
+            tool_arguments = {}
+            parse_failed = True
+
+        sensitive_key = _SENSITIVE_TOOL_ARGUMENTS.get(tool_name)
+        if sensitive_key is None:
+            return tool_arguments, None
+        if not parse_failed and not tool_arguments.get(sensitive_key):
+            return tool_arguments, None
+        if not await self._tool_call_targets_password(session, tool_name, tool_arguments, parse_failed=parse_failed):
+            return tool_arguments, None
+
+        if parse_failed:
+            # The raw (unparseable) argument string is what the executor's
+            # [ERROR] result will echo; treat the whole string as sensitive.
+            sensitive_text = self._tool_call_arguments_as_text(tool_call)
+            tool_arguments = {sensitive_key: REDACTED_TYPE_TEXT}
+        else:
+            sensitive_text = str(tool_arguments[sensitive_key])
+            tool_arguments = {**tool_arguments, sensitive_key: REDACTED_TYPE_TEXT}
+        self._redact_stored_tool_call_arguments(
+            messages,
+            tool_call_id=getattr(tool_call, "id", None),
+            redacted_arguments=tool_arguments,
+        )
+        return tool_arguments, sensitive_text or None
+
     @staticmethod
-    def _redact_tool_call_arguments_in_latest_assistant_message(
+    async def _tool_call_targets_password(
+        session: BrowserSession,
+        tool_name: str,
+        tool_arguments: dict[str, Any],
+        *,
+        parse_failed: bool,
+    ) -> bool:
+        """Whether a type / set_element_value call may target a password input.
+
+        Fails closed: detection errors, unparseable set_element_value arguments,
+        and missing refs all count as sensitive — a masked trace on a healthy
+        field is recoverable noise; a leaked credential is not.
+        """
+        if tool_name == "type":
+            return await focused_element_is_password(session.page) is not False
+        if parse_failed:
+            return True
+        ref = tool_arguments.get("ref")
+        if not ref:
+            return True
+        return await referenced_element_is_password(session.page, str(ref)) is not False
+
+    @staticmethod
+    def _redact_stored_tool_call_arguments(
         messages: list[dict[str, Any]],
         *,
-        tool_call_id: str,
+        tool_call_id: str | None,
         redacted_arguments: dict[str, Any],
     ) -> None:
-        if not messages:
+        """Replace a stored tool call's arguments with their masked form.
+
+        Searches from the end of ``messages`` because tool replies are appended
+        after the assistant message — for the second and later tool calls of a
+        turn, ``messages[-1]`` is already a ``role="tool"`` reply, not the
+        assistant message that holds the ``tool_calls``.
+        """
+        if tool_call_id is None:
             return
-        assistant_message = messages[-1]
-        tool_calls = assistant_message.get("tool_calls")
-        if not isinstance(tool_calls, list):
-            return
-        for stored_tool_call in tool_calls:
-            if not isinstance(stored_tool_call, dict) or stored_tool_call.get("id") != tool_call_id:
+        for message in reversed(messages):
+            tool_calls = message.get("tool_calls") if isinstance(message, dict) else None
+            if not isinstance(tool_calls, list):
                 continue
-            function = stored_tool_call.get("function")
-            if not isinstance(function, dict):
+            for stored_tool_call in tool_calls:
+                if not isinstance(stored_tool_call, dict) or stored_tool_call.get("id") != tool_call_id:
+                    continue
+                function = stored_tool_call.get("function")
+                if not isinstance(function, dict):
+                    return
+                original_arguments = function.get("arguments")
+                if isinstance(original_arguments, str):
+                    function["arguments"] = json.dumps(redacted_arguments)
+                elif isinstance(original_arguments, dict):
+                    function["arguments"] = dict(redacted_arguments)
                 return
-            original_arguments = function.get("arguments")
-            if isinstance(original_arguments, str):
-                function["arguments"] = json.dumps(redacted_arguments)
-            elif isinstance(original_arguments, dict):
-                function["arguments"] = dict(redacted_arguments)
-            return
 
     @staticmethod
     def _redact_sensitive_execution(execution: dict[str, Any], sensitive_text: str) -> dict[str, Any]:
@@ -718,7 +766,7 @@ class ClaimVerifier:
         for key in ("trace", "output_text"):
             value = redacted.get(key)
             if isinstance(value, str):
-                redacted[key] = value.replace(sensitive_text, "[redacted]")
+                redacted[key] = value.replace(sensitive_text, REDACTED_TYPE_TEXT)
         return redacted
 
     @staticmethod
@@ -730,7 +778,7 @@ class ClaimVerifier:
             try:
                 return json.dumps(arguments)
             except TypeError:
-                return str(arguments)
+                pass
         return str(arguments)
 
     @staticmethod

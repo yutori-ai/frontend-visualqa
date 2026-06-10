@@ -887,3 +887,23 @@ async def test_execute_action_wait_caps_model_requested_duration(monkeypatch: py
 
     assert module.MAX_WAIT_ACTION_SECONDS in sleeps
     assert all(delay <= module.MAX_WAIT_ACTION_SECONDS for delay in sleeps)
+
+
+@pytest.mark.asyncio
+async def test_execute_action_type_masks_text_when_password_detection_fails() -> None:
+    """Detection failures fail closed: with no evaluate result queued, FakePage
+    raises, the helper returns None, and the trace must still be masked."""
+    module = _import_actions_module()
+    executor = instantiate_with_supported_kwargs(
+        module.ActionExecutor,
+        navigation_timeout_ms=1_000,
+        settle_delay_seconds=0,
+    )
+    page = FakePage()  # no evaluate result queued -> detection error
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+
+    trace = await _call_execute_action(executor, page, "type", {"text": "maybe-secret"}, viewport)
+
+    assert page.keyboard.typed == ["maybe-secret"]
+    assert "maybe-secret" not in trace
+    assert module.REDACTED_TYPE_TEXT in trace

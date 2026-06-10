@@ -362,7 +362,7 @@ async def _run_verify(args: argparse.Namespace) -> dict[str, Any]:
             url=args.url,
             claims=claims,
             claim_navigation_hints=claim_navigation_hints,
-            viewport=_build_viewport(args),
+            viewport=_validated_viewport(args, "verify"),
             session_key=args.session_key,
             run_name=args.run_name,
             reuse_session=args.reuse_session,
@@ -407,6 +407,14 @@ def _format_validation_error(command: str, exc: ValidationError) -> str:
         f"{'.'.join(str(part) for part in error['loc']) or 'input'}: {error['msg']}" for error in exc.errors()
     )
     return f"Invalid {command} options — {issues}"
+
+
+def _validated_viewport(args: argparse.Namespace, command: str) -> ViewportConfig:
+    """Build the viewport from CLI args, converting validation errors to clean output."""
+    try:
+        return _build_viewport(args)
+    except ValidationError as exc:
+        raise ConfigurationError(_format_validation_error(command, exc)) from exc
 
 
 async def _preflight_verify_auth() -> None:
@@ -488,17 +496,14 @@ def _truncate_for_progress(text: str, limit: int = 120) -> str:
 
 async def _run_screenshot(args: argparse.Namespace) -> dict[str, Any]:
     try:
-        validate_url(args.url)
+        url = validate_url(args.url)
     except ValueError as exc:
         raise ConfigurationError(str(exc)) from exc
-    try:
-        viewport = _build_viewport(args)
-    except ValidationError as exc:
-        raise ConfigurationError(_format_validation_error("screenshot", exc)) from exc
+    viewport = _validated_viewport(args, "screenshot")
 
     async with _runner_scope(browser_config=_build_browser_config(args)) as runner:
         result = await runner.take_screenshot(
-            url=args.url,
+            url=url,
             viewport=viewport,
             session_key=args.session_key,
             run_name=args.run_name,

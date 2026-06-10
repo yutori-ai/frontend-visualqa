@@ -2104,3 +2104,133 @@ async def test_claim_verifier_visible_claim_passes_for_partially_clipped_button(
 
     assert _field(result, "status") == "passed"
     assert "Visible button label matched" in _field(result, "finding")
+
+
+@pytest.mark.asyncio
+async def test_claim_verifier_redacts_every_password_tool_call_in_multi_tool_turn(tmp_path: Path) -> None:
+    """Regression: messages[-1] is a tool reply (not the assistant message) for
+    the second tool call of a turn; the transcript rewrite must still find the
+    stored assistant tool_calls for it."""
+    module = _import_claim_verifier_module()
+
+    @dataclass
+    class PasswordFocusedPage(FakePage):
+        async def evaluate(self, script: str) -> Any:
+            if "activeElement" in script:
+                return True
+            return {}
+
+    verifier, navigator_client, _ = _build_claim_verifier(
+        module,
+        tmp_path,
+        responses=[
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-1",
+                        function=FakeFunction(name="type", arguments=json.dumps({"text": "first-secret"})),
+                    ),
+                    FakeToolCall(
+                        id="tool-2",
+                        function=FakeFunction(name="type", arguments=json.dumps({"text": "second-secret"})),
+                    ),
+                ]
+            ),
+            _verdict_response(status="passed", finding="The password fields accept input."),
+        ],
+    )
+
+    await _call_verify(
+        verifier,
+        page=PasswordFocusedPage(url="http://fixture.local/login"),
+        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+        claim="The password fields accept input",
+        url="http://fixture.local/login",
+        navigation_hint=None,
+        max_steps=4,
+    )
+
+    transcript = json.dumps(navigator_client.calls[1]["messages"])
+    assert "first-secret" not in transcript
+    assert "second-secret" not in transcript
+    assert transcript.count("[redacted]") >= 2
+
+
+@pytest.mark.asyncio
+async def test_claim_verifier_redacts_malformed_password_set_element_value_arguments(tmp_path: Path) -> None:
+    """Regression: malformed set_element_value arguments can embed a secret in
+    the executor's [ERROR] output; with the ref unparseable the call must be
+    treated as sensitive (fail closed)."""
+    module = _import_claim_verifier_module()
+
+    verifier, navigator_client, _ = _build_claim_verifier(
+        module,
+        tmp_path,
+        responses=[
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-1",
+                        function=FakeFunction(
+                            name="set_element_value",
+                            arguments='{"ref": "password-input", "value": "hunter2"',
+                        ),
+                    )
+                ]
+            ),
+            _verdict_response(status="inconclusive", finding="The arguments were malformed."),
+        ],
+        action_executor=module.ActionExecutor(navigation_timeout_ms=1_000, settle_delay_seconds=0),
+    )
+
+    result = await _call_verify(
+        verifier,
+        page=FakePage(url="http://fixture.local/login"),
+        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+        claim="The password field accepts input",
+        url="http://fixture.local/login",
+        navigation_hint=None,
+        max_steps=3,
+    )
+
+    transcript = json.dumps(navigator_client.calls[1]["messages"])
+    assert "hunter2" not in transcript
+    assert all("hunter2" not in action for action in _field(result, "trace").actions)
+
+
+@pytest.mark.asyncio
+async def test_claim_verifier_redacts_type_when_password_detection_fails(tmp_path: Path) -> None:
+    """Detection failures must fail closed: FakePage has no evaluate, so the
+    password check errors out — the typed text still gets masked."""
+    module = _import_claim_verifier_module()
+
+    verifier, navigator_client, _ = _build_claim_verifier(
+        module,
+        tmp_path,
+        responses=[
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-1",
+                        function=FakeFunction(name="type", arguments=json.dumps({"text": "maybe-secret"})),
+                    )
+                ]
+            ),
+            _verdict_response(status="passed", finding="The field accepts input."),
+        ],
+    )
+
+    result = await _call_verify(
+        verifier,
+        page=FakePage(url="http://fixture.local/form"),
+        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+        claim="The field accepts input",
+        url="http://fixture.local/form",
+        navigation_hint=None,
+        max_steps=3,
+    )
+
+    transcript = json.dumps(navigator_client.calls[1]["messages"])
+    assert "maybe-secret" not in transcript
+    action_events = [event for event in _field(result, "trace").events if event.type == "action"]
+    assert action_events[0].action_args["text"] == "[redacted]"

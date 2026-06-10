@@ -150,18 +150,26 @@ def _get_clear_before(arguments: dict[str, Any]) -> bool:
     )
 
 
-async def focused_element_is_password(page: Any) -> bool:
-    """Best-effort check whether the currently focused element is a password input."""
+async def focused_element_is_password(page: Any) -> bool | None:
+    """Whether the currently focused element is a password input.
+
+    Returns ``None`` when detection fails (page navigating, evaluate error).
+    Callers must fail closed: redact unless the result is explicitly ``False``.
+    """
     try:
         return bool(
             await page.evaluate("() => !!document.activeElement && document.activeElement.type === 'password'")
         )
     except Exception:
-        return False
+        return None
 
 
-async def referenced_element_is_password(page: Any, ref: str) -> bool:
-    """Best-effort check whether a Navigator element ref points at a password input."""
+async def referenced_element_is_password(page: Any, ref: str) -> bool | None:
+    """Whether a Navigator element ref points at a password input.
+
+    Returns ``None`` when detection fails (page navigating, evaluate error).
+    Callers must fail closed: redact unless the result is explicitly ``False``.
+    """
     try:
         return bool(
             await page.evaluate(
@@ -175,7 +183,7 @@ async def referenced_element_is_password(page: Any, ref: str) -> bool:
             )
         )
     except Exception:
-        return False
+        return None
 
 
 def redact_type_text(arguments: dict[str, Any]) -> dict[str, Any]:
@@ -465,9 +473,11 @@ class ActionExecutor:
                 text = str(raw_arguments.get("text", ""))
                 clear_before = _get_clear_before(raw_arguments)
                 press_enter = bool(raw_arguments.get("press_enter_after"))
-                if text and await focused_element_is_password(page):
+                if text and await focused_element_is_password(page) is not False:
                     # Credentials must not reach traces, reports, or the model
                     # transcript; re-render the trace with the text masked.
+                    # Fail closed: a detection failure masks a healthy field's
+                    # trace (recoverable noise), never the reverse.
                     trace = render_action_trace(
                         action_name, redact_type_text(raw_arguments), width=width, height=height
                     )
@@ -600,11 +610,16 @@ class ActionExecutor:
         elif action_name == "set_element_value":
             ref = str(arguments.get("ref", ""))
             value = str(arguments.get("value", ""))
-            is_password = bool(ref) and await referenced_element_is_password(page, ref)
+            # Fail closed: redact unless the target is known NOT to be a
+            # password input — detection failures and missing refs count as
+            # sensitive.
+            value_is_sensitive = bool(value) and (
+                not ref or await referenced_element_is_password(page, ref) is not False
+            )
             result = await evaluate_tool_script(page, SET_ELEMENT_VALUE_SCRIPT, ref, value)
             output = result.get("message", "set_element_value completed")
-            trace_arguments = redact_element_value(arguments) if is_password and value else arguments
-            if is_password and value and isinstance(output, str):
+            trace_arguments = redact_element_value(arguments) if value_is_sensitive else arguments
+            if value_is_sensitive and isinstance(output, str):
                 output = output.replace(value, REDACTED_TYPE_TEXT)
 
         elif action_name == "execute_js":
