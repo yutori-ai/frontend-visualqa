@@ -16,7 +16,7 @@ from frontend_visualqa.claim_verifier import ClaimVerifier
 from frontend_visualqa.runner import VisualQARunner
 from frontend_visualqa.schemas import ViewportConfig
 
-from fakes import FakeChoice, FakeFunction, FakeMessage, FakeNavigatorClient, FakeResponse, FakeToolCall
+from fakes import FakeFunction, FakeMessage, FakeNavigatorClient, FakeResponse, FakeToolCall
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]

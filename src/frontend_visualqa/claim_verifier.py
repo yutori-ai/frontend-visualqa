@@ -3,12 +3,18 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import re
 from dataclasses import dataclass
 from typing import Any, TYPE_CHECKING
 
-from frontend_visualqa.actions import ActionExecutor
+from frontend_visualqa.actions import (
+    REDACTED_TYPE_TEXT,
+    ActionExecutor,
+    focused_element_is_password,
+    referenced_element_is_password,
+)
 from frontend_visualqa.artifacts import ArtifactManager, RunArtifacts
 from frontend_visualqa.browser import BrowserManager, BrowserSession, image_bytes_to_data_url
 from frontend_visualqa.errors import BrowserActionError, NavigatorClientError
@@ -67,11 +73,15 @@ ACTION_NEEDED_FINDING_PATTERNS = (
 logger = logging.getLogger(__name__)
 
 MAX_NON_ACTION_REPROMPTS = 2
+MAX_CONSECUTIVE_ACTION_FAILURES = 3
 MAX_INLINE_PROOF_TEXT_CHARS = 280
 MAX_INLINE_PROOF_TEXT_LINES = 6
 
 VERDICT_SOURCE_JSON = "json_schema"
 VERDICT_SOURCE_FORCE_STOP = "force_stop"
+
+# Tool-call argument that may carry a credential, per tool name.
+_SENSITIVE_TOOL_ARGUMENTS = {"type": "text", "set_element_value": "value"}
 
 
 def _user_text_message(text: str) -> dict[str, Any]:
@@ -164,6 +174,7 @@ class ClaimVerifier:
 
         messages: list[dict[str, Any]] = []
         non_action_reprompts = 0
+        consecutive_action_failures = 0
         should_visualize = self._visualize if visualize is None else visualize
         progress = _VerificationProgress(
             claim=claim,
@@ -265,14 +276,25 @@ class ClaimVerifier:
                     break
 
                 had_action_in_turn = False
-                responded_tool_ids: set[str] = set()
+                # Execute every tool call in the turn even when the step budget
+                # runs out mid-list: each tool_call in the assistant message
+                # must receive a role="tool" reply before the next user message,
+                # otherwise the chat-completions transcript is invalid and the
+                # endpoint rejects the force-stop turn. max_steps is enforced at
+                # turn boundaries by the while condition, so the overshoot is
+                # bounded by a single turn's tool calls.
                 for tool_call in tool_calls:
                     tool_name = tool_call_name(tool_call)
-                    if progress.step_count >= max_steps:
-                        break
-                    tool_arguments = parse_tool_arguments(tool_call)
+                    tool_arguments, sensitive_text = await self._sanitize_tool_arguments(
+                        session=session,
+                        tool_call=tool_call,
+                        tool_name=tool_name,
+                        messages=messages,
+                    )
                     await self._safe_hook_call("on_tool_start", name=tool_name, arguments=tool_arguments)
                     execution = await self._execute_tool_call(session, tool_call)
+                    if sensitive_text is not None:
+                        execution = self._redact_sensitive_execution(execution, sensitive_text)
                     trace = execution["trace"]
                     progress.action_trace.append(trace)
                     output_text = execution.get("output_text")
@@ -312,7 +334,6 @@ class ClaimVerifier:
                         label=f"step-{progress.step_count:02d}",
                         proof_text=progress.proof_text,
                     )
-                    responded_tool_ids.add(tool_call.id)
                     messages.append(
                         {
                             "role": "tool",
@@ -333,6 +354,20 @@ class ClaimVerifier:
                             ],
                         }
                     )
+                    if execution.get("action_failed"):
+                        consecutive_action_failures += 1
+                        if consecutive_action_failures >= MAX_CONSECUTIVE_ACTION_FAILURES:
+                            result = self._build_result(
+                                progress=progress,
+                                status="inconclusive",
+                                finding=(
+                                    f"Browser actions failed {consecutive_action_failures} times in a row "
+                                    f"without a verdict. Last error: {execution.get('output_text') or trace}"
+                                ),
+                            )
+                            return await self._complete_result(result)
+                    else:
+                        consecutive_action_failures = 0
 
                 await self._show_post_capture_analysis(had_actions=had_action_in_turn)
             result = await self._force_stop(progress=progress, messages=messages)
@@ -619,6 +654,133 @@ class ClaimVerifier:
             return message
         raise TypeError(f"Unsupported assistant message type: {type(message)!r}")
 
+    async def _sanitize_tool_arguments(
+        self,
+        *,
+        session: BrowserSession,
+        tool_call: Any,
+        tool_name: str,
+        messages: list[dict[str, Any]],
+    ) -> tuple[dict[str, Any], str | None]:
+        """Parse tool arguments and mask credential payloads before they are recorded.
+
+        Returns ``(arguments_for_records, sensitive_text)``: the arguments to
+        hand to hooks and trace events (masked when sensitive), and the raw text
+        to scrub from the execution output — ``None`` when nothing is sensitive.
+        Also rewrites the stored assistant message in ``messages`` so masked
+        arguments are what get re-sent to the model on later turns.
+        """
+        try:
+            tool_arguments = parse_tool_arguments(tool_call)
+            parse_failed = False
+        except BrowserActionError:
+            # The executor re-parses and reports the same failure as an
+            # [ERROR] tool result; hooks just see the placeholder arguments.
+            tool_arguments = {}
+            parse_failed = True
+
+        sensitive_key = _SENSITIVE_TOOL_ARGUMENTS.get(tool_name)
+        if sensitive_key is None:
+            return tool_arguments, None
+        if not parse_failed and not tool_arguments.get(sensitive_key):
+            return tool_arguments, None
+        if not await self._tool_call_targets_password(session, tool_name, tool_arguments, parse_failed=parse_failed):
+            return tool_arguments, None
+
+        if parse_failed:
+            # The raw (unparseable) argument string is what the executor's
+            # [ERROR] result will echo; treat the whole string as sensitive.
+            sensitive_text = self._tool_call_arguments_as_text(tool_call)
+            tool_arguments = {sensitive_key: REDACTED_TYPE_TEXT}
+        else:
+            sensitive_text = str(tool_arguments[sensitive_key])
+            tool_arguments = {**tool_arguments, sensitive_key: REDACTED_TYPE_TEXT}
+        self._redact_stored_tool_call_arguments(
+            messages,
+            tool_call_id=getattr(tool_call, "id", None),
+            redacted_arguments=tool_arguments,
+        )
+        return tool_arguments, sensitive_text or None
+
+    @staticmethod
+    async def _tool_call_targets_password(
+        session: BrowserSession,
+        tool_name: str,
+        tool_arguments: dict[str, Any],
+        *,
+        parse_failed: bool,
+    ) -> bool:
+        """Whether a type / set_element_value call may target a password input.
+
+        Fails closed: detection errors, unparseable set_element_value arguments,
+        and missing refs all count as sensitive — a masked trace on a healthy
+        field is recoverable noise; a leaked credential is not.
+        """
+        if tool_name == "type":
+            return await focused_element_is_password(session.page) is not False
+        if parse_failed:
+            return True
+        ref = tool_arguments.get("ref")
+        if not ref:
+            return True
+        return await referenced_element_is_password(session.page, str(ref)) is not False
+
+    @staticmethod
+    def _redact_stored_tool_call_arguments(
+        messages: list[dict[str, Any]],
+        *,
+        tool_call_id: str | None,
+        redacted_arguments: dict[str, Any],
+    ) -> None:
+        """Replace a stored tool call's arguments with their masked form.
+
+        Searches from the end of ``messages`` because tool replies are appended
+        after the assistant message — for the second and later tool calls of a
+        turn, ``messages[-1]`` is already a ``role="tool"`` reply, not the
+        assistant message that holds the ``tool_calls``.
+        """
+        if tool_call_id is None:
+            return
+        for message in reversed(messages):
+            tool_calls = message.get("tool_calls") if isinstance(message, dict) else None
+            if not isinstance(tool_calls, list):
+                continue
+            for stored_tool_call in tool_calls:
+                if not isinstance(stored_tool_call, dict) or stored_tool_call.get("id") != tool_call_id:
+                    continue
+                function = stored_tool_call.get("function")
+                if not isinstance(function, dict):
+                    return
+                original_arguments = function.get("arguments")
+                if isinstance(original_arguments, str):
+                    function["arguments"] = json.dumps(redacted_arguments)
+                elif isinstance(original_arguments, dict):
+                    function["arguments"] = dict(redacted_arguments)
+                return
+
+    @staticmethod
+    def _redact_sensitive_execution(execution: dict[str, Any], sensitive_text: str) -> dict[str, Any]:
+        if not sensitive_text:
+            return execution
+        redacted = dict(execution)
+        for key in ("trace", "output_text"):
+            value = redacted.get(key)
+            if isinstance(value, str):
+                redacted[key] = value.replace(sensitive_text, REDACTED_TYPE_TEXT)
+        return redacted
+
+    @staticmethod
+    def _tool_call_arguments_as_text(tool_call: Any) -> str:
+        arguments = getattr(getattr(tool_call, "function", tool_call), "arguments", "")
+        if isinstance(arguments, str):
+            return arguments
+        if isinstance(arguments, dict):
+            try:
+                return json.dumps(arguments)
+            except TypeError:
+                pass
+        return str(arguments)
+
     @staticmethod
     def _extract_json_verdict(response: Any) -> tuple[str, str] | None:
         """Extract a verdict from the response's ``parsed_json`` attribute.
@@ -639,9 +801,22 @@ class ClaimVerifier:
     async def _execute_tool_call(self, session: BrowserSession, tool_call: Any) -> dict[str, Any]:
         from frontend_visualqa.actions import tool_counts_as_interaction
 
-        result = await self.action_executor.execute_tool_call(session, tool_call)
+        tool_name = tool_call_name(tool_call)
+        try:
+            result = await self.action_executor.execute_tool_call(session, tool_call)
+        except BrowserActionError as exc:
+            # A failed browser action is usually a model mistake (bad ref,
+            # malformed arguments), not an environment block. Feed the error
+            # back as the tool result so the model can correct itself; verify()
+            # gives up as inconclusive after MAX_CONSECUTIVE_ACTION_FAILURES.
+            return {
+                "trace": f"{tool_name} failed",
+                "output_text": f"[ERROR] {exc}",
+                "current_url": session.page.url,
+                "counts_as_interaction": False,
+                "action_failed": True,
+            }
         if isinstance(result, str):
-            tool_name = tool_call_name(tool_call)
             return {
                 "trace": result,
                 "output_text": None,

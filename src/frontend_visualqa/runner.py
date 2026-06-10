@@ -36,7 +36,10 @@ from frontend_visualqa.schemas import (
 
 logger = logging.getLogger(__name__)
 
-if not TYPE_CHECKING:
+if TYPE_CHECKING:
+    from frontend_visualqa.claim_verifier import ClaimVerifier
+    from frontend_visualqa.navigator_client import NavigatorClient
+else:
     ClaimVerifier = None  # type: ignore[assignment]
     NavigatorClient = None  # type: ignore[assignment]
 
@@ -729,6 +732,12 @@ class VisualQARunner:
                     response = await client.head(url)
                     if response.status_code in {405, 501}:
                         await client.get(url)
+                except httpx.TimeoutException:
+                    # A slow first response (e.g. a dev server cold-compiling
+                    # the route) is not a hard failure. The browser navigation
+                    # path has a longer timeout; let it make the call.
+                    logger.info("Preflight for %s timed out after 5s; deferring to browser navigation", url)
+                    return None
                 except httpx.RequestError as exc:
                     return f"Could not reach {url} before opening the browser: {exc}"
         except Exception as exc:

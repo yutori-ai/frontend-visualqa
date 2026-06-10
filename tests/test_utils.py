@@ -235,3 +235,23 @@ def test_safe_callback_call_uses_caller_logger_when_supplied(
     matching = [r for r in caplog.records if "Claim callback" in r.message]
     assert matching, "expected a log record under the caller-supplied logger"
     assert all(r.name == "frontend_visualqa.runner" for r in matching)
+
+
+def test_clip_text_preserving_lines_keeps_line_structure() -> None:
+    from frontend_visualqa.text_utils import clip_text_preserving_lines
+
+    text = "# Plan\r\n- check the bar\r- check the label\n"
+    clipped = clip_text_preserving_lines(text, 520, ellipsis="…")
+
+    assert clipped == "# Plan\n- check the bar\n- check the label"
+
+
+def test_clip_text_preserving_lines_truncates_with_ellipsis() -> None:
+    from frontend_visualqa.text_utils import clip_text_preserving_lines
+
+    text = "- first line\n" + "x" * 600
+    clipped = clip_text_preserving_lines(text, 50, ellipsis="…")
+
+    assert clipped.startswith("- first line\n")
+    assert clipped.endswith("…")
+    assert len(clipped) <= 50

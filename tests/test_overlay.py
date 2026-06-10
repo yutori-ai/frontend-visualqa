@@ -548,3 +548,22 @@ class TestOverlayBestEffort:
         await controller.before_screenshot()
         await controller.after_screenshot()
         await controller.claim_ended()
+
+
+@pytest.mark.asyncio
+async def test_show_thought_preserves_markdown_line_structure() -> None:
+    from frontend_visualqa.overlay import OverlayController
+
+    page = _make_mock_page()
+    controller = OverlayController(page)
+    await controller.claim_started()
+    page.evaluate.reset_mock()
+
+    text = "# Plan\n- check the bar fill\n- compare against the label"
+    await controller.show_thought(text)
+
+    call = page.evaluate.call_args_list[-1]
+    arg = call.args[1]
+    # Newlines must survive clipping: n1renderMarkdown's headers and lists are
+    # line-anchored and would never render after a whitespace-collapsing clip.
+    assert arg["text"] == text

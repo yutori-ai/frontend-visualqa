@@ -7,7 +7,7 @@ import base64
 import logging
 from typing import TYPE_CHECKING, Any
 
-from frontend_visualqa.text_utils import clip_text
+from frontend_visualqa.text_utils import clip_text_preserving_lines
 
 if TYPE_CHECKING:
     from playwright.async_api import Page
@@ -854,4 +854,7 @@ class OverlayController:
 
     @staticmethod
     def _clip_text(text: str, limit: int) -> str:
-        return clip_text(str(text), limit, ellipsis="…")
+        # Preserve newlines: n1renderMarkdown's block features (headers, lists,
+        # fenced code) are line-anchored and would all be dead after a
+        # whitespace-collapsing clip.
+        return clip_text_preserving_lines(str(text), limit, ellipsis="…")
