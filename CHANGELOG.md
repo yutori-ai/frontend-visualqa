@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.8.4] - 2026-06-10
+
+### Security
+- Credentials typed into password fields (and `set_element_value` against password refs) are masked as `[redacted]` in action traces, trace events, reports, execution output, and the model transcript — including across multi-tool turns and malformed tool arguments. Password detection fails closed: if detection errors out, the payload is masked anyway.
+
+### Fixed
+- Step limit reached mid-turn no longer leaves tool calls without replies (an invalid transcript that made the force-stop turn fail and the claim land as `not_testable`); every tool call in the turn now executes and the budget is enforced at turn boundaries.
+- Failed browser actions (bad ref, malformed arguments) are fed back to the model as `[ERROR]` tool results it can recover from instead of aborting the claim as `not_testable`; three consecutive failures end the claim as `inconclusive`.
+- Preflight timeout falls through to browser navigation instead of marking runs `not_testable` — fixes false failures against dev servers cold-compiling a route. Hard connection errors still fail fast.
+- CDP `Page.getLayoutMetrics` is bounded by the same 5s timeout as `Page.captureScreenshot`.
+- CLI validates inputs before the auth preflight and prints one clean line on invalid options instead of a traceback; `screenshot` exits nonzero on `not_testable`.
+- Headed-mode thought card preserves line structure, so markdown headers, lists, and code blocks render.
+
+### Changed
+- DOM grounding is downgrade-only: it can fail or confirm a verdict but never upgrade toward `passed` (validated against the full examples suite — grounding still corrects the quota-bar text trap that n1.5 misses 3/3).
+- Grounding's "is visible" check no longer requires "fully visible"; the strict clipped-check stays on the `fully visible` claim pattern.
+- `wait` action duration is capped at 30s.
+
 ## [0.8.3] - 2026-06-09
 
 ### Changed
