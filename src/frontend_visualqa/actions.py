@@ -37,6 +37,11 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 DEFAULT_WAIT_SECONDS = 1.0
+# Hard cap on a single model-requested wait. Claim timeouts usually bound this
+# anyway, but library/MCP callers can pass claim_timeout_seconds=None, and a
+# runaway wait(600) must not stall the loop indefinitely.
+MAX_WAIT_ACTION_SECONDS = 30.0
+REDACTED_TYPE_TEXT = "[redacted]"
 EXPANDED_TOOL_NAMES = {"extract_elements", "find", "set_element_value", "execute_js"}
 READ_ONLY_EXPANDED_TOOL_NAMES = {"extract_elements", "find"}
 
@@ -143,6 +148,44 @@ def _get_clear_before(arguments: dict[str, Any]) -> bool:
         or arguments.get("clear_before")
         or arguments.get("clear_before_type")
     )
+
+
+async def focused_element_is_password(page: Any) -> bool:
+    """Best-effort check whether the currently focused element is a password input."""
+    try:
+        return bool(
+            await page.evaluate("() => !!document.activeElement && document.activeElement.type === 'password'")
+        )
+    except Exception:
+        return False
+
+
+async def referenced_element_is_password(page: Any, ref: str) -> bool:
+    """Best-effort check whether a Navigator element ref points at a password input."""
+    try:
+        return bool(
+            await page.evaluate(
+                """(ref) => {
+                    const weakRef = window.__yutoriElementRefs && window.__yutoriElementRefs[ref];
+                    const element = weakRef && typeof weakRef.deref === "function" ? weakRef.deref() : null;
+                    return !!element && document.contains(element) && element instanceof HTMLInputElement &&
+                        (element.type || "").toLowerCase() === "password";
+                }""",
+                ref,
+            )
+        )
+    except Exception:
+        return False
+
+
+def redact_type_text(arguments: dict[str, Any]) -> dict[str, Any]:
+    """Return a copy of type-action arguments with the typed text masked."""
+    return {**arguments, "text": REDACTED_TYPE_TEXT}
+
+
+def redact_element_value(arguments: dict[str, Any]) -> dict[str, Any]:
+    """Return a copy of set_element_value arguments with the value masked."""
+    return {**arguments, "value": REDACTED_TYPE_TEXT}
 
 
 def _get_key_text(arguments: dict[str, Any]) -> str:
@@ -422,6 +465,12 @@ class ActionExecutor:
                 text = str(raw_arguments.get("text", ""))
                 clear_before = _get_clear_before(raw_arguments)
                 press_enter = bool(raw_arguments.get("press_enter_after"))
+                if text and await focused_element_is_password(page):
+                    # Credentials must not reach traces, reports, or the model
+                    # transcript; re-render the trace with the text masked.
+                    trace = render_action_trace(
+                        action_name, redact_type_text(raw_arguments), width=width, height=height
+                    )
                 await self._best_effort_overlay_preview_action(action_type="type")
                 if clear_before:
                     await page.keyboard.press("ControlOrMeta+A")
@@ -503,7 +552,7 @@ class ActionExecutor:
                 duration = raw_arguments.get("duration")
                 if duration is None:
                     duration = raw_arguments.get("seconds", DEFAULT_WAIT_SECONDS)
-                await asyncio.sleep(float(duration))
+                await asyncio.sleep(min(max(float(duration), 0.0), MAX_WAIT_ACTION_SECONDS))
 
             else:
                 raise BrowserActionError(f"unsupported action: {canonical_name}")
@@ -528,6 +577,7 @@ class ActionExecutor:
 
         page = session.page
         await self._best_effort_overlay_set_status(f"Running {action_name}")
+        trace_arguments = arguments
 
         if action_name == "extract_elements":
             filter_type = str(arguments.get("filter", "visible"))
@@ -550,8 +600,12 @@ class ActionExecutor:
         elif action_name == "set_element_value":
             ref = str(arguments.get("ref", ""))
             value = str(arguments.get("value", ""))
+            is_password = bool(ref) and await referenced_element_is_password(page, ref)
             result = await evaluate_tool_script(page, SET_ELEMENT_VALUE_SCRIPT, ref, value)
             output = result.get("message", "set_element_value completed")
+            trace_arguments = redact_element_value(arguments) if is_password and value else arguments
+            if is_password and value and isinstance(output, str):
+                output = output.replace(value, REDACTED_TYPE_TEXT)
 
         elif action_name == "execute_js":
             js_code = str(arguments.get("text", ""))
@@ -567,7 +621,7 @@ class ActionExecutor:
             output = f"[ERROR] Unknown expanded tool: {action_name}"
 
         return ToolExecutionResult(
-            trace=f"{action_name}({', '.join(f'{k}={v!r}' for k, v in arguments.items())})",
+            trace=f"{action_name}({', '.join(f'{k}={v!r}' for k, v in trace_arguments.items())})",
             output_text=output,
             current_url=session.page.url,
             counts_as_interaction=tool_counts_as_interaction(action_name),

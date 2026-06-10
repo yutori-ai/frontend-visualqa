@@ -257,7 +257,12 @@ class BrowserManager:
         cdp_session = None
         try:
             cdp_session = await session.context.new_cdp_session(session.page)
-            layout_metrics = await cdp_session.send("Page.getLayoutMetrics")
+            # Both CDP sends share the concurrent-hang risk that motivated the
+            # captureScreenshot timeout (#93); bound this one the same way.
+            layout_metrics = await asyncio.wait_for(
+                cdp_session.send("Page.getLayoutMetrics"),
+                timeout=DEFAULT_CDP_SCREENSHOT_TIMEOUT_SECONDS,
+            )
             capture_params, target_size = self._build_cdp_capture_request(layout_metrics)
             result = await asyncio.wait_for(
                 cdp_session.send(

@@ -785,3 +785,105 @@ async def test_resolve_coordinates_raises_when_ref_fails_and_no_coords() -> None
             {"ref": "missing-ref"},  # no coordinates fallback
             viewport,
         )
+
+
+@pytest.mark.asyncio
+async def test_execute_action_type_masks_text_when_focused_element_is_password() -> None:
+    module = _import_actions_module()
+    executor = instantiate_with_supported_kwargs(
+        module.ActionExecutor,
+        navigation_timeout_ms=1_000,
+        settle_delay_seconds=0,
+    )
+    page = FakePage()
+    page.evaluate_results.append(True)  # focused element is a password input
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+
+    trace = await _call_execute_action(executor, page, "type", {"text": "hunter2"}, viewport)
+
+    assert page.keyboard.typed == ["hunter2"]
+    assert "hunter2" not in trace
+    assert module.REDACTED_TYPE_TEXT in trace
+
+
+@pytest.mark.asyncio
+async def test_execute_action_type_keeps_text_for_non_password_fields() -> None:
+    module = _import_actions_module()
+    executor = instantiate_with_supported_kwargs(
+        module.ActionExecutor,
+        navigation_timeout_ms=1_000,
+        settle_delay_seconds=0,
+    )
+    page = FakePage()
+    page.evaluate_results.append(False)  # focused element is not a password input
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+
+    trace = await _call_execute_action(executor, page, "type", {"text": "hello world"}, viewport)
+
+    assert page.keyboard.typed == ["hello world"]
+    assert "hello world" in trace
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_call_set_element_value_masks_password_values(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _import_actions_module()
+    executor = instantiate_with_supported_kwargs(
+        module.ActionExecutor,
+        navigation_timeout_ms=1_000,
+        settle_delay_seconds=0,
+    )
+    page = FakePage()
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+
+    async def _is_password(page_arg: Any, ref: str) -> bool:
+        assert page_arg is page
+        assert ref == "password-input"
+        return True
+
+    async def _fake_evaluate_tool_script(page_arg: Any, script: str, ref: str, value: str) -> dict[str, Any]:
+        assert page_arg is page
+        assert script == module.SET_ELEMENT_VALUE_SCRIPT
+        assert ref == "password-input"
+        assert value == "hunter2"
+        return {"success": True, "message": 'Set password value to "hunter2"'}
+
+    monkeypatch.setattr(module, "referenced_element_is_password", _is_password)
+    monkeypatch.setattr(module, "evaluate_tool_script", _fake_evaluate_tool_script)
+
+    result = await _call_execute_tool_call(
+        executor,
+        page,
+        "set_element_value",
+        {"ref": "password-input", "value": "hunter2"},
+        viewport,
+    )
+
+    assert "hunter2" not in result.trace
+    assert "hunter2" not in result.output_text
+    assert module.REDACTED_TYPE_TEXT in result.trace
+    assert module.REDACTED_TYPE_TEXT in result.output_text
+
+
+@pytest.mark.asyncio
+async def test_execute_action_wait_caps_model_requested_duration(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _import_actions_module()
+    executor = instantiate_with_supported_kwargs(
+        module.ActionExecutor,
+        navigation_timeout_ms=1_000,
+        settle_delay_seconds=0,
+    )
+    page = FakePage()
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    sleeps: list[float] = []
+    real_sleep = asyncio.sleep
+
+    async def _recording_sleep(delay: float, *args: Any, **kwargs: Any) -> None:
+        sleeps.append(delay)
+        await real_sleep(0)
+
+    monkeypatch.setattr(module.asyncio, "sleep", _recording_sleep)
+
+    await _call_execute_action(executor, page, "wait", {"duration": 9_999}, viewport)
+
+    assert module.MAX_WAIT_ACTION_SECONDS in sleeps
+    assert all(delay <= module.MAX_WAIT_ACTION_SECONDS for delay in sleeps)

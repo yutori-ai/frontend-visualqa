@@ -13,13 +13,21 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, AsyncIterator
 
+from pydantic import ValidationError
+
 from frontend_visualqa import __version__
 from frontend_visualqa.browser import BrowserManager
 from frontend_visualqa.claim_parser import ParsedClaimsFile, parse_claims_file
 from frontend_visualqa.errors import ConfigurationError
 from frontend_visualqa.mcp_server import close_runners_sync, configure_server, get_mcp_server
 from frontend_visualqa.serialization import serialize_result
-from frontend_visualqa.schemas import BrowserConfig, BrowserMode, ViewportConfig, validate_url
+from frontend_visualqa.schemas import (
+    BrowserConfig,
+    BrowserMode,
+    VerifyVisualClaimsInput,
+    ViewportConfig,
+    validate_url,
+)
 from frontend_visualqa.text_utils import clip_text
 
 
@@ -310,9 +318,13 @@ def _handle_verify(args: argparse.Namespace) -> int:
 
 
 def _handle_screenshot(args: argparse.Namespace) -> int:
-    result = asyncio.run(_run_screenshot(args))
+    try:
+        result = asyncio.run(_run_screenshot(args))
+    except ConfigurationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
     _emit_json(result)
-    return 0
+    return 0 if result.get("status") == "completed" else 1
 
 
 def _handle_login(args: argparse.Namespace) -> int:
@@ -342,6 +354,27 @@ async def _run_verify(args: argparse.Namespace) -> dict[str, Any]:
         claim_navigation_hints = [line.navigation_hint for line in claims_file.lines]
     else:
         claims = list(args.claims)
+
+    # Validate the request before the auth preflight so bad CLI input fails
+    # fast with a clean message instead of hitting auth/network first.
+    try:
+        request = VerifyVisualClaimsInput(
+            url=args.url,
+            claims=claims,
+            claim_navigation_hints=claim_navigation_hints,
+            viewport=_build_viewport(args),
+            session_key=args.session_key,
+            run_name=args.run_name,
+            reuse_session=args.reuse_session,
+            reset_between_claims=args.reset_between_claims,
+            max_steps_per_claim=args.max_steps_per_claim,
+            claim_timeout_seconds=args.claim_timeout_seconds,
+            run_timeout_seconds=args.run_timeout_seconds,
+            navigation_hint=args.navigation_hint,
+        )
+    except ValidationError as exc:
+        raise ConfigurationError(_format_validation_error("verify", exc)) from exc
+
     await _preflight_verify_auth()
 
     async with _runner_scope(
@@ -360,24 +393,20 @@ async def _run_verify(args: argparse.Namespace) -> dict[str, Any]:
                 message += f" - {_truncate_for_progress(result.finding)}"
             print(message, file=sys.stderr, flush=True)
 
-        result = await runner.run(
-            url=args.url,
-            claims=claims,
-            claim_navigation_hints=claim_navigation_hints,
+        result = await runner.run_request(
+            request,
             claims_file=claims_file,
-            viewport=_build_viewport(args),
-            session_key=args.session_key,
-            run_name=args.run_name,
-            reuse_session=args.reuse_session,
-            reset_between_claims=args.reset_between_claims,
-            max_steps_per_claim=args.max_steps_per_claim,
-            claim_timeout_seconds=args.claim_timeout_seconds,
-            run_timeout_seconds=args.run_timeout_seconds,
-            navigation_hint=args.navigation_hint,
             on_claim_start=_progress_start,
             on_claim_complete=_progress_complete,
         )
         return serialize_result(result)
+
+
+def _format_validation_error(command: str, exc: ValidationError) -> str:
+    issues = "; ".join(
+        f"{'.'.join(str(part) for part in error['loc']) or 'input'}: {error['msg']}" for error in exc.errors()
+    )
+    return f"Invalid {command} options — {issues}"
 
 
 async def _preflight_verify_auth() -> None:
@@ -458,10 +487,19 @@ def _truncate_for_progress(text: str, limit: int = 120) -> str:
 
 
 async def _run_screenshot(args: argparse.Namespace) -> dict[str, Any]:
+    try:
+        validate_url(args.url)
+    except ValueError as exc:
+        raise ConfigurationError(str(exc)) from exc
+    try:
+        viewport = _build_viewport(args)
+    except ValidationError as exc:
+        raise ConfigurationError(_format_validation_error("screenshot", exc)) from exc
+
     async with _runner_scope(browser_config=_build_browser_config(args)) as runner:
         result = await runner.take_screenshot(
             url=args.url,
-            viewport=_build_viewport(args),
+            viewport=viewport,
             session_key=args.session_key,
             run_name=args.run_name,
             reuse_session=args.reuse_session,

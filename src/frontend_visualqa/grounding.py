@@ -215,6 +215,11 @@ async def capture_grounding_state(session: BrowserSession) -> GroundingState:
     )
 
 
+# How "positive" each verdict is; grounding may only move a verdict DOWN this
+# scale (toward failed), never up (toward passed).
+_STATUS_POSITIVITY: dict[ClaimStatus, int] = {"failed": 0, "inconclusive": 1, "passed": 2}
+
+
 def ground_claim_verdict(
     *,
     claim: str,
@@ -241,12 +246,29 @@ def ground_claim_verdict(
         if grounded is None:
             return status, finding
         grounded_status, grounded_finding = grounded
-        if grounded_status != "passed":
-            logger.info("Downgrading pass verdict for claim %r after grounding check", claim)
+        if grounded_status == status:
+            # Same verdict; prefer the DOM-backed finding, which cites the
+            # concrete evidence (actual headings, fill ratios, button labels).
+            return grounded_status, grounded_finding
+        if _STATUS_POSITIVITY[grounded_status] > _STATUS_POSITIVITY[status]:
+            # Downgrade-only: the DOM can prove expected text absent or a bar
+            # unfilled, but a DOM-visible element may still be covered by an
+            # overlay, transparent, or otherwise invisible in the pixels. The
+            # model judges pixels; it wins whenever grounding would upgrade.
+            logger.info(
+                "Keeping %s verdict for claim %r: grounding suggested an upgrade to %s",
+                status,
+                claim,
+                grounded_status,
+            )
+            return status, finding
+        logger.info(
+            "Downgrading %s verdict to %s for claim %r after grounding check", status, grounded_status, claim
+        )
         return grounded_status, grounded_finding
 
     if any(marker in normalized_claim for marker in GROUNDING_MARKER_SNIPPETS):
-        logger.info("No grounding rule matched pass verdict for claim %r", claim)
+        logger.info("No grounding rule matched %s verdict for claim %r", status, claim)
     return status, finding
 
 
@@ -380,16 +402,13 @@ def _check_button_match(
     grounding_state: GroundingState,
     groups: dict[str, str],
 ) -> tuple[ClaimStatus, str] | None:
+    # "Is visible" only requires visibility — a partially clipped button is
+    # still visible. The stricter clipped-check belongs to the separate
+    # "is fully visible" pattern (_check_button_fully_visible).
     matched_states = _matching_button_states(grounding_state, groups["label"])
     if matched_states:
-        if any(state.get("fullyVisible", False) for state in matched_states):
-            candidate = matched_states[0].get("text", groups["label"])
-            return "passed", f"Visible button label matched {groups['label']!r}: {candidate!r}."
         candidate = matched_states[0].get("text", groups["label"])
-        return (
-            "failed",
-            f"Visible button label matched {groups['label']!r}, but {candidate!r} is clipped or only partially visible.",
-        )
+        return "passed", f"Visible button label matched {groups['label']!r}: {candidate!r}."
 
     matches = _make_label_matcher(groups["label"])
     visible_buttons = grounding_state.get("visibleButtons", [])

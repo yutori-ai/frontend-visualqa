@@ -682,3 +682,56 @@ async def test_browser_manager_persistent_mode_recovers_after_external_context_c
         assert await recovered.page.locator("h1").text_content() == "Frontend Visual QA Playground"
     finally:
         await manager.close()
+
+
+@pytest.mark.asyncio
+async def test_browser_manager_capture_screenshot_times_out_stuck_layout_metrics_and_falls_back(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(browser_module, "DEFAULT_CDP_SCREENSHOT_TIMEOUT_SECONDS", 0.01)
+
+    class FakeCDPSession:
+        def __init__(self) -> None:
+            self.detach_calls = 0
+
+        async def send(self, method: str, params: dict[str, object] | None = None) -> dict[str, str]:
+            del params
+            if method == "Page.getLayoutMetrics":
+                await asyncio.sleep(1)
+            return {"data": ""}
+
+        async def detach(self) -> None:
+            self.detach_calls += 1
+
+    class FakeContext:
+        def __init__(self, cdp_session: FakeCDPSession) -> None:
+            self.cdp_session = cdp_session
+
+        async def new_cdp_session(self, page: object) -> FakeCDPSession:
+            del page
+            return self.cdp_session
+
+    class FakePage:
+        def __init__(self) -> None:
+            self.screenshot_calls: list[dict[str, object]] = []
+
+        async def screenshot(self, **kwargs: object) -> bytes:
+            self.screenshot_calls.append(kwargs)
+            return _png_bytes(color=(0, 0, 255))
+
+    cdp_session = FakeCDPSession()
+    context = FakeContext(cdp_session)
+    page = FakePage()
+    session = BrowserSession(
+        session_key="default",
+        context=context,  # type: ignore[arg-type]
+        page=page,  # type: ignore[arg-type]
+        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+    )
+    manager = BrowserManager(config=BrowserConfig(headless=True))
+
+    screenshot = await manager.capture_screenshot(session)
+
+    _assert_webp_bytes(screenshot, expected_size=(1280, 800))
+    assert cdp_session.detach_calls == 1
+    assert page.screenshot_calls == [{"type": "png", "animations": "disabled"}]

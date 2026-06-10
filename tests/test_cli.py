@@ -56,6 +56,20 @@ class FakeRunner:
         self.browser_calls: list[dict[str, Any]] = []
         self.close_calls = 0
 
+    async def run_request(
+        self,
+        request: Any,
+        *,
+        claims_file: Any = None,
+        on_claim_start: Any = None,
+        on_claim_complete: Any = None,
+    ) -> RunResult:
+        kwargs = {name: getattr(request, name) for name in type(request).model_fields}
+        kwargs["claims_file"] = claims_file
+        kwargs["on_claim_start"] = on_claim_start
+        kwargs["on_claim_complete"] = on_claim_complete
+        return await self.run(**kwargs)
+
     async def run(self, **kwargs: Any) -> RunResult:
         self.run_calls.append(kwargs)
         viewport = kwargs.get("viewport", ViewportConfig())
@@ -827,3 +841,121 @@ async def test_run_login_exits_cleanly_when_browser_window_closes_first(
     stderr = capsys.readouterr().err
     assert "Browser is open. Log in, then press Enter here to close and save the session." in stderr
     assert "Browser closed." in stderr
+
+
+def test_handle_verify_rejects_invalid_input_before_auth_preflight(
+    monkeypatch: Any,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import frontend_visualqa.cli as cli
+
+    preflight_calls: list[None] = []
+
+    async def _recording_preflight() -> None:
+        preflight_calls.append(None)
+
+    monkeypatch.setattr(cli, "_preflight_verify_auth", _recording_preflight)
+    monkeypatch.setattr(
+        cli, "_new_runner", lambda **_: pytest.fail("runner must not be constructed for invalid input")
+    )
+
+    exit_code = cli._handle_verify(
+        SimpleNamespace(
+            url="localhost:3000",  # missing http:// scheme
+            claims=["The modal title reads Edit Task"],
+            claims_file=None,
+            width=1280,
+            height=800,
+            device_scale_factor=1.0,
+            browser_mode="ephemeral",
+            user_data_dir=None,
+            headed=False,
+            visualize=None,
+            session_key="default",
+            run_name=None,
+            reuse_session=True,
+            reset_between_claims=True,
+            max_steps_per_claim=0,  # below the ge=1 bound
+            claim_timeout_seconds=120.0,
+            run_timeout_seconds=300.0,
+            navigation_hint=None,
+            reporter=None,
+            verbose=0,
+        )
+    )
+
+    assert exit_code == 1
+    err = capsys.readouterr().err
+    assert "Invalid verify options" in err
+    assert "Traceback" not in err
+    # Validation failures must not reach the auth/network preflight.
+    assert preflight_calls == []
+
+
+def test_handle_screenshot_returns_nonzero_when_not_testable(monkeypatch: Any) -> None:
+    import frontend_visualqa.cli as cli
+
+    fake_runner = FakeRunner()
+
+    async def _not_testable_screenshot(**kwargs: Any) -> ScreenshotResult:
+        return ScreenshotResult(
+            status="not_testable",
+            session_key=kwargs["session_key"],
+            run_name=None,
+            final_url=kwargs["url"],
+            viewport=kwargs["viewport"],
+            screenshot_path=None,
+            summary="Could not capture a screenshot for the target URL.",
+        )
+
+    fake_runner.take_screenshot = _not_testable_screenshot  # type: ignore[method-assign]
+    emitted: list[dict[str, Any]] = []
+    monkeypatch.setattr(cli, "_new_runner", lambda **_: fake_runner)
+    monkeypatch.setattr(cli, "_emit_json", emitted.append)
+
+    exit_code = cli._handle_screenshot(
+        SimpleNamespace(
+            url="http://localhost:3000",
+            width=1280,
+            height=800,
+            device_scale_factor=1.0,
+            browser_mode="ephemeral",
+            user_data_dir=None,
+            headed=False,
+            visualize=None,
+            session_key="default",
+            run_name=None,
+            reuse_session=True,
+        )
+    )
+
+    assert exit_code == 1
+    assert emitted[0]["status"] == "not_testable"
+
+
+def test_handle_screenshot_rejects_invalid_url(
+    monkeypatch: Any,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import frontend_visualqa.cli as cli
+
+    monkeypatch.setattr(cli, "_new_runner", lambda **_: pytest.fail("runner must not be constructed"))
+
+    exit_code = cli._handle_screenshot(
+        SimpleNamespace(
+            url="ftp://example.com",
+            width=1280,
+            height=800,
+            device_scale_factor=1.0,
+            browser_mode="ephemeral",
+            user_data_dir=None,
+            headed=False,
+            visualize=None,
+            session_key="default",
+            run_name=None,
+            reuse_session=True,
+        )
+    )
+
+    assert exit_code == 1
+    assert "url must start with" in capsys.readouterr().err

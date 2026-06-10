@@ -1826,3 +1826,40 @@ async def test_runner_ctrf_only_does_not_write_native_report(
     run_dir = Path(result.artifacts_dir)
     assert (run_dir / "ctrf-report.json").exists()
     assert not (run_dir / "run_result.json").exists()
+
+
+@pytest.mark.asyncio
+async def test_preflight_url_defers_to_browser_navigation_on_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    import httpx
+
+    from frontend_visualqa.runner import VisualQARunner
+
+    async def _timeout_head(self: Any, url: str, **kwargs: Any) -> Any:
+        del self, url, kwargs
+        raise httpx.ConnectTimeout("connection timed out")
+
+    monkeypatch.setattr(httpx.AsyncClient, "head", _timeout_head)
+
+    finding = await VisualQARunner._preflight_url(None, "http://fixture.local/slow-dev-server")
+
+    # A slow first response (dev server cold compile) must not preempt the
+    # browser navigation path, which has a longer timeout.
+    assert finding is None
+
+
+@pytest.mark.asyncio
+async def test_preflight_url_reports_unreachable_on_connection_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    import httpx
+
+    from frontend_visualqa.runner import VisualQARunner
+
+    async def _refused_head(self: Any, url: str, **kwargs: Any) -> Any:
+        del self, url, kwargs
+        raise httpx.ConnectError("connection refused")
+
+    monkeypatch.setattr(httpx.AsyncClient, "head", _refused_head)
+
+    finding = await VisualQARunner._preflight_url(None, "http://fixture.local/down")
+
+    assert finding is not None
+    assert "Could not reach" in finding

@@ -3,12 +3,19 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import re
 from dataclasses import dataclass
 from typing import Any, TYPE_CHECKING
 
-from frontend_visualqa.actions import ActionExecutor
+from frontend_visualqa.actions import (
+    ActionExecutor,
+    focused_element_is_password,
+    redact_element_value,
+    redact_type_text,
+    referenced_element_is_password,
+)
 from frontend_visualqa.artifacts import ArtifactManager, RunArtifacts
 from frontend_visualqa.browser import BrowserManager, BrowserSession, image_bytes_to_data_url
 from frontend_visualqa.errors import BrowserActionError, NavigatorClientError
@@ -67,6 +74,7 @@ ACTION_NEEDED_FINDING_PATTERNS = (
 logger = logging.getLogger(__name__)
 
 MAX_NON_ACTION_REPROMPTS = 2
+MAX_CONSECUTIVE_ACTION_FAILURES = 3
 MAX_INLINE_PROOF_TEXT_CHARS = 280
 MAX_INLINE_PROOF_TEXT_LINES = 6
 
@@ -164,6 +172,7 @@ class ClaimVerifier:
 
         messages: list[dict[str, Any]] = []
         non_action_reprompts = 0
+        consecutive_action_failures = 0
         should_visualize = self._visualize if visualize is None else visualize
         progress = _VerificationProgress(
             claim=claim,
@@ -265,14 +274,57 @@ class ClaimVerifier:
                     break
 
                 had_action_in_turn = False
-                responded_tool_ids: set[str] = set()
+                # Execute every tool call in the turn even when the step budget
+                # runs out mid-list: each tool_call in the assistant message
+                # must receive a role="tool" reply before the next user message,
+                # otherwise the chat-completions transcript is invalid and the
+                # endpoint rejects the force-stop turn. max_steps is enforced at
+                # turn boundaries by the while condition, so the overshoot is
+                # bounded by a single turn's tool calls.
                 for tool_call in tool_calls:
                     tool_name = tool_call_name(tool_call)
-                    if progress.step_count >= max_steps:
-                        break
-                    tool_arguments = parse_tool_arguments(tool_call)
+                    sensitive_text_to_redact: str | None = None
+                    parse_failed = False
+                    try:
+                        tool_arguments = parse_tool_arguments(tool_call)
+                    except BrowserActionError:
+                        # The executor re-parses and reports the same failure as
+                        # an [ERROR] tool result; hooks just see empty args.
+                        parse_failed = True
+                        tool_arguments = {}
+                    if tool_name == "type" and await focused_element_is_password(session.page):
+                        # Mirror the executor's trace masking for hook events so
+                        # credentials never land in trace.json or the next model
+                        # transcript either.
+                        if parse_failed:
+                            sensitive_text_to_redact = self._tool_call_arguments_as_text(tool_call)
+                            tool_arguments = {"text": "[redacted]"}
+                        elif tool_arguments.get("text"):
+                            sensitive_text_to_redact = str(tool_arguments.get("text", ""))
+                            tool_arguments = redact_type_text(tool_arguments)
+                        if sensitive_text_to_redact:
+                            self._redact_tool_call_arguments_in_latest_assistant_message(
+                                messages,
+                                tool_call_id=tool_call.id,
+                                redacted_arguments=tool_arguments,
+                            )
+                    elif (
+                        tool_name == "set_element_value"
+                        and tool_arguments.get("value")
+                        and tool_arguments.get("ref")
+                        and await referenced_element_is_password(session.page, str(tool_arguments.get("ref")))
+                    ):
+                        sensitive_text_to_redact = str(tool_arguments.get("value", ""))
+                        tool_arguments = redact_element_value(tool_arguments)
+                        self._redact_tool_call_arguments_in_latest_assistant_message(
+                            messages,
+                            tool_call_id=tool_call.id,
+                            redacted_arguments=tool_arguments,
+                        )
                     await self._safe_hook_call("on_tool_start", name=tool_name, arguments=tool_arguments)
                     execution = await self._execute_tool_call(session, tool_call)
+                    if sensitive_text_to_redact is not None:
+                        execution = self._redact_sensitive_execution(execution, sensitive_text_to_redact)
                     trace = execution["trace"]
                     progress.action_trace.append(trace)
                     output_text = execution.get("output_text")
@@ -312,7 +364,6 @@ class ClaimVerifier:
                         label=f"step-{progress.step_count:02d}",
                         proof_text=progress.proof_text,
                     )
-                    responded_tool_ids.add(tool_call.id)
                     messages.append(
                         {
                             "role": "tool",
@@ -333,6 +384,20 @@ class ClaimVerifier:
                             ],
                         }
                     )
+                    if execution.get("action_failed"):
+                        consecutive_action_failures += 1
+                        if consecutive_action_failures >= MAX_CONSECUTIVE_ACTION_FAILURES:
+                            result = self._build_result(
+                                progress=progress,
+                                status="inconclusive",
+                                finding=(
+                                    f"Browser actions failed {consecutive_action_failures} times in a row "
+                                    f"without a verdict. Last error: {execution.get('output_text') or trace}"
+                                ),
+                            )
+                            return await self._complete_result(result)
+                    else:
+                        consecutive_action_failures = 0
 
                 await self._show_post_capture_analysis(had_actions=had_action_in_turn)
             result = await self._force_stop(progress=progress, messages=messages)
@@ -620,6 +685,55 @@ class ClaimVerifier:
         raise TypeError(f"Unsupported assistant message type: {type(message)!r}")
 
     @staticmethod
+    def _redact_tool_call_arguments_in_latest_assistant_message(
+        messages: list[dict[str, Any]],
+        *,
+        tool_call_id: str,
+        redacted_arguments: dict[str, Any],
+    ) -> None:
+        if not messages:
+            return
+        assistant_message = messages[-1]
+        tool_calls = assistant_message.get("tool_calls")
+        if not isinstance(tool_calls, list):
+            return
+        for stored_tool_call in tool_calls:
+            if not isinstance(stored_tool_call, dict) or stored_tool_call.get("id") != tool_call_id:
+                continue
+            function = stored_tool_call.get("function")
+            if not isinstance(function, dict):
+                return
+            original_arguments = function.get("arguments")
+            if isinstance(original_arguments, str):
+                function["arguments"] = json.dumps(redacted_arguments)
+            elif isinstance(original_arguments, dict):
+                function["arguments"] = dict(redacted_arguments)
+            return
+
+    @staticmethod
+    def _redact_sensitive_execution(execution: dict[str, Any], sensitive_text: str) -> dict[str, Any]:
+        if not sensitive_text:
+            return execution
+        redacted = dict(execution)
+        for key in ("trace", "output_text"):
+            value = redacted.get(key)
+            if isinstance(value, str):
+                redacted[key] = value.replace(sensitive_text, "[redacted]")
+        return redacted
+
+    @staticmethod
+    def _tool_call_arguments_as_text(tool_call: Any) -> str:
+        arguments = getattr(getattr(tool_call, "function", tool_call), "arguments", "")
+        if isinstance(arguments, str):
+            return arguments
+        if isinstance(arguments, dict):
+            try:
+                return json.dumps(arguments)
+            except TypeError:
+                return str(arguments)
+        return str(arguments)
+
+    @staticmethod
     def _extract_json_verdict(response: Any) -> tuple[str, str] | None:
         """Extract a verdict from the response's ``parsed_json`` attribute.
 
@@ -639,9 +753,22 @@ class ClaimVerifier:
     async def _execute_tool_call(self, session: BrowserSession, tool_call: Any) -> dict[str, Any]:
         from frontend_visualqa.actions import tool_counts_as_interaction
 
-        result = await self.action_executor.execute_tool_call(session, tool_call)
+        tool_name = tool_call_name(tool_call)
+        try:
+            result = await self.action_executor.execute_tool_call(session, tool_call)
+        except BrowserActionError as exc:
+            # A failed browser action is usually a model mistake (bad ref,
+            # malformed arguments), not an environment block. Feed the error
+            # back as the tool result so the model can correct itself; verify()
+            # gives up as inconclusive after MAX_CONSECUTIVE_ACTION_FAILURES.
+            return {
+                "trace": f"{tool_name} failed",
+                "output_text": f"[ERROR] {exc}",
+                "current_url": session.page.url,
+                "counts_as_interaction": False,
+                "action_failed": True,
+            }
         if isinstance(result, str):
-            tool_name = tool_call_name(tool_call)
             return {
                 "trace": result,
                 "output_text": None,
