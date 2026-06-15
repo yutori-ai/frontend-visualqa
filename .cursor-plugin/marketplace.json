@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Official frontend-visualqa plugin marketplace for Cursor",
-    "version": "0.8.0"
+    "version": "0.8.4"
   },
   "plugins": [
     {
