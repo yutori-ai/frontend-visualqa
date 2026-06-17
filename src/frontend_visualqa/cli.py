@@ -9,9 +9,10 @@ import logging
 import os
 import sys
 import threading
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, AsyncIterator
+from typing import Any
 
 from pydantic import ValidationError
 
