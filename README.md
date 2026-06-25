@@ -68,6 +68,16 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
     This installs the `frontend-visualqa`, `yutori`, and `playwright` CLIs and downloads the Chromium browser binary.
 
+    > **Requires uv ≥ 0.8.5** (when `--with-executables-from` was added). On older uv the command fails with `unexpected argument '--with-executables-from'` and the binary is silently not installed. Upgrade with `uv self update` — or `conda update uv` / reinstall via the [standalone installer](https://docs.astral.sh/uv/getting-started/installation/) if uv is conda-managed (conda's uv refuses `self update`).
+    >
+    > Or, for any uv version, install without the flag:
+    >
+    > ```bash
+    > uv tool install frontend-visualqa   # exposes the frontend-visualqa CLI on any modern uv
+    > ```
+    >
+    > Then download Chromium via the `playwright` bundled in the tool's environment, and run `yutori auth login`. `--with-executables-from` only adds the convenience of exposing the `yutori`/`playwright` CLIs as global shims; it isn't required for the core tool to work.
+
 2. Log into [Yutori API](https://yutori.com/api):
 
     ```bash

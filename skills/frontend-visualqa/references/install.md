@@ -8,12 +8,21 @@
 
 ## Quick Install
 
+Requires **uv ≥ 0.8.5** (`--with-executables-from` was added in 0.8.5). On older uv this fails with `unexpected argument '--with-executables-from'` and the binary is silently not installed — common on conda-managed uv, which lags and can't `uv self update`. Run `uv self update` first, or use the version-agnostic fallback below.
+
 ```bash
 uv tool install frontend-visualqa \
   --with-executables-from yutori \
   --with-executables-from playwright
 playwright install chromium
 yutori auth login
+```
+
+Version-agnostic fallback (any modern uv) — `--with-executables-from` only exposes the bundled `yutori`/`playwright` CLIs as shims and isn't required:
+
+```bash
+uv tool install frontend-visualqa
+# then install Chromium via the playwright bundled in the tool's environment, and run `yutori auth login`
 ```
 
 MCP server (works with all clients):
