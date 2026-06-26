@@ -228,8 +228,9 @@ class RunResult(FrontendVisualQABaseModel):
     artifacts_dir: str
     # Predictable .webm path(s) when ``BrowserConfig.record_video`` was set.
     # Empty list when video recording was disabled. The runner saves each
-    # session's video to ``<artifacts_dir>/videos/<run_id>.webm`` via
-    # ``page.video.save_as`` before returning the result.
+    # session's video under ``<artifacts_dir>/videos/`` (``<run_id>.webm``, or
+    # ``<run_id>-claim-<N>.webm`` per claim when sessions aren't reused) before
+    # returning the result.
     video_paths: list[str] = Field(default_factory=list)
 
 

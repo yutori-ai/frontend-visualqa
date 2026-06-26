@@ -6,7 +6,7 @@
 
 Gives coding agents eyes for frontend work — visual QA and verification powered by [Yutori Navigator](https://yutori.com/api).
 
-![CLI demo](docs/images/cli-demo.gif)
+![CLI demo](https://raw.githubusercontent.com/yutori-ai/frontend-visualqa/main/docs/images/cli-demo.gif)
 
 ## What it does
 
@@ -26,16 +26,16 @@ Navigator is an AI agent powered by a computer-use model (n1.5) that perceives a
 - **Self-correcting navigation** — Point the agent at the product catalog instead of a specific product page and Navigator recognizes the wrong page, clicks through to the right one, and reports `trace.wrong_page_recovered: true`. Playwright MCP would run assertions on the wrong page and silently pass — garbage in, garbage out.
 
   <table border="0" cellspacing="0" cellpadding="8"><tr>
-    <td align="center" width="47%"><img src="docs/images/nav-step0-wrong-page.webp" alt="Product catalog — wrong page" width="100%"><br><em>Navigator lands on the product catalog</em></td>
+    <td align="center" width="47%"><img src="https://raw.githubusercontent.com/yutori-ai/frontend-visualqa/main/docs/images/nav-step0-wrong-page.webp" alt="Product catalog — wrong page" width="100%"><br><em>Navigator lands on the product catalog</em></td>
     <td align="center" width="6%"><strong>→</strong></td>
-    <td align="center" width="47%"><img src="docs/images/nav-step6-correct-page.webp" alt="Product detail — correct page" width="100%"><br><em>Navigated to the correct product page</em></td>
+    <td align="center" width="47%"><img src="https://raw.githubusercontent.com/yutori-ai/frontend-visualqa/main/docs/images/nav-step6-correct-page.webp" alt="Product detail — correct page" width="100%"><br><em>Navigated to the correct product page</em></td>
   </tr></table>
 
 - **Rich visual evaluation** — On the cart page, both items show sale prices ($149.99 and $79.99) but Navigator caught that the subtotal of $279.98 uses the original prices — the discount was never applied. On the API dashboard, the quota label reads "100%" but the progress bar is visibly only two-thirds full. Playwright MCP would pass both — the DOM text is consistent and the progress bar width is just a CSS value.
 
   <table border="0" cellspacing="0" cellpadding="8"><tr>
-    <td align="center" width="50%"><img src="docs/images/cart-pricing-bug.webp" alt="Cart — sale prices shown but subtotal uses original prices" width="100%"><br><em>Navigator catches the discount-not-applied bug</em></td>
-    <td align="center" width="50%"><img src="docs/images/dashboard-quota.webp" alt="Dashboard — label says 100% but bar is 65%" width="100%"><br><em>Label says 100% but the bar is only about two-thirds full</em></td>
+    <td align="center" width="50%"><img src="https://raw.githubusercontent.com/yutori-ai/frontend-visualqa/main/docs/images/cart-pricing-bug.webp" alt="Cart — sale prices shown but subtotal uses original prices" width="100%"><br><em>Navigator catches the discount-not-applied bug</em></td>
+    <td align="center" width="50%"><img src="https://raw.githubusercontent.com/yutori-ai/frontend-visualqa/main/docs/images/dashboard-quota.webp" alt="Dashboard — label says 100% but bar is 65%" width="100%"><br><em>Label says 100% but the bar is only about two-thirds full</em></td>
   </tr></table>
 
 <details>
@@ -114,12 +114,11 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
    ```bash
    uv tool uninstall frontend-visualqa
    npx skills remove -g frontend-visualqa
+   npx add-mcp remove frontend-visualqa
    ```
-
-   `add-mcp` has no remove command. Delete the `frontend-visualqa` entry from your client's MCP config (e.g. `~/.mcp.json`).
    </details>
 
-![Skill demo in Claude Code](docs/images/skill-demo.gif)
+![Skill demo in Claude Code](https://raw.githubusercontent.com/yutori-ai/frontend-visualqa/main/docs/images/skill-demo.gif)
 
 ### Manual per-client setup
 
@@ -164,14 +163,24 @@ Use the checked-in `.mcp.json`, or point your client at `frontend-visualqa serve
 </details>
 
 <details>
-<summary><strong>From source</strong></summary>
+<summary><strong>From source (and development)</strong></summary>
+
+For development, or to run unreleased changes from a local checkout:
 
 ```bash
-uv sync
-uv run playwright install chromium
+git clone https://github.com/yutori-ai/frontend-visualqa.git
+cd frontend-visualqa
+uv sync   # dev environment for tests and lint (see CONTRIBUTING.md)
+uv tool install --editable . \
+  --with-executables-from yutori \
+  --with-executables-from playwright   # so the checked-in .mcp.json runs your local source
+playwright install chromium   # browser for the Playwright the installed CLI uses
+yutori auth login
 ```
 
-Register the MCP server with your client using `uvx --from /absolute/path/to/frontend-visualqa frontend-visualqa serve` as the command.
+Install Chromium with the `playwright` exposed by the editable tool install above — **not** `uv run playwright install`. `uv tool install` resolves its own dependency versions, which can differ from the pinned Playwright in `.venv`, and the `frontend-visualqa` command runs from the tool environment — so its browser must come from there too. Using `uv run` installs Chromium into `.venv` instead, leaving the CLI without a matching browser and producing a `not_testable` "Executable doesn't exist" error at run time.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for tests and lint.
 
 </details>
 
@@ -288,7 +297,8 @@ Scrolling to find off-screen content:
 ```bash
 frontend-visualqa verify http://localhost:8000/analytics_dashboard.html \
   --headed \
-  --claims 'The /api/v1/webhooks endpoint returned a 200 OK status'
+  --claims 'The /api/v1/webhooks endpoint returned a 200 OK status' \
+  --navigation-hint 'Scroll down to the Recent Requests table and inspect the row for /api/v1/webhooks.'
 # → fails: Navigator scrolls to the request table and finds a 500 Error
 ```
 
@@ -355,14 +365,17 @@ frontend-visualqa verify <url> --claims-file claims.md [options]
 | `--width` / `--height` | 1280 / 800 | Viewport size |
 | `--device-scale-factor` | 1.0 | DPR |
 | `--headed` | off | Show the browser (implies `--visualize`) |
-| `--visualize` / `--no-visualize` | on when headed | Show in-browser action overlay (cursor, click pulses, scroll dots, status chip) |
+| `--visualize` / `--no-visualize` | on when headed | Show in-browser action overlay (cursor, click pulses, scroll arrows, status chip) |
 | `--browser-mode` | ephemeral | `ephemeral` or `persistent` |
 | `--user-data-dir` | | Custom profile directory |
 | `--session-key` | default | Named browser session. Persistent mode supports one named session at a time. |
 | `--run-name` | | Optional label included in JSON output and reports |
+| `--reuse-session` / `--no-reuse-session` | on | Reuse the named browser session if it already exists. |
 | `--max-steps-per-claim` | 12 | Max actions per claim |
 | `--claim-timeout-seconds` | 120 | Per-claim timeout |
 | `--run-timeout-seconds` | 300 | Whole-run timeout |
+| `--verbose`, `-v` | off | Stream service-responsiveness logs to stderr. -v for INFO, -vv for DEBUG. |
+| `--reset-between-claims` / `--no-reset-between-claims` | on | Return to the base URL between claims. |
 | `--reporter` | native | Output reporter (`native`, `ctrf`, `markdown`). Repeat for multiple. |
 
 </details>
@@ -387,7 +400,9 @@ Per-claim metadata can live under an individual claim bullet:
 ```
 
 ```bash
-frontend-visualqa verify http://localhost:8000/analytics_dashboard.html \
+frontend-visualqa verify http://localhost:8000/yutori_login.html \
+  --no-reset-between-claims \
+  --max-steps-per-claim 20 \
   --claims-file examples/login_flow_claims.md \
   --reporter native \
   --reporter markdown
@@ -482,6 +497,8 @@ If a claim requires interaction first, use `--navigation-hint` instead of encodi
 | `not_testable` | Environment blocked verification (server down, auth wall) |
 
 For the CLI, `frontend-visualqa verify` exits `0` only when every claim passes. It exits `1` if any claim is `failed`, `inconclusive`, or `not_testable`. Usage errors still exit with argparse's standard `2`.
+
+After the JSON output, verify prints a colored summary line to stderr with a checkmark or cross glyph. Colors respect NO_COLOR and FORCE_COLOR environment variables.
 
 ## Reporters
 
@@ -625,18 +642,4 @@ To verify that frontend-visualqa catches known bugs, capture the exit code and v
     "; then exit 1; fi
 
     echo "Expected failure: visual bug detected"
-```
-
-## Development
-
-```bash
-uv sync
-uv run playwright install chromium
-uv run frontend-visualqa --help
-```
-
-Editable install:
-
-```bash
-uv pip install -e .
 ```

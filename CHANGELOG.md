@@ -2,6 +2,57 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- `verify --video` records a Playwright video of the browser session. Recordings are saved under `<run-artifacts>/videos/` (`<run_id>.webm`, or `<run_id>-claim-<N>.webm` per claim when sessions aren't reused) and their paths are returned in `RunResult.video_paths`. The recording is moved into place on the filesystem after the context closes, so it saves reliably in persistent mode (where closing the context also stops the Playwright driver).
+
+## [0.8.4] - 2026-06-10
+
+### Security
+- Credentials typed into password fields (and `set_element_value` against password refs) are masked as `[redacted]` in action traces, trace events, reports, execution output, and the model transcript — including across multi-tool turns and malformed tool arguments. Password detection fails closed: if detection errors out, the payload is masked anyway.
+
+### Fixed
+- Step limit reached mid-turn no longer leaves tool calls without replies (an invalid transcript that made the force-stop turn fail and the claim land as `not_testable`); every tool call in the turn now executes and the budget is enforced at turn boundaries.
+- Failed browser actions (bad ref, malformed arguments) are fed back to the model as `[ERROR]` tool results it can recover from instead of aborting the claim as `not_testable`; three consecutive failures end the claim as `inconclusive`.
+- Preflight timeout falls through to browser navigation instead of marking runs `not_testable` — fixes false failures against dev servers cold-compiling a route. Hard connection errors still fail fast.
+- CDP `Page.getLayoutMetrics` is bounded by the same 5s timeout as `Page.captureScreenshot`.
+- CLI validates inputs before the auth preflight and prints one clean line on invalid options instead of a traceback; `screenshot` exits nonzero on `not_testable`.
+- Headed-mode thought card preserves line structure, so markdown headers, lists, and code blocks render.
+
+### Changed
+- DOM grounding is downgrade-only: it can fail or confirm a verdict but never upgrade toward `passed` (validated against the full examples suite — grounding still corrects the quota-bar text trap that n1.5 misses 3/3).
+- Grounding's "is visible" check no longer requires "fully visible"; the strict clipped-check stays on the `fully visible` claim pattern.
+- `wait` action duration is capped at 30s.
+
+## [0.8.3] - 2026-06-09
+
+### Changed
+- Source distribution no longer bundles `docs/` demo assets (two ~8 MB README GIFs), shrinking the published sdist from ~17 MB to under 1 MB. The wheel and installed package are unchanged.
+- README embeds its demo images by absolute URL so they render on the PyPI project page (relative paths only resolved on GitHub).
+
+## [0.8.2] - 2026-06-09
+
+### Fixed
+- Concurrent `verify`/`screenshot` processes could hang indefinitely on some macOS/Chromium builds: the CDP `Page.captureScreenshot` path requested `fromSurface: false`, which stalls under concurrent headless Chromium (browser launch and navigation complete; the capture call wedges). Switched to `fromSurface: true` (the CDP default) and wrapped the CDP capture in a 5s timeout that falls back to Playwright's `page.screenshot()` if it stalls.
+
+## [0.8.1] - 2026-06-08
+
+### Added
+- `-v`/`--verbose` flag for service-responsiveness logging (INFO and DEBUG levels)
+- End-of-run verification summary with ANSI color support (respects `NO_COLOR`/`FORCE_COLOR`)
+- HTTP/2 transport for Navigator API requests (`httpx[http2]`)
+
+### Changed
+- Overlay cursor persists across page navigations
+- Scroll effect uses directional arrow animation instead of dots
+- Screenshots encoded directly to WebP format
+
+### Fixed
+- Headed-mode visualization crash from literal NUL bytes in the overlay markdown renderer (`source code string cannot contain null bytes` on import)
+- Unnecessary message re-trimming during request creation (`already_trimmed` flag)
+- Navigation listener leak in overlay controller
+
 ## [0.8.0] - 2026-04-14
 
 ### Breaking

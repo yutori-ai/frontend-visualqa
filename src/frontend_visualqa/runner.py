@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import importlib
 import logging
 import time
 from collections import Counter
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Literal, TYPE_CHECKING, Callable
+from typing import Any, Literal, TYPE_CHECKING
 
 import httpx
 
@@ -35,7 +37,10 @@ from frontend_visualqa.schemas import (
 
 logger = logging.getLogger(__name__)
 
-if not TYPE_CHECKING:
+if TYPE_CHECKING:
+    from frontend_visualqa.claim_verifier import ClaimVerifier
+    from frontend_visualqa.navigator_client import NavigatorClient
+else:
     ClaimVerifier = None  # type: ignore[assignment]
     NavigatorClient = None  # type: ignore[assignment]
 
@@ -55,22 +60,29 @@ _TIMEOUT_FINDING_TEMPLATES: dict[_TimeoutScope, tuple[str, str]] = {
 }
 
 
-def _load_claim_verifier_class() -> Any:
-    global ClaimVerifier
-    if ClaimVerifier is None:
-        from frontend_visualqa.claim_verifier import ClaimVerifier as loaded_claim_verifier
+# Map deferred class name -> source module. The imports are deferred to
+# runtime (rather than top-of-file) to break circular-import paths between
+# runner.py and the claim_verifier / navigator_client modules.
+_DEFERRED_IMPORTS: dict[str, str] = {
+    "ClaimVerifier": "frontend_visualqa.claim_verifier",
+    "NavigatorClient": "frontend_visualqa.navigator_client",
+}
 
-        ClaimVerifier = loaded_claim_verifier  # type: ignore[assignment]
-    return ClaimVerifier
 
+def _load_class(name: str) -> Any:
+    """Return ``frontend_visualqa.<module>.<name>``, importing on first use.
 
-def _load_navigator_client_class() -> Any:
-    global NavigatorClient
-    if NavigatorClient is None:
-        from frontend_visualqa.navigator_client import NavigatorClient as loaded_navigator_client
-
-        NavigatorClient = loaded_navigator_client  # type: ignore[assignment]
-    return NavigatorClient
+    Caches the resolved class as a module-level attribute so that
+    ``monkeypatch.setattr(runner, name, ...)``-based test substitutions
+    remain effective: any value already bound at module scope (placeholder
+    ``None``, real class, or test fake) takes precedence over re-import.
+    """
+    cached = globals().get(name)
+    if cached is not None:
+        return cached
+    loaded = getattr(importlib.import_module(_DEFERRED_IMPORTS[name]), name)
+    globals()[name] = loaded
+    return loaded
 
 
 class VisualQARunner:
@@ -100,12 +112,12 @@ class VisualQARunner:
         self._login_override_active = False
         self.artifact_manager = artifact_manager or ArtifactManager(artifacts_dir)
         if navigator_client is None:
-            navigator_client_class = _load_navigator_client_class()
+            navigator_client_class = _load_class("NavigatorClient")
             self.navigator_client = navigator_client_class()
         else:
             self.navigator_client = navigator_client
         if claim_verifier is None:
-            claim_verifier_class = _load_claim_verifier_class()
+            claim_verifier_class = _load_class("ClaimVerifier")
             self.claim_verifier = claim_verifier_class(
                 browser_manager=self.browser_manager,
                 artifact_manager=self.artifact_manager,
@@ -176,48 +188,22 @@ class VisualQARunner:
             run_started_at = time.time()
             run_artifacts = self.artifact_manager.create_run(prefix="run")
 
-            preflight_error = await self._preflight_url(request.url)
-            if preflight_error is not None:
+            session: Any = None
+            finding = await self._preflight_url(request.url)
+            # Plumb video recording into the Playwright context if the browser
+            # config opts in. Videos go under <run_dir>/videos/ so recordings
+            # are co-located with screenshots, traces, and reports for the same
+            # run. .webm files are finalized when the context closes.
+            record_video_dir: str | None = None
+            if self.browser_manager.config.record_video:
+                record_video_dir = str(Path(run_artifacts.run_dir) / "videos")
+            if finding is None:
+                session, finding = await self._open_session_for_request(request, record_video_dir=record_video_dir)
+            if finding is not None:
                 return self._finalize_not_testable_run(
                     request=request,
                     run_artifacts=run_artifacts,
-                    finding=preflight_error,
-                    started_at=run_started_at,
-                    claims_file=claims_file,
-                )
-
-            try:
-                # Plumb video recording into the Playwright context if the
-                # browser config opts in. Videos go under <run_dir>/videos/
-                # so the recordings are co-located with screenshots, traces,
-                # and reports for the same run. .webm files are finalized
-                # when the context closes (end of run for ephemeral, page
-                # close for persistent).
-                record_video_dir: str | None = None
-                if self.browser_manager.config.record_video:
-                    record_video_dir = str(Path(run_artifacts.run_dir) / "videos")
-                session = await self.browser_manager.get_session(
-                    request.session_key,
-                    viewport=request.viewport,
-                    reuse_session=request.reuse_session,
-                    record_video_dir=record_video_dir,
-                )
-            except Exception as exc:
-                return self._finalize_not_testable_run(
-                    request=request,
-                    run_artifacts=run_artifacts,
-                    finding=f"Could not start a browser session for {request.url}: {exc}",
-                    started_at=run_started_at,
-                    claims_file=claims_file,
-                )
-
-            try:
-                await self.browser_manager.goto(session, request.url)
-            except Exception as exc:
-                return self._finalize_not_testable_run(
-                    request=request,
-                    run_artifacts=run_artifacts,
-                    finding=f"Could not navigate to {request.url}: {exc}",
+                    finding=finding,
                     started_at=run_started_at,
                     claims_file=claims_file,
                 )
@@ -342,11 +328,6 @@ class VisualQARunner:
             saved_video = await self._save_session_video(session, target=video_target)
             if saved_video is not None:
                 video_paths.append(saved_video)
-            if self.browser_manager.config.record_video:
-                self._cleanup_video_dir(
-                    Path(run_artifacts.run_dir) / "videos",
-                    keep=video_paths,
-                )
             run_result = RunResult(
                 overall_status=overall_status,
                 started_at=run_started_at,
@@ -370,6 +351,14 @@ class VisualQARunner:
         run_artifacts: RunArtifacts,
         video_paths: list[str],
     ) -> Any:
+        """Return the session to use for ``claim_index``.
+
+        For the first claim, or when ``reuse_session`` is set, the existing
+        session is reused (optionally reset to the request URL). When sessions
+        aren't reused, each claim runs in its own context: the previous claim's
+        session is saved (appending its ``.webm`` to ``video_paths``) and
+        retired, and a fresh recording-enabled session is opened and navigated.
+        """
         if claim_index <= 1:
             return session
 
@@ -422,46 +411,39 @@ class VisualQARunner:
             viewport_config = coerce_viewport(viewport)
             run_artifacts = self.artifact_manager.create_run(prefix="screenshot")
 
+            def _not_testable(summary: str) -> ScreenshotResult:
+                return ScreenshotResult(
+                    status="not_testable",
+                    session_key=session_key,
+                    run_name=run_name,
+                    final_url=url,
+                    viewport=viewport_config,
+                    screenshot_path=None,
+                    summary=summary,
+                )
+
             preflight_error = await self._preflight_url(url)
             if preflight_error is not None:
-                result = ScreenshotResult(
-                    status="not_testable",
-                    session_key=session_key,
-                    run_name=run_name,
-                    final_url=url,
-                    viewport=viewport_config,
-                    screenshot_path=None,
-                    summary=preflight_error,
-                )
-                self.artifact_manager.save_json(run_artifacts, "screenshot_result.json", result.model_dump())
-                return result
-
-            try:
-                session = await self.browser_manager.get_session(
-                    session_key, viewport=viewport_config, reuse_session=reuse_session
-                )
-                await self.browser_manager.goto(session, url)
-                image_bytes = await self.browser_manager.capture_screenshot(session)
-                screenshot_path = self.artifact_manager.save_screenshot(run_artifacts, 1, "screenshot", image_bytes)
-                result = ScreenshotResult(
-                    status="completed",
-                    session_key=session_key,
-                    run_name=run_name,
-                    final_url=session.page.url,
-                    viewport=session.viewport,
-                    screenshot_path=screenshot_path,
-                    summary="Captured the current page state successfully.",
-                )
-            except Exception as exc:
-                result = ScreenshotResult(
-                    status="not_testable",
-                    session_key=session_key,
-                    run_name=run_name,
-                    final_url=url,
-                    viewport=viewport_config,
-                    screenshot_path=None,
-                    summary=f"Could not capture a screenshot for {url}: {exc}",
-                )
+                result: ScreenshotResult = _not_testable(preflight_error)
+            else:
+                try:
+                    session = await self.browser_manager.get_session(
+                        session_key, viewport=viewport_config, reuse_session=reuse_session
+                    )
+                    await self.browser_manager.goto(session, url)
+                    image_bytes = await self.browser_manager.capture_screenshot(session)
+                    screenshot_path = self.artifact_manager.save_screenshot(run_artifacts, 1, "screenshot", image_bytes)
+                    result = ScreenshotResult(
+                        status="completed",
+                        session_key=session_key,
+                        run_name=run_name,
+                        final_url=session.page.url,
+                        viewport=session.viewport,
+                        screenshot_path=screenshot_path,
+                        summary="Captured the current page state successfully.",
+                    )
+                except Exception as exc:
+                    result = _not_testable(f"Could not capture a screenshot for {url}: {exc}")
             self.artifact_manager.save_json(run_artifacts, "screenshot_result.json", result.model_dump())
             return result
 
@@ -636,24 +618,27 @@ class VisualQARunner:
         await self.navigator_client.close()
 
     async def _save_session_video(self, session: Any, *, target: Path) -> str | None:
-        """Close the session's context and copy its video to ``target``.
+        """Close the session's context and move its recording to ``target``.
 
-        Playwright finalizes a video only when its BrowserContext closes —
-        ``page.video.save_as`` blocks indefinitely if the context is still
-        alive. So when video recording is enabled we proactively close the
-        session before save_as. This means ``record_video=True`` overrides
-        ``reuse_session`` semantics: the context goes away each time we
-        save (which is once per session, not once per claim).
+        Playwright finalizes a video to disk only when its BrowserContext
+        closes, writing it under an auto-generated ``<hash>.webm`` name in the
+        context's ``record_video_dir``. We close the session first (which
+        finalizes the file) and then move that file to the predictable
+        ``target``.
 
-        Returns the saved path on success, or ``None`` if recording is
-        disabled, the session has no video, or an error occurred. Best-effort
-        — never raises; on any failure we log DEBUG so the run can still
-        complete normally with whatever videos did get saved.
+        The move is a plain filesystem rename rather than ``page.video.save_as``
+        on purpose: in persistent mode ``close_session`` also stops the
+        Playwright driver (the context is the only thing keeping it alive), so a
+        subsequent ``save_as`` channel call would fail. A filesystem move works
+        regardless of whether the driver is still running and leaves no leftover
+        copy to clean up. ``save_as`` is kept only as a fallback for the rare
+        case where the finalized file can't be isolated on disk (and that
+        fallback only works while the driver is still up, i.e. ephemeral mode).
 
-        Cleanup of leftover auto-named files (``page@<hash>.webm``) is NOT
-        done here so multi-session runs don't accidentally erase
-        previously-saved videos. Use ``_cleanup_video_dir`` in a single pass
-        after all sessions have been saved.
+        Returns the saved path, or ``None`` if recording is disabled, the
+        session has no video, or saving failed. Best-effort — never raises; on
+        failure we log at DEBUG and leave any finalized recording in place under
+        its original name for manual recovery.
         """
         if not self.browser_manager.config.record_video:
             return None
@@ -661,35 +646,28 @@ class VisualQARunner:
         video = getattr(page, "video", None) if page is not None else None
         if video is None:
             return None
+
+        video_dir = target.parent
         try:
-            target.parent.mkdir(parents=True, exist_ok=True)
+            video_dir.mkdir(parents=True, exist_ok=True)
+            # Snapshot existing recordings so we can identify the one this
+            # context produces when it closes. Files already saved to a
+            # predictable target (from earlier per-claim sessions) and any
+            # un-recovered orphans are excluded by this diff.
+            existing = {p.resolve() for p in video_dir.glob("*.webm")}
             await self.browser_manager.close_session(session.session_key)
+            new_files = [p for p in video_dir.glob("*.webm") if p.resolve() not in existing]
+            if len(new_files) == 1:
+                new_files[0].replace(target)
+                return str(target)
+            # 0 or >1 newly-finalized files: can't isolate this session's
+            # recording by name. Fall back to the Playwright channel (only
+            # viable while the driver is still up); leave files in place.
             await video.save_as(str(target))
             return str(target)
-        except Exception:
+        except Exception:  # noqa: BLE001 - best-effort video save must not propagate
             logger.debug("Failed to save session video to %s", target, exc_info=True)
             return None
-
-    @staticmethod
-    def _cleanup_video_dir(video_dir: Path, *, keep: list[str]) -> None:
-        """Remove every .webm in ``video_dir`` that isn't in ``keep``.
-
-        Playwright writes a ``page@<hash>.webm`` for each closed context;
-        ``save_as`` copies it to the predictable name but leaves the original.
-        After the run finishes we remove every leftover so the videos/
-        directory contains exactly the saved targets.
-        """
-        keep_set = {str(Path(p).resolve()) for p in keep}
-        try:
-            for sibling in video_dir.glob("*.webm"):
-                try:
-                    if str(sibling.resolve()) in keep_set:
-                        continue
-                    sibling.unlink()
-                except OSError:
-                    logger.debug("Could not remove leftover video %s", sibling, exc_info=True)
-        except OSError:
-            logger.debug("Could not list video dir %s", video_dir, exc_info=True)
 
     @staticmethod
     def _video_target_for(
@@ -835,7 +813,7 @@ class VisualQARunner:
             return f"{int(timeout_seconds)}s"
         if timeout_seconds >= 1:
             return f"{timeout_seconds:.1f}s"
-        return f"{timeout_seconds:.2f}s".rstrip("0").rstrip(".") + "s"
+        return f"{timeout_seconds:.2f}".rstrip("0").rstrip(".") + "s"
 
     def _write_reports(
         self,
@@ -851,6 +829,37 @@ class VisualQARunner:
             except Exception:
                 logger.warning("Reporter %s failed to write", reporter.name, exc_info=True)
 
+    async def _open_session_for_request(
+        self,
+        request: VerifyVisualClaimsInput,
+        *,
+        record_video_dir: str | None = None,
+    ) -> tuple[Any, str | None]:
+        """Open a browser session for ``request`` and navigate to its URL.
+
+        Returns ``(session, None)`` on success and ``(None, finding)`` on
+        failure. ``finding`` distinguishes the two failure modes (session
+        creation vs. navigation) so the caller can render a user-facing
+        ``not_testable`` result. ``record_video_dir``, when set, enables
+        Playwright video recording on the created context.
+        """
+        try:
+            session = await self.browser_manager.get_session(
+                request.session_key,
+                viewport=request.viewport,
+                reuse_session=request.reuse_session,
+                record_video_dir=record_video_dir,
+            )
+        except Exception as exc:
+            return None, f"Could not start a browser session for {request.url}: {exc}"
+
+        try:
+            await self.browser_manager.goto(session, request.url)
+        except Exception as exc:
+            return None, f"Could not navigate to {request.url}: {exc}"
+
+        return session, None
+
     async def _preflight_url(self, url: str) -> str | None:
         try:
             # http2=True opts into ALPN h2 negotiation for parity with the
@@ -862,6 +871,12 @@ class VisualQARunner:
                     response = await client.head(url)
                     if response.status_code in {405, 501}:
                         await client.get(url)
+                except httpx.TimeoutException:
+                    # A slow first response (e.g. a dev server cold-compiling
+                    # the route) is not a hard failure. The browser navigation
+                    # path has a longer timeout; let it make the call.
+                    logger.info("Preflight for %s timed out after 5s; deferring to browser navigation", url)
+                    return None
                 except httpx.RequestError as exc:
                     return f"Could not reach {url} before opening the browser: {exc}"
         except Exception as exc:
@@ -893,10 +908,8 @@ class VisualQARunner:
                 visualize=visualize,
             )
 
-        if request.claim_timeout_seconds:
-            async with asyncio.timeout(request.claim_timeout_seconds):
-                return await _call_verifier()
-        return await _call_verifier()
+        async with asyncio.timeout(request.claim_timeout_seconds or None):
+            return await _call_verifier()
 
     @staticmethod
     def _navigation_hint_for_claim(request: VerifyVisualClaimsInput, claim_index: int) -> str | None:

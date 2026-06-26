@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import time
 from typing import Any, Protocol
@@ -60,8 +61,21 @@ def enable_http2_on_yutori_client(yclient: Any, *, timeout_seconds: float) -> No
     _swap_yutori_httpx_to_http2(yclient, timeout_seconds=timeout_seconds)
 
 
-def _swap_chat_openai_to_http2(yclient: Any, *, timeout_seconds: float) -> None:
+@contextlib.contextmanager
+def _http2_swap_guard(*, success_msg: str, warning_msg: str):  # type: ignore[return]
+    """Fence an HTTP/2 swap: log success on exit, swallow and warn on any exception."""
     try:
+        yield
+        logger.info(success_msg)
+    except Exception:
+        logger.warning(warning_msg, exc_info=True)
+
+
+def _swap_chat_openai_to_http2(yclient: Any, *, timeout_seconds: float) -> None:
+    with _http2_swap_guard(
+        success_msg="Navigator HTTP/2 transport enabled (chat completions)",
+        warning_msg="Could not enable HTTP/2 on chat namespace; chat completions will use HTTP/1.1",
+    ):
         from openai import AsyncOpenAI
 
         chat_ns = yclient.chat
@@ -81,17 +95,13 @@ def _swap_chat_openai_to_http2(yclient: Any, *, timeout_seconds: float) -> None:
         chat_ns._openai_client = new_oai  # type: ignore[attr-defined]
         chat_ns.completions._client = new_oai  # type: ignore[attr-defined]
         _schedule_close(old_oai)
-        logger.info("Navigator HTTP/2 transport enabled (chat completions)")
-    except Exception:
-        logger.warning(
-            "Could not enable HTTP/2 on chat namespace; "
-            "chat completions will use HTTP/1.1",
-            exc_info=True,
-        )
 
 
 def _swap_yutori_httpx_to_http2(yclient: Any, *, timeout_seconds: float) -> None:
-    try:
+    with _http2_swap_guard(
+        success_msg="Navigator HTTP/2 transport enabled (yutori SDK client)",
+        warning_msg="Could not enable HTTP/2 on yutori SDK client; usage/auth preflight will use HTTP/1.1",
+    ):
         old_httpx = yclient._client  # type: ignore[attr-defined]
         new_httpx = httpx.AsyncClient(
             http2=True,
@@ -105,13 +115,6 @@ def _swap_yutori_httpx_to_http2(yclient: Any, *, timeout_seconds: float) -> None
             if ns is not None and hasattr(ns, "_client"):
                 ns._client = new_httpx  # type: ignore[attr-defined]
         _schedule_close(old_httpx, attr="aclose")
-        logger.info("Navigator HTTP/2 transport enabled (yutori SDK client)")
-    except Exception:
-        logger.warning(
-            "Could not enable HTTP/2 on yutori SDK client; "
-            "usage/auth preflight will use HTTP/1.1",
-            exc_info=True,
-        )
 
 
 class SupportsChatCompletionCreate(Protocol):

@@ -15,7 +15,13 @@ from PIL import Image
 from playwright.async_api import Browser, BrowserContext, Error as PlaywrightError, Page, Playwright, async_playwright
 from yutori.navigator.page_ready import PageReadyChecker
 
-from frontend_visualqa.schemas import BrowserConfig, BrowserMode, BrowserSessionStatus, BrowserStatusResult, ViewportConfig
+from frontend_visualqa.schemas import (
+    BrowserConfig,
+    BrowserMode,
+    BrowserSessionStatus,
+    BrowserStatusResult,
+    ViewportConfig,
+)
 
 
 DEFAULT_NAVIGATION_TIMEOUT_MS = 20_000
@@ -28,6 +34,7 @@ DEFAULT_SETTLE_DELAY_SECONDS = 1.0
 # after the initial wait while staying well under DEFAULT_NAVIGATION_TIMEOUT_MS.
 DEFAULT_PAGE_READY_TIMEOUT_SECONDS = 8
 DEFAULT_SCREENSHOT_WEBP_QUALITY = 75
+DEFAULT_CDP_SCREENSHOT_TIMEOUT_SECONDS = 5.0
 logger = logging.getLogger(__name__)
 PERSISTENT_SESSION_KEY_ERROR = (
     "Persistent browser mode supports exactly one named session at a time. "
@@ -112,9 +119,7 @@ class BrowserManager:
         """Trigger libwebp lazy-load with a throwaway 1x1 encode."""
         try:
             with io.BytesIO() as buf:
-                Image.new("RGB", (1, 1), (0, 0, 0)).save(
-                    buf, format="WEBP", quality=DEFAULT_SCREENSHOT_WEBP_QUALITY
-                )
+                Image.new("RGB", (1, 1), (0, 0, 0)).save(buf, format="WEBP", quality=DEFAULT_SCREENSHOT_WEBP_QUALITY)
         except Exception:  # pragma: no cover - warmup is best-effort
             logger.debug("WebP encoder warmup failed (non-fatal)", exc_info=True)
 
@@ -199,9 +204,7 @@ class BrowserManager:
             await self.close_session(session_key)
 
         await self.ensure_browser(desired_viewport, record_video_dir=record_video_dir)
-        session = await self._create_session(
-            session_key, desired_viewport, record_video_dir=record_video_dir
-        )
+        session = await self._create_session(session_key, desired_viewport, record_video_dir=record_video_dir)
         self._sessions[session_key] = session
         return session
 
@@ -281,11 +284,19 @@ class BrowserManager:
         cdp_session = None
         try:
             cdp_session = await session.context.new_cdp_session(session.page)
-            layout_metrics = await cdp_session.send("Page.getLayoutMetrics")
+            # Both CDP sends share the concurrent-hang risk that motivated the
+            # captureScreenshot timeout (#93); bound this one the same way.
+            layout_metrics = await asyncio.wait_for(
+                cdp_session.send("Page.getLayoutMetrics"),
+                timeout=DEFAULT_CDP_SCREENSHOT_TIMEOUT_SECONDS,
+            )
             capture_params, target_size = self._build_cdp_capture_request(layout_metrics)
-            result = await cdp_session.send(
-                "Page.captureScreenshot",
-                capture_params,
+            result = await asyncio.wait_for(
+                cdp_session.send(
+                    "Page.captureScreenshot",
+                    capture_params,
+                ),
+                timeout=DEFAULT_CDP_SCREENSHOT_TIMEOUT_SECONDS,
             )
             data = result.get("data")
             if not data:
@@ -312,7 +323,7 @@ class BrowserManager:
                 {
                     "format": "png",
                     "captureBeyondViewport": False,
-                    "fromSurface": False,
+                    "fromSurface": True,
                     "clip": {
                         "x": float(css_viewport.get("pageX") or 0),
                         "y": float(css_viewport.get("pageY") or 0),
@@ -329,7 +340,7 @@ class BrowserManager:
             {
                 "format": "png",
                 "captureBeyondViewport": False,
-                "fromSurface": False,
+                "fromSurface": True,
             },
             None,
         )
@@ -456,8 +467,10 @@ class BrowserManager:
     ) -> BrowserSession:
         if self.config.mode == BrowserMode.persistent:
             # Persistent mode receives video config at launch time via
-            # ensure_browser; nothing to do per-session.
-            context = self._persistent_context or await self.ensure_browser(viewport)
+            # ensure_browser; nothing to do per-session. The fallback forwards
+            # record_video_dir so a context launched here still records
+            # (normally _persistent_context is already set by the caller).
+            context = self._persistent_context or await self.ensure_browser(viewport, record_video_dir=record_video_dir)
             assert isinstance(context, BrowserContext)
             page = await context.new_page()
             await page.set_viewport_size(_viewport_size_dict(viewport))

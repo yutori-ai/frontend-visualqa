@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import inspect
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -10,7 +10,12 @@ import pytest
 from pydantic import ValidationError
 
 from frontend_visualqa.claim_parser import parse_claims_file
-from fakes import FakeArtifactManager, FakeNavigatorClient, instantiate_with_supported_kwargs, is_bootstrap_step_artifact
+from fakes import (
+    FakeArtifactManager,
+    FakeNavigatorClient,
+    instantiate_with_supported_kwargs,
+    is_bootstrap_step_artifact,
+)
 
 from frontend_visualqa.schemas import (
     BrowserConfig,
@@ -35,8 +40,23 @@ def _import_runner_module():
 
 
 @dataclass
+class FakeVideo:
+    """Stand-in for ``page.video`` that mimics Playwright's save semantics."""
+
+    save_dir: Path
+    saved_as: list[str] = field(default_factory=list)
+
+    async def save_as(self, path: str) -> None:
+        target = Path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(b"FAKEWEBM")
+        self.saved_as.append(path)
+
+
+@dataclass
 class FakePage:
     url: str
+    video: Any | None = None
 
 
 @dataclass
@@ -56,6 +76,10 @@ class FakeBrowserManager:
         self.restart_calls: list[str] = []
         self.closed_sessions: list[str] = []
         self.closed = False
+        # session_key -> record_video_dir, so close_session can mimic Playwright
+        # finalizing a hash-named .webm into that dir on context close.
+        self.record_video_dirs: dict[str, str] = {}
+        self._video_seq = 0
 
     async def get_session(
         self,
@@ -65,7 +89,6 @@ class FakeBrowserManager:
         reuse_session: bool = True,
         record_video_dir: str | None = None,
     ) -> FakeSession:
-        del record_video_dir  # accepted for parity; no recording in fakes
         self.get_session_calls.append((session_key, reuse_session))
         desired = viewport or self.viewport
         session = self.sessions.get(session_key)
@@ -74,6 +97,9 @@ class FakeBrowserManager:
             self.sessions[session_key] = session
         else:
             session.viewport = desired
+        if record_video_dir is not None:
+            self.record_video_dirs[session_key] = record_video_dir
+            session.page.video = FakeVideo(Path(record_video_dir))
         return session
 
     async def goto(self, session: FakeSession, url: str) -> str:
@@ -108,6 +134,13 @@ class FakeBrowserManager:
     async def close_session(self, session_key: str) -> None:
         self.closed_sessions.append(session_key)
         self.sessions.pop(session_key, None)
+        video_dir = self.record_video_dirs.pop(session_key, None)
+        if video_dir is not None:
+            # Mimic Playwright writing one auto-named .webm when the context closes.
+            self._video_seq += 1
+            directory = Path(video_dir)
+            directory.mkdir(parents=True, exist_ok=True)
+            (directory / f"playwright-{self._video_seq:02d}.webm").write_bytes(b"FAKEWEBM")
 
     async def close(self) -> None:
         self.closed = True
@@ -426,6 +459,69 @@ async def test_runner_run_request_reuses_prevalidated_input(
     assert browser.goto_calls[0] == ("qa-session", "http://fixture.local/page")
     assert verifier.calls[0]["navigation_hint"] == "Open the modal if needed."
     assert verifier.calls[0]["visualize"] is True
+
+
+@pytest.mark.asyncio
+async def test_runner_saves_video_when_recording_enabled(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _import_runner_module()
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    browser = FakeBrowserManager(viewport, config=BrowserConfig(record_video=True))
+    runner, browser, verifier = _build_runner(
+        module,
+        tmp_path,
+        verifier_results=[_result("Claim one", "passed", viewport), _result("Claim two", "passed", viewport)],
+        monkeypatch=monkeypatch,
+        browser_manager=browser,
+    )
+
+    result = await _call_run(
+        runner,
+        url="http://fixture.local/page",
+        claims=["Claim one", "Claim two"],
+        viewport=viewport,
+        reuse_session=True,
+    )
+
+    assert result.video_paths, "expected a saved video path when record_video is enabled"
+    saved = Path(result.video_paths[0])
+    assert saved.exists()
+    assert saved.name == "run-001.webm"
+    # The recording was moved (not copied) to the predictable target, so the
+    # auto-named Playwright file does not linger in the videos directory.
+    assert sorted(p.name for p in saved.parent.glob("*.webm")) == ["run-001.webm"]
+
+
+@pytest.mark.asyncio
+async def test_runner_saves_per_claim_videos_without_session_reuse(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _import_runner_module()
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    browser = FakeBrowserManager(viewport, config=BrowserConfig(record_video=True))
+    runner, browser, verifier = _build_runner(
+        module,
+        tmp_path,
+        verifier_results=[_result("Claim one", "passed", viewport), _result("Claim two", "passed", viewport)],
+        monkeypatch=monkeypatch,
+        browser_manager=browser,
+    )
+
+    result = await _call_run(
+        runner,
+        url="http://fixture.local/page",
+        claims=["Claim one", "Claim two"],
+        viewport=viewport,
+        reuse_session=False,
+    )
+
+    names = sorted(Path(path).name for path in result.video_paths)
+    assert names == ["run-001-claim-1.webm", "run-001-claim-2.webm"]
+    for path in result.video_paths:
+        assert Path(path).exists()
 
 
 def test_verify_visual_claims_input_requires_navigation_hint_alignment() -> None:
@@ -1828,3 +1924,40 @@ async def test_runner_ctrf_only_does_not_write_native_report(
     run_dir = Path(result.artifacts_dir)
     assert (run_dir / "ctrf-report.json").exists()
     assert not (run_dir / "run_result.json").exists()
+
+
+@pytest.mark.asyncio
+async def test_preflight_url_defers_to_browser_navigation_on_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    import httpx
+
+    from frontend_visualqa.runner import VisualQARunner
+
+    async def _timeout_head(self: Any, url: str, **kwargs: Any) -> Any:
+        del self, url, kwargs
+        raise httpx.ConnectTimeout("connection timed out")
+
+    monkeypatch.setattr(httpx.AsyncClient, "head", _timeout_head)
+
+    finding = await VisualQARunner._preflight_url(None, "http://fixture.local/slow-dev-server")
+
+    # A slow first response (dev server cold compile) must not preempt the
+    # browser navigation path, which has a longer timeout.
+    assert finding is None
+
+
+@pytest.mark.asyncio
+async def test_preflight_url_reports_unreachable_on_connection_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    import httpx
+
+    from frontend_visualqa.runner import VisualQARunner
+
+    async def _refused_head(self: Any, url: str, **kwargs: Any) -> Any:
+        del self, url, kwargs
+        raise httpx.ConnectError("connection refused")
+
+    monkeypatch.setattr(httpx.AsyncClient, "head", _refused_head)
+
+    finding = await VisualQARunner._preflight_url(None, "http://fixture.local/down")
+
+    assert finding is not None
+    assert "Could not reach" in finding
