@@ -57,7 +57,16 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 ### Quick install (recommended)
 
-1. Install CLIs:
+1. Install the CLI and browser dependency:
+
+    ```bash
+    uv tool install frontend-visualqa
+    uv tool run --with frontend-visualqa playwright install chromium
+    ```
+
+    This installs the `frontend-visualqa` CLI and downloads Chromium with Playwright resolved alongside `frontend-visualqa`.
+
+    If you use `uv >= 0.8.5` and want `yutori` and `playwright` exposed as top-level shims too, you can use the convenience form instead:
 
     ```bash
     uv tool install frontend-visualqa \
@@ -66,15 +75,16 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
     playwright install chromium
     ```
 
-    This installs the `frontend-visualqa`, `yutori`, and `playwright` CLIs and downloads the Chromium browser binary.
+    The `--with-executables-from` flag was added in `uv 0.8.5`; older `uv` versions fail with `unexpected argument '--with-executables-from'`.
 
 2. Log into [Yutori API](https://yutori.com/api):
 
     ```bash
-    yutori auth login
+    uv tool run --with frontend-visualqa yutori auth login
     ```
 
     This opens your browser to save your Yutori API key to `~/.yutori/config.json`.
+    If you installed the optional top-level `yutori` shim above, `yutori auth login` works too.
 
     <details>
     <summary>Or, manually add your API key</summary>
@@ -171,14 +181,12 @@ For development, or to run unreleased changes from a local checkout:
 git clone https://github.com/yutori-ai/frontend-visualqa.git
 cd frontend-visualqa
 uv sync   # dev environment for tests and lint (see CONTRIBUTING.md)
-uv tool install --editable . \
-  --with-executables-from yutori \
-  --with-executables-from playwright   # so the checked-in .mcp.json runs your local source
-playwright install chromium   # browser for the Playwright the installed CLI uses
-yutori auth login
+uv tool install --editable .   # so the checked-in .mcp.json runs your local source
+uv tool run --with-editable . playwright install chromium
+uv tool run --with-editable . yutori auth login
 ```
 
-Install Chromium with the `playwright` exposed by the editable tool install above — **not** `uv run playwright install`. `uv tool install` resolves its own dependency versions, which can differ from the pinned Playwright in `.venv`, and the `frontend-visualqa` command runs from the tool environment — so its browser must come from there too. Using `uv run` installs Chromium into `.venv` instead, leaving the CLI without a matching browser and producing a `not_testable` "Executable doesn't exist" error at run time.
+Install Chromium with Playwright resolved through the editable tool install above, using `uv tool run --with-editable .` or the optional `uv >= 0.8.5` `playwright` shim. Do **not** use `uv run playwright install`. `uv tool install` resolves its own dependency versions, which can differ from the pinned Playwright in `.venv`, and the `frontend-visualqa` command runs from the tool environment, so its browser must come from there too. Using `uv run` installs Chromium into `.venv` instead, leaving the CLI without a matching browser and producing a `not_testable` "Executable doesn't exist" error at run time.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for tests and lint.
 
