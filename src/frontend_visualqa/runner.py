@@ -200,12 +200,29 @@ class VisualQARunner:
             if finding is None:
                 session, finding = await self._open_session_for_request(request, record_video_dir=record_video_dir)
             if finding is not None:
+                # If a session started recording before the run became
+                # not-testable (e.g. navigation failed), save its video so
+                # --video still yields an artifact and the context is closed.
+                early_video_paths: list[str] = []
+                if session is not None:
+                    saved = await self._save_session_video(
+                        session,
+                        target=self._video_target_for(
+                            run_artifacts,
+                            reuse_session=request.reuse_session,
+                            claim_index=1,
+                            total_claims=len(request.claims),
+                        ),
+                    )
+                    if saved is not None:
+                        early_video_paths.append(saved)
                 return self._finalize_not_testable_run(
                     request=request,
                     run_artifacts=run_artifacts,
                     finding=finding,
                     started_at=run_started_at,
                     claims_file=claims_file,
+                    video_paths=early_video_paths,
                 )
 
             claim_results: list[ClaimResult] = []
@@ -710,6 +727,7 @@ class VisualQARunner:
         finding: str,
         started_at: float,
         claims_file: ParsedClaimsFile | None,
+        video_paths: list[str] | None = None,
     ) -> RunResult:
         """Build a not-testable run result, persist reports, and return it."""
         result = self._build_not_testable_run(
@@ -718,6 +736,7 @@ class VisualQARunner:
             finding=finding,
             started_at=started_at,
             completed_at=time.time(),
+            video_paths=video_paths,
         )
         self._write_reports(result, str(run_artifacts.run_dir), claims_file=claims_file)
         return result
@@ -730,6 +749,7 @@ class VisualQARunner:
         finding: str,
         started_at: float | None = None,
         completed_at: float | None = None,
+        video_paths: list[str] | None = None,
     ) -> RunResult:
         results = [
             VisualQARunner._build_claim(
@@ -750,6 +770,7 @@ class VisualQARunner:
             results=results,
             summary=VisualQARunner._summarize_results(results),
             artifacts_dir=run_dir,
+            video_paths=video_paths or [],
         )
 
     @staticmethod
@@ -837,10 +858,11 @@ class VisualQARunner:
     ) -> tuple[Any, str | None]:
         """Open a browser session for ``request`` and navigate to its URL.
 
-        Returns ``(session, None)`` on success and ``(None, finding)`` on
-        failure. ``finding`` distinguishes the two failure modes (session
-        creation vs. navigation) so the caller can render a user-facing
-        ``not_testable`` result. ``record_video_dir``, when set, enables
+        Returns ``(session, None)`` on success. On failure it returns
+        ``(None, finding)`` if the session never started, or
+        ``(session, finding)`` if the session started (and may have begun
+        recording) but navigation failed — so the caller can still finalize
+        and save that session's video. ``record_video_dir``, when set, enables
         Playwright video recording on the created context.
         """
         try:
@@ -856,7 +878,7 @@ class VisualQARunner:
         try:
             await self.browser_manager.goto(session, request.url)
         except Exception as exc:
-            return None, f"Could not navigate to {request.url}: {exc}"
+            return session, f"Could not navigate to {request.url}: {exc}"
 
         return session, None
 

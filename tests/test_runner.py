@@ -524,6 +524,41 @@ async def test_runner_saves_per_claim_videos_without_session_reuse(
         assert Path(path).exists()
 
 
+@pytest.mark.asyncio
+async def test_runner_saves_video_when_navigation_fails_after_recording_starts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _import_runner_module()
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    browser = FakeBrowserManager(viewport, config=BrowserConfig(record_video=True))
+    runner, browser, verifier = _build_runner(
+        module,
+        tmp_path,
+        verifier_results=[_result("Claim one", "passed", viewport)],
+        monkeypatch=monkeypatch,
+        browser_manager=browser,
+    )
+
+    async def _failing_goto(session: Any, url: str) -> str:
+        raise RuntimeError("navigation blew up")
+
+    # Navigation fails only after the session (and its recording) has started.
+    browser.goto = _failing_goto
+
+    result = await _call_run(
+        runner,
+        url="http://fixture.local/page",
+        claims=["Claim one"],
+        viewport=viewport,
+        reuse_session=True,
+    )
+
+    assert result.overall_status == "not_testable"
+    assert result.video_paths, "a not-testable run should still save a recording that already started"
+    assert Path(result.video_paths[0]).exists()
+
+
 def test_verify_visual_claims_input_requires_navigation_hint_alignment() -> None:
     with pytest.raises(ValueError, match="claim_navigation_hints must match claims length"):
         VerifyVisualClaimsInput(
