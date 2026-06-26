@@ -190,19 +190,49 @@ class VisualQARunner:
 
             session: Any = None
             finding = await self._preflight_url(request.url)
+            # Plumb video recording into the Playwright context if the browser
+            # config opts in. Videos go under <run_dir>/videos/ so recordings
+            # are co-located with screenshots, traces, and reports for the same
+            # run. .webm files are finalized when the context closes.
+            record_video_dir: str | None = None
+            if self.browser_manager.config.record_video:
+                record_video_dir = str(Path(run_artifacts.run_dir) / "videos")
             if finding is None:
-                session, finding = await self._open_session_for_request(request)
+                session, finding = await self._open_session_for_request(request, record_video_dir=record_video_dir)
             if finding is not None:
+                # If a session started recording before the run became
+                # not-testable (e.g. navigation failed), save its video so
+                # --video still yields an artifact and the context is closed.
+                early_video_paths: list[str] = []
+                if session is not None:
+                    saved = await self._save_session_video(
+                        session,
+                        target=self._video_target_for(
+                            run_artifacts,
+                            reuse_session=request.reuse_session,
+                            claim_index=1,
+                            total_claims=len(request.claims),
+                        ),
+                    )
+                    if saved is not None:
+                        early_video_paths.append(saved)
                 return self._finalize_not_testable_run(
                     request=request,
                     run_artifacts=run_artifacts,
                     finding=finding,
                     started_at=run_started_at,
                     claims_file=claims_file,
+                    video_paths=early_video_paths,
                 )
 
             claim_results: list[ClaimResult] = []
             next_claim_index = 1
+            # Accumulates the saved .webm for each session as it is retired.
+            # With reuse_session there is a single session saved at end-of-run;
+            # without it, each claim runs in its own session and its video is
+            # saved by _prepare_session_for_claim just before the session is
+            # replaced for the next claim.
+            video_paths: list[str] = []
 
             def _safe_on_claim_start(index: int, claim: str) -> None:
                 safe_callback_call(
@@ -238,6 +268,8 @@ class VisualQARunner:
                                 session=session,
                                 request=request,
                                 claim_index=index,
+                                run_artifacts=run_artifacts,
+                                video_paths=video_paths,
                             )
                         except Exception as exc:
                             result = self._build_claim(
@@ -302,6 +334,17 @@ class VisualQARunner:
                 if claim_results and all(result.status == "not_testable" for result in claim_results)
                 else "completed"
             )
+            # Save the final (or only) live session. Earlier per-claim
+            # sessions, if any, were already saved as they were retired.
+            video_target = self._video_target_for(
+                run_artifacts,
+                reuse_session=request.reuse_session,
+                claim_index=min(next_claim_index, len(request.claims)),
+                total_claims=len(request.claims),
+            )
+            saved_video = await self._save_session_video(session, target=video_target)
+            if saved_video is not None:
+                video_paths.append(saved_video)
             run_result = RunResult(
                 overall_status=overall_status,
                 started_at=run_started_at,
@@ -311,6 +354,7 @@ class VisualQARunner:
                 results=claim_results,
                 summary=summary,
                 artifacts_dir=str(run_artifacts.run_dir),
+                video_paths=video_paths,
             )
             self._write_reports(run_result, str(run_artifacts.run_dir), claims_file=claims_file)
             return run_result
@@ -321,7 +365,17 @@ class VisualQARunner:
         session: Any,
         request: VerifyVisualClaimsInput,
         claim_index: int,
+        run_artifacts: RunArtifacts,
+        video_paths: list[str],
     ) -> Any:
+        """Return the session to use for ``claim_index``.
+
+        For the first claim, or when ``reuse_session`` is set, the existing
+        session is reused (optionally reset to the request URL). When sessions
+        aren't reused, each claim runs in its own context: the previous claim's
+        session is saved (appending its ``.webm`` to ``video_paths``) and
+        retired, and a fresh recording-enabled session is opened and navigated.
+        """
         if claim_index <= 1:
             return session
 
@@ -330,10 +384,31 @@ class VisualQARunner:
                 await self.browser_manager.reset_to_url(session, request.url)
             return session
 
+        # Without session reuse, each claim runs in its own browser context.
+        # The current session has just finished serving the previous claim and
+        # is about to be discarded, so save its video (which closes the context
+        # and finalizes the .webm) before spinning up a fresh one. The saved
+        # path is keyed to the claim this session covered (claim_index - 1).
+        saved_video = await self._save_session_video(
+            session,
+            target=self._video_target_for(
+                run_artifacts,
+                reuse_session=False,
+                claim_index=claim_index - 1,
+                total_claims=len(request.claims),
+            ),
+        )
+        if saved_video is not None:
+            video_paths.append(saved_video)
+
+        record_video_dir: str | None = None
+        if self.browser_manager.config.record_video:
+            record_video_dir = str(Path(run_artifacts.run_dir) / "videos")
         restarted = await self.browser_manager.get_session(
             request.session_key,
             viewport=request.viewport,
             reuse_session=False,
+            record_video_dir=record_video_dir,
         )
         await self.browser_manager.goto(restarted, request.url)
         return restarted
@@ -559,6 +634,79 @@ class VisualQARunner:
         await self.browser_manager.close()
         await self.navigator_client.close()
 
+    async def _save_session_video(self, session: Any, *, target: Path) -> str | None:
+        """Close the session's context and move its recording to ``target``.
+
+        Playwright finalizes a video to disk only when its BrowserContext
+        closes, writing it under an auto-generated ``<hash>.webm`` name in the
+        context's ``record_video_dir``. We close the session first (which
+        finalizes the file) and then move that file to the predictable
+        ``target``.
+
+        The move is a plain filesystem rename rather than ``page.video.save_as``
+        on purpose: in persistent mode ``close_session`` also stops the
+        Playwright driver (the context is the only thing keeping it alive), so a
+        subsequent ``save_as`` channel call would fail. A filesystem move works
+        regardless of whether the driver is still running and leaves no leftover
+        copy to clean up. ``save_as`` is kept only as a fallback for the rare
+        case where the finalized file can't be isolated on disk (and that
+        fallback only works while the driver is still up, i.e. ephemeral mode).
+
+        Returns the saved path, or ``None`` if recording is disabled, the
+        session has no video, or saving failed. Best-effort — never raises; on
+        failure we log at DEBUG and leave any finalized recording in place under
+        its original name for manual recovery.
+        """
+        if not self.browser_manager.config.record_video:
+            return None
+        page = getattr(session, "page", None)
+        video = getattr(page, "video", None) if page is not None else None
+        if video is None:
+            return None
+
+        video_dir = target.parent
+        try:
+            video_dir.mkdir(parents=True, exist_ok=True)
+            # Snapshot existing recordings so we can identify the one this
+            # context produces when it closes. Files already saved to a
+            # predictable target (from earlier per-claim sessions) and any
+            # un-recovered orphans are excluded by this diff.
+            existing = {p.resolve() for p in video_dir.glob("*.webm")}
+            await self.browser_manager.close_session(session.session_key)
+            new_files = [p for p in video_dir.glob("*.webm") if p.resolve() not in existing]
+            if len(new_files) == 1:
+                new_files[0].replace(target)
+                return str(target)
+            # 0 or >1 newly-finalized files: can't isolate this session's
+            # recording by name. Fall back to the Playwright channel (only
+            # viable while the driver is still up); leave files in place.
+            await video.save_as(str(target))
+            return str(target)
+        except Exception:  # noqa: BLE001 - best-effort video save must not propagate
+            logger.debug("Failed to save session video to %s", target, exc_info=True)
+            return None
+
+    @staticmethod
+    def _video_target_for(
+        run_artifacts: RunArtifacts,
+        *,
+        reuse_session: bool,
+        claim_index: int,
+        total_claims: int,
+    ) -> Path:
+        """Pick a predictable filename for a saved session video.
+
+        - One session for the whole run (``reuse_session=True``, or a single-
+          claim run): ``<run_id>.webm``.
+        - One session per claim (``reuse_session=False`` with multiple
+          claims): ``<run_id>-claim-<N>.webm``, where ``N`` is the claim
+          covered by that session.
+        """
+        videos_dir = Path(run_artifacts.run_dir) / "videos"
+        if reuse_session or total_claims <= 1:
+            return videos_dir / f"{run_artifacts.run_id}.webm"
+        return videos_dir / f"{run_artifacts.run_id}-claim-{claim_index}.webm"
+
     @staticmethod
     def _summarize_results(results: list[ClaimResult]) -> str:
         counts: Counter[ClaimStatus] = Counter(result.status for result in results)
@@ -579,6 +727,7 @@ class VisualQARunner:
         finding: str,
         started_at: float,
         claims_file: ParsedClaimsFile | None,
+        video_paths: list[str] | None = None,
     ) -> RunResult:
         """Build a not-testable run result, persist reports, and return it."""
         result = self._build_not_testable_run(
@@ -587,6 +736,7 @@ class VisualQARunner:
             finding=finding,
             started_at=started_at,
             completed_at=time.time(),
+            video_paths=video_paths,
         )
         self._write_reports(result, str(run_artifacts.run_dir), claims_file=claims_file)
         return result
@@ -599,6 +749,7 @@ class VisualQARunner:
         finding: str,
         started_at: float | None = None,
         completed_at: float | None = None,
+        video_paths: list[str] | None = None,
     ) -> RunResult:
         results = [
             VisualQARunner._build_claim(
@@ -619,6 +770,7 @@ class VisualQARunner:
             results=results,
             summary=VisualQARunner._summarize_results(results),
             artifacts_dir=run_dir,
+            video_paths=video_paths or [],
         )
 
     @staticmethod
@@ -698,19 +850,27 @@ class VisualQARunner:
             except Exception:
                 logger.warning("Reporter %s failed to write", reporter.name, exc_info=True)
 
-    async def _open_session_for_request(self, request: VerifyVisualClaimsInput) -> tuple[Any, str | None]:
+    async def _open_session_for_request(
+        self,
+        request: VerifyVisualClaimsInput,
+        *,
+        record_video_dir: str | None = None,
+    ) -> tuple[Any, str | None]:
         """Open a browser session for ``request`` and navigate to its URL.
 
-        Returns ``(session, None)`` on success and ``(None, finding)`` on
-        failure. ``finding`` distinguishes the two failure modes (session
-        creation vs. navigation) so the caller can render a user-facing
-        ``not_testable`` result.
+        Returns ``(session, None)`` on success. On failure it returns
+        ``(None, finding)`` if the session never started, or
+        ``(session, finding)`` if the session started (and may have begun
+        recording) but navigation failed — so the caller can still finalize
+        and save that session's video. ``record_video_dir``, when set, enables
+        Playwright video recording on the created context.
         """
         try:
             session = await self.browser_manager.get_session(
                 request.session_key,
                 viewport=request.viewport,
                 reuse_session=request.reuse_session,
+                record_video_dir=record_video_dir,
             )
         except Exception as exc:
             return None, f"Could not start a browser session for {request.url}: {exc}"
@@ -718,7 +878,7 @@ class VisualQARunner:
         try:
             await self.browser_manager.goto(session, request.url)
         except Exception as exc:
-            return None, f"Could not navigate to {request.url}: {exc}"
+            return session, f"Could not navigate to {request.url}: {exc}"
 
         return session, None
 

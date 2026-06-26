@@ -15,7 +15,13 @@ from PIL import Image
 from playwright.async_api import Browser, BrowserContext, Error as PlaywrightError, Page, Playwright, async_playwright
 from yutori.navigator.page_ready import PageReadyChecker
 
-from frontend_visualqa.schemas import BrowserConfig, BrowserMode, BrowserSessionStatus, BrowserStatusResult, ViewportConfig
+from frontend_visualqa.schemas import (
+    BrowserConfig,
+    BrowserMode,
+    BrowserSessionStatus,
+    BrowserStatusResult,
+    ViewportConfig,
+)
 
 
 DEFAULT_NAVIGATION_TIMEOUT_MS = 20_000
@@ -113,9 +119,7 @@ class BrowserManager:
         """Trigger libwebp lazy-load with a throwaway 1x1 encode."""
         try:
             with io.BytesIO() as buf:
-                Image.new("RGB", (1, 1), (0, 0, 0)).save(
-                    buf, format="WEBP", quality=DEFAULT_SCREENSHOT_WEBP_QUALITY
-                )
+                Image.new("RGB", (1, 1), (0, 0, 0)).save(buf, format="WEBP", quality=DEFAULT_SCREENSHOT_WEBP_QUALITY)
         except Exception:  # pragma: no cover - warmup is best-effort
             logger.debug("WebP encoder warmup failed (non-fatal)", exc_info=True)
 
@@ -126,8 +130,18 @@ class BrowserManager:
             return None
         return next(iter(self._sessions))
 
-    async def ensure_browser(self, viewport: ViewportConfig | None = None) -> Browser | BrowserContext:
-        """Start Playwright and Chromium if needed."""
+    async def ensure_browser(
+        self,
+        viewport: ViewportConfig | None = None,
+        *,
+        record_video_dir: str | None = None,
+    ) -> Browser | BrowserContext:
+        """Start Playwright and Chromium if needed.
+
+        ``record_video_dir`` is consulted only on persistent-mode first launch
+        (the context lives across runs, so video config is fixed at launch).
+        Ephemeral mode honors it at ``_create_session`` time instead.
+        """
 
         if self.config.mode == BrowserMode.persistent:
             if self._persistent_context is not None:
@@ -138,12 +152,17 @@ class BrowserManager:
             user_data_dir = self.config.resolved_user_data_dir
             assert user_data_dir is not None
             Path(user_data_dir).mkdir(parents=True, exist_ok=True)
-            self._persistent_context = await playwright.chromium.launch_persistent_context(
-                user_data_dir=user_data_dir,
-                headless=self.headless,
-                viewport=_viewport_size_dict(persistent_viewport),
-                device_scale_factor=persistent_viewport.device_scale_factor,
-            )
+            launch_kwargs: dict[str, Any] = {
+                "user_data_dir": user_data_dir,
+                "headless": self.headless,
+                "viewport": _viewport_size_dict(persistent_viewport),
+                "device_scale_factor": persistent_viewport.device_scale_factor,
+            }
+            if record_video_dir:
+                Path(record_video_dir).mkdir(parents=True, exist_ok=True)
+                launch_kwargs["record_video_dir"] = record_video_dir
+                launch_kwargs["record_video_size"] = _viewport_size_dict(persistent_viewport)
+            self._persistent_context = await playwright.chromium.launch_persistent_context(**launch_kwargs)
             self._configure_context(self._persistent_context)
             self._persistent_context.on("close", lambda *_: self._handle_persistent_context_close())
             return self._persistent_context
@@ -161,8 +180,16 @@ class BrowserManager:
         *,
         viewport: ViewportConfig | None = None,
         reuse_session: bool = True,
+        record_video_dir: str | None = None,
     ) -> BrowserSession:
-        """Get or create a session for the provided key."""
+        """Get or create a session for the provided key.
+
+        When ``record_video_dir`` is provided, the underlying Playwright
+        context records video for every page. One ``.webm`` per page; videos
+        finalize when the context closes (or when the page closes for
+        ephemeral contexts created here). The directory is created if it
+        doesn't exist.
+        """
 
         self._validate_session_key(session_key)
         desired_viewport = viewport or ViewportConfig()
@@ -176,8 +203,8 @@ class BrowserManager:
         if existing:
             await self.close_session(session_key)
 
-        await self.ensure_browser(desired_viewport)
-        session = await self._create_session(session_key, desired_viewport)
+        await self.ensure_browser(desired_viewport, record_video_dir=record_video_dir)
+        session = await self._create_session(session_key, desired_viewport, record_video_dir=record_video_dir)
         self._sessions[session_key] = session
         return session
 
@@ -431,9 +458,19 @@ class BrowserManager:
             sessions=sessions,
         )
 
-    async def _create_session(self, session_key: str, viewport: ViewportConfig) -> BrowserSession:
+    async def _create_session(
+        self,
+        session_key: str,
+        viewport: ViewportConfig,
+        *,
+        record_video_dir: str | None = None,
+    ) -> BrowserSession:
         if self.config.mode == BrowserMode.persistent:
-            context = self._persistent_context or await self.ensure_browser(viewport)
+            # Persistent mode receives video config at launch time via
+            # ensure_browser; nothing to do per-session. The fallback forwards
+            # record_video_dir so a context launched here still records
+            # (normally _persistent_context is already set by the caller).
+            context = self._persistent_context or await self.ensure_browser(viewport, record_video_dir=record_video_dir)
             assert isinstance(context, BrowserContext)
             page = await context.new_page()
             await page.set_viewport_size(_viewport_size_dict(viewport))
@@ -441,10 +478,15 @@ class BrowserManager:
         else:
             browser = await self.ensure_browser(viewport)
             assert isinstance(browser, Browser)
-            context = await browser.new_context(
-                viewport=_viewport_size_dict(viewport),
-                device_scale_factor=viewport.device_scale_factor,
-            )
+            context_kwargs: dict[str, Any] = {
+                "viewport": _viewport_size_dict(viewport),
+                "device_scale_factor": viewport.device_scale_factor,
+            }
+            if record_video_dir:
+                Path(record_video_dir).mkdir(parents=True, exist_ok=True)
+                context_kwargs["record_video_dir"] = record_video_dir
+                context_kwargs["record_video_size"] = _viewport_size_dict(viewport)
+            context = await browser.new_context(**context_kwargs)
             self._configure_context(context)
             page = await context.new_page()
         return BrowserSession(session_key=session_key, context=context, page=page, viewport=viewport)
