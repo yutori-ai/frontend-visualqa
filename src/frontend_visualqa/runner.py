@@ -224,6 +224,12 @@ class VisualQARunner:
 
             claim_results: list[ClaimResult] = []
             next_claim_index = 1
+            # Accumulates the saved .webm for each session as it is retired.
+            # With reuse_session there is a single session saved at end-of-run;
+            # without it, each claim runs in its own session and its video is
+            # saved by _prepare_session_for_claim just before the session is
+            # replaced for the next claim.
+            video_paths: list[str] = []
 
             def _safe_on_claim_start(index: int, claim: str) -> None:
                 safe_callback_call(
@@ -259,6 +265,8 @@ class VisualQARunner:
                                 session=session,
                                 request=request,
                                 claim_index=index,
+                                run_artifacts=run_artifacts,
+                                video_paths=video_paths,
                             )
                         except Exception as exc:
                             result = self._build_claim(
@@ -323,7 +331,22 @@ class VisualQARunner:
                 if claim_results and all(result.status == "not_testable" for result in claim_results)
                 else "completed"
             )
-            video_paths = await self._save_session_video(session, run_artifacts)
+            # Save the final (or only) live session. Earlier per-claim
+            # sessions, if any, were already saved as they were retired.
+            video_target = self._video_target_for(
+                run_artifacts,
+                reuse_session=request.reuse_session,
+                claim_index=min(next_claim_index, len(request.claims)),
+                total_claims=len(request.claims),
+            )
+            saved_video = await self._save_session_video(session, target=video_target)
+            if saved_video is not None:
+                video_paths.append(saved_video)
+            if self.browser_manager.config.record_video:
+                self._cleanup_video_dir(
+                    Path(run_artifacts.run_dir) / "videos",
+                    keep=video_paths,
+                )
             run_result = RunResult(
                 overall_status=overall_status,
                 started_at=run_started_at,
@@ -344,6 +367,8 @@ class VisualQARunner:
         session: Any,
         request: VerifyVisualClaimsInput,
         claim_index: int,
+        run_artifacts: RunArtifacts,
+        video_paths: list[str],
     ) -> Any:
         if claim_index <= 1:
             return session
@@ -353,10 +378,31 @@ class VisualQARunner:
                 await self.browser_manager.reset_to_url(session, request.url)
             return session
 
+        # Without session reuse, each claim runs in its own browser context.
+        # The current session has just finished serving the previous claim and
+        # is about to be discarded, so save its video (which closes the context
+        # and finalizes the .webm) before spinning up a fresh one. The saved
+        # path is keyed to the claim this session covered (claim_index - 1).
+        saved_video = await self._save_session_video(
+            session,
+            target=self._video_target_for(
+                run_artifacts,
+                reuse_session=False,
+                claim_index=claim_index - 1,
+                total_claims=len(request.claims),
+            ),
+        )
+        if saved_video is not None:
+            video_paths.append(saved_video)
+
+        record_video_dir: str | None = None
+        if self.browser_manager.config.record_video:
+            record_video_dir = str(Path(run_artifacts.run_dir) / "videos")
         restarted = await self.browser_manager.get_session(
             request.session_key,
             viewport=request.viewport,
             reuse_session=False,
+            record_video_dir=record_video_dir,
         )
         await self.browser_manager.goto(restarted, request.url)
         return restarted
@@ -589,54 +635,82 @@ class VisualQARunner:
         await self.browser_manager.close()
         await self.navigator_client.close()
 
-    async def _save_session_video(self, session: Any, run_artifacts: RunArtifacts) -> list[str]:
-        """Close the session and rename its auto-named .webm to ``<run_id>.webm``.
+    async def _save_session_video(self, session: Any, *, target: Path) -> str | None:
+        """Close the session's context and copy its video to ``target``.
 
         Playwright finalizes a video only when its BrowserContext closes —
         ``page.video.save_as`` blocks indefinitely if the context is still
-        alive. So when video recording is enabled, we proactively close the
-        session at the end of the run loop so the video can be moved to a
-        predictable filename. This means ``record_video=True`` overrides
-        ``reuse_session`` semantics: the context goes away at end-of-run.
+        alive. So when video recording is enabled we proactively close the
+        session before save_as. This means ``record_video=True`` overrides
+        ``reuse_session`` semantics: the context goes away each time we
+        save (which is once per session, not once per claim).
 
-        Otherwise Playwright assigns each video a random hash like
-        ``754f83068b291581198924685de3bdaf.webm``, which is hard to correlate
-        with a specific run from log output or CI artifacts.
+        Returns the saved path on success, or ``None`` if recording is
+        disabled, the session has no video, or an error occurred. Best-effort
+        — never raises; on any failure we log DEBUG so the run can still
+        complete normally with whatever videos did get saved.
 
-        Returns the list of saved paths (single-element today since we have
-        one page per session, but the list shape leaves room for multi-page
-        sessions later). Best-effort — never raises; on any failure we log
-        DEBUG and return an empty list so the caller still gets the rest of
-        the RunResult.
+        Cleanup of leftover auto-named files (``page@<hash>.webm``) is NOT
+        done here so multi-session runs don't accidentally erase
+        previously-saved videos. Use ``_cleanup_video_dir`` in a single pass
+        after all sessions have been saved.
         """
         if not self.browser_manager.config.record_video:
-            return []
+            return None
         page = getattr(session, "page", None)
         video = getattr(page, "video", None) if page is not None else None
         if video is None:
-            return []
-        target = Path(run_artifacts.run_dir) / "videos" / f"{run_artifacts.run_id}.webm"
+            return None
         try:
             target.parent.mkdir(parents=True, exist_ok=True)
-            # Close session first so the BrowserContext closes and the video
-            # finalizes. save_as blocks waiting for finalization, so calling
-            # it on a still-recording context would hang.
             await self.browser_manager.close_session(session.session_key)
             await video.save_as(str(target))
-            # save_as is a copy operation, so Playwright's auto-named .webm
-            # (a 32-char hex hash) stays behind. Remove any sibling .webm
-            # that isn't our target so the videos/ dir contains exactly the
-            # predictably-named files.
-            for sibling in target.parent.glob("*.webm"):
-                if sibling != target:
-                    try:
-                        sibling.unlink()
-                    except OSError:
-                        logger.debug("Could not remove leftover video %s", sibling, exc_info=True)
-            return [str(target)]
+            return str(target)
         except Exception:
             logger.debug("Failed to save session video to %s", target, exc_info=True)
-            return []
+            return None
+
+    @staticmethod
+    def _cleanup_video_dir(video_dir: Path, *, keep: list[str]) -> None:
+        """Remove every .webm in ``video_dir`` that isn't in ``keep``.
+
+        Playwright writes a ``page@<hash>.webm`` for each closed context;
+        ``save_as`` copies it to the predictable name but leaves the original.
+        After the run finishes we remove every leftover so the videos/
+        directory contains exactly the saved targets.
+        """
+        keep_set = {str(Path(p).resolve()) for p in keep}
+        try:
+            for sibling in video_dir.glob("*.webm"):
+                try:
+                    if str(sibling.resolve()) in keep_set:
+                        continue
+                    sibling.unlink()
+                except OSError:
+                    logger.debug("Could not remove leftover video %s", sibling, exc_info=True)
+        except OSError:
+            logger.debug("Could not list video dir %s", video_dir, exc_info=True)
+
+    @staticmethod
+    def _video_target_for(
+        run_artifacts: RunArtifacts,
+        *,
+        reuse_session: bool,
+        claim_index: int,
+        total_claims: int,
+    ) -> Path:
+        """Pick a predictable filename for a saved session video.
+
+        - One session for the whole run (``reuse_session=True``, or a single-
+          claim run): ``<run_id>.webm``.
+        - One session per claim (``reuse_session=False`` with multiple
+          claims): ``<run_id>-claim-<N>.webm``, where ``N`` is the claim
+          covered by that session.
+        """
+        videos_dir = Path(run_artifacts.run_dir) / "videos"
+        if reuse_session or total_claims <= 1:
+            return videos_dir / f"{run_artifacts.run_id}.webm"
+        return videos_dir / f"{run_artifacts.run_id}-claim-{claim_index}.webm"
 
     @staticmethod
     def _summarize_results(results: list[ClaimResult]) -> str:
