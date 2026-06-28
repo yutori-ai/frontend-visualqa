@@ -3,10 +3,18 @@
 ## Requirements
 
 - A running local frontend
-- Yutori API key — run `yutori auth login` after install, or set `YUTORI_API_KEY`
-- Playwright Chromium — run `playwright install chromium` after install
+- Yutori API key - run `uv tool run --with frontend-visualqa yutori auth login` after install, or set `YUTORI_API_KEY`
+- Playwright Chromium - run `uv tool run --with frontend-visualqa playwright install chromium` after install
 
 ## Quick Install
+
+```bash
+uv tool install frontend-visualqa
+uv tool run --with frontend-visualqa playwright install chromium
+uv tool run --with frontend-visualqa yutori auth login
+```
+
+On `uv >= 0.8.5`, you can optionally expose the bundled `yutori` and `playwright` CLIs as top-level shims:
 
 ```bash
 uv tool install frontend-visualqa \
@@ -15,6 +23,8 @@ uv tool install frontend-visualqa \
 playwright install chromium
 yutori auth login
 ```
+
+Older `uv` versions fail with `unexpected argument '--with-executables-from'`, so use the first form when compatibility is uncertain.
 
 MCP server (works with all clients):
 

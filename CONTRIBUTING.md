@@ -8,11 +8,11 @@ Thanks for your interest in contributing! Here's how to get started.
 git clone https://github.com/yutori-ai/frontend-visualqa.git
 cd frontend-visualqa
 uv sync
-uv tool install --editable . \
-  --with-executables-from yutori \
-  --with-executables-from playwright
-playwright install chromium   # from the editable tool install, NOT uv run
+uv tool install --editable .
+uv tool run --with-editable . playwright install chromium   # from the editable tool install, NOT uv run
 ```
+
+If you use `uv >= 0.8.5` and want `yutori` and `playwright` exposed as top-level shims, you can instead install the editable tool with `--with-executables-from yutori --with-executables-from playwright`. Older `uv` versions fail on that flag, so the commands above are the compatibility path.
 
 Run the tests:
 
