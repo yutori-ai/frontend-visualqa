@@ -21,6 +21,22 @@ logger = logging.getLogger(__name__)
 DEFAULT_MAX_REQUEST_BYTES = 9_500_000
 DEFAULT_KEEP_RECENT_SCREENSHOTS = 6
 
+# Connection-pool limits for the swapped HTTP/2 clients. HTTP/2 reuses a single
+# long-lived connection across the navigator hot loop; without a bound an idle
+# connection can linger and be reused after it has gone half-dead server-side,
+# which is a contributing factor to stalled requests (ENG-5206). ``keepalive_expiry``
+# is kept long enough to stay warm across the few-second gaps between turns (so
+# we keep the HTTP/2 reuse win) but short enough that a connection idle past it is
+# recycled rather than reused. ``max_*`` mirror httpx's defaults so only the
+# expiry changes. The hard per-request ``asyncio.timeout`` in ``_create_once`` is
+# the primary stall guard; this just curbs stale-connection reuse.
+_HTTP2_KEEPALIVE_EXPIRY_SECONDS = 30.0
+_HTTP2_LIMITS = httpx.Limits(
+    max_connections=100,
+    max_keepalive_connections=20,
+    keepalive_expiry=_HTTP2_KEEPALIVE_EXPIRY_SECONDS,
+)
+
 
 def _schedule_close(client: Any, *, attr: str = "close") -> None:
     """Best-effort async close of a swapped-out HTTP client.
@@ -85,6 +101,7 @@ def _swap_chat_openai_to_http2(yclient: Any, *, timeout_seconds: float) -> None:
         new_http2_client = httpx.AsyncClient(
             http2=True,
             timeout=timeout_seconds,
+            limits=_HTTP2_LIMITS,
         )
         new_oai = AsyncOpenAI(
             api_key=api_key,
@@ -106,6 +123,7 @@ def _swap_yutori_httpx_to_http2(yclient: Any, *, timeout_seconds: float) -> None
         new_httpx = httpx.AsyncClient(
             http2=True,
             timeout=timeout_seconds,
+            limits=_HTTP2_LIMITS,
         )
         yclient._client = new_httpx  # type: ignore[attr-defined]
         # Each namespace stores its own ref to the original client; update
