@@ -13,7 +13,7 @@ from tenacity import AsyncRetrying, retry_if_exception, stop_after_attempt, wait
 from yutori import AsyncYutoriClient
 from yutori.navigator import N1_5_MODEL, TOOL_SET_CORE, estimate_messages_size_bytes, trim_images_to_fit
 
-from frontend_visualqa.errors import NavigatorClientError
+from frontend_visualqa.errors import NavigatorClientError, NavigatorRequestTimeout
 
 
 logger = logging.getLogger(__name__)
@@ -214,11 +214,17 @@ class NavigatorClient:
                 reraise=True,
             ):
                 with attempt:
-                    response = await client.chat.completions.create(
-                        model=self.model,
-                        messages=prepared_messages,
-                        **kwargs,
-                    )
+                    response = await self._create_once(client, prepared_messages, kwargs)
+        except asyncio.CancelledError:
+            # A claim/run-level ``asyncio.timeout`` (or any external cancel) fired
+            # while a request was in flight. This MUST propagate untouched so the
+            # runner's deadline becomes a timeout result — never swallow it or
+            # wrap it as a NavigatorClientError. (ENG-5206)
+            raise
+        except NavigatorClientError:
+            # Already a domain error (e.g. NavigatorRequestTimeout that survived
+            # the retries); surface it as-is rather than nesting the message.
+            raise
         except Exception as exc:
             raise NavigatorClientError(f"Navigator request failed: {exc}") from exc
 
@@ -238,6 +244,42 @@ class NavigatorClient:
         else:
             logger.info("Navigator call %.0f ms (no usage info)", elapsed_ms)
         return response
+
+    async def _create_once(
+        self,
+        client: SupportsChatCompletionCreate,
+        messages: list[dict[str, Any]],
+        kwargs: dict[str, Any],
+    ) -> Any:
+        """Dispatch a single Navigator request under a hard wall-clock deadline.
+
+        httpx's ``timeout`` is a *per-operation* (connect/read/write) deadline,
+        not a *total*-request one. On a long-lived HTTP/2 connection, keepalive /
+        PING / WINDOW_UPDATE frames keep waking httpx's read loop, so the read
+        timeout never accumulates ``timeout_seconds`` of true inactivity and a
+        stalled stream blocks ``create()`` forever (ENG-5206). ``asyncio.timeout``
+        supplies the missing total bound: on expiry it raises ``TimeoutError``,
+        which we surface as ``NavigatorRequestTimeout`` — a transient error, so
+        tenacity retries and, on exhaustion, the call fails cleanly instead of
+        hanging.
+
+        A claim/run-level deadline that fires while we're inside this block
+        surfaces as ``asyncio.CancelledError`` rather than ``TimeoutError``
+        (a nested ``asyncio.timeout`` only converts cancellations triggered by
+        its *own* deadline), so it propagates untouched and is never retried.
+        """
+        # ``or None`` keeps a 0/None timeout meaning "no per-request bound".
+        try:
+            async with asyncio.timeout(self.timeout_seconds or None):
+                return await client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    **kwargs,
+                )
+        except TimeoutError as exc:
+            raise NavigatorRequestTimeout(
+                f"Navigator request exceeded the {self.timeout_seconds:.0f}s per-request timeout"
+            ) from exc
 
     def trim_messages(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Trim oversized image payloads while preserving recent screenshots."""
@@ -298,7 +340,20 @@ class NavigatorClient:
         )
 
     @staticmethod
-    def _is_transient_error(exc: Exception) -> bool:
+    def _is_transient_error(exc: BaseException) -> bool:
+        # Control-flow exceptions must NEVER be retried: they have to propagate
+        # so an enclosing asyncio.timeout / task cancel can tear the turn down.
+        # CancelledError is a BaseException (not an Exception), so it would not
+        # be caught by create()'s ``except Exception`` either — but be explicit
+        # here so a stalled-then-cancelled request surfaces immediately. (ENG-5206)
+        if isinstance(exc, (asyncio.CancelledError, KeyboardInterrupt, SystemExit)):
+            return False
+
+        # Our own per-request wall-clock deadline (and any asyncio/builtin
+        # TimeoutError) is transient: retry, then surface as NavigatorClientError.
+        if isinstance(exc, (NavigatorRequestTimeout, TimeoutError)):
+            return True
+
         if isinstance(exc, (httpx.TimeoutException, httpx.TransportError)):
             return True
 
