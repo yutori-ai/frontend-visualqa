@@ -144,10 +144,19 @@ def _get_clear_before(arguments: dict[str, Any]) -> bool:
     ``clear_before_typing``, ``clear_before``, and ``clear_before_type``.
     """
     return bool(
-        arguments.get("clear_before_typing")
-        or arguments.get("clear_before")
-        or arguments.get("clear_before_type")
+        arguments.get("clear_before_typing") or arguments.get("clear_before") or arguments.get("clear_before_type")
     )
+
+
+async def _safe_page_evaluate(page: Any, script: str, arg: object | None = None, *, default: Any = None) -> Any:
+    """Best-effort ``page.evaluate``; return ``default`` on failure (logged at DEBUG)."""
+    try:
+        if arg is None:
+            return await page.evaluate(script)
+        return await page.evaluate(script, arg)
+    except Exception:
+        logger.debug("Page evaluate failed (best-effort)", exc_info=True)
+        return default
 
 
 async def focused_element_is_password(page: Any) -> bool | None:
@@ -156,12 +165,10 @@ async def focused_element_is_password(page: Any) -> bool | None:
     Returns ``None`` when detection fails (page navigating, evaluate error).
     Callers must fail closed: redact unless the result is explicitly ``False``.
     """
-    try:
-        return bool(
-            await page.evaluate("() => !!document.activeElement && document.activeElement.type === 'password'")
-        )
-    except Exception:
-        return None
+    result = await _safe_page_evaluate(
+        page, "() => !!document.activeElement && document.activeElement.type === 'password'"
+    )
+    return None if result is None else bool(result)
 
 
 async def referenced_element_is_password(page: Any, ref: str) -> bool | None:
@@ -170,20 +177,17 @@ async def referenced_element_is_password(page: Any, ref: str) -> bool | None:
     Returns ``None`` when detection fails (page navigating, evaluate error).
     Callers must fail closed: redact unless the result is explicitly ``False``.
     """
-    try:
-        return bool(
-            await page.evaluate(
-                """(ref) => {
-                    const weakRef = window.__yutoriElementRefs && window.__yutoriElementRefs[ref];
-                    const element = weakRef && typeof weakRef.deref === "function" ? weakRef.deref() : null;
-                    return !!element && document.contains(element) && element instanceof HTMLInputElement &&
-                        (element.type || "").toLowerCase() === "password";
-                }""",
-                ref,
-            )
-        )
-    except Exception:
-        return None
+    result = await _safe_page_evaluate(
+        page,
+        """(ref) => {
+            const weakRef = window.__yutoriElementRefs && window.__yutoriElementRefs[ref];
+            const element = weakRef && typeof weakRef.deref === "function" ? weakRef.deref() : null;
+            return !!element && document.contains(element) && element instanceof HTMLInputElement &&
+                (element.type || "").toLowerCase() === "password";
+        }""",
+        ref,
+    )
+    return None if result is None else bool(result)
 
 
 def redact_type_text(arguments: dict[str, Any]) -> dict[str, Any]:
@@ -239,7 +243,9 @@ def render_action_trace(
         coordinates = arguments.get("coordinates")
         if coordinates is not None:
             x, y = denormalize_coordinates(coordinates, width=width, height=height)
-            modifier_suffix = _format_modifier_trace_suffix(arguments.get("modifier")) if canonical_name in CLICK_ACTIONS else ""
+            modifier_suffix = (
+                _format_modifier_trace_suffix(arguments.get("modifier")) if canonical_name in CLICK_ACTIONS else ""
+            )
             return f"{canonical_name}([{x}, {y}]{modifier_suffix})"
 
     if canonical_name == "drag" and width and height:
@@ -450,11 +456,17 @@ class ActionExecutor:
                 has_coords = _is_coordinate_pair(raw_coords)
                 if raw_arguments.get("ref") and not has_coords:
                     x, y = await self._resolve_coordinates(
-                        page, raw_arguments, width=width, height=height, action_name=canonical_name,
+                        page,
+                        raw_arguments,
+                        width=width,
+                        height=height,
+                        action_name=canonical_name,
                     )
                 else:
                     x, y = denormalize_coordinates(raw_coords if has_coords else [500, 500], width=width, height=height)
-                await self._best_effort_overlay_preview_action(action_type="scroll", x=x, y=y, direction=direction, amount=amount)
+                await self._best_effort_overlay_preview_action(
+                    action_type="scroll", x=x, y=y, direction=direction, amount=amount
+                )
                 modifier_keys = await self._press_modifier_keys(page, raw_arguments.get("modifier"))
                 try:
                     await page.mouse.move(x, y)
@@ -598,7 +610,7 @@ class ActionExecutor:
             text = str(arguments.get("text", ""))
             result = await evaluate_tool_script(page, FIND_SCRIPT, text)
             if not result.get("success", False):
-                output = f'[ERROR] {result.get("message", "find failed")}'
+                output = f"[ERROR] {result.get('message', 'find failed')}"
             else:
                 matches = result.get("matches", [])
                 total = int(result.get("totalMatches", len(matches)))
@@ -626,7 +638,7 @@ class ActionExecutor:
             js_code = str(arguments.get("text", ""))
             result = await evaluate_tool_script(page, EXECUTE_JS_SCRIPT, js_code)
             if not result.get("success", False):
-                output = f'[ERROR] {result.get("message", "execute_js failed")}'
+                output = f"[ERROR] {result.get('message', 'execute_js failed')}"
             elif not result.get("hasResult"):
                 output = "undefined"
             else:
