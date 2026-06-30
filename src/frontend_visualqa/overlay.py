@@ -100,6 +100,33 @@ def _set_visibility_opacity_js(element_ref: str, *, visibility: str, opacity: st
         f"{element_ref}.style.opacity = '{opacity}';"
     )
 
+
+def _inject_style_js(style_id: str, css_js_expr: str, *, guard: bool = False) -> str:
+    """Return JS snippet that injects a <style> element into document.head.
+
+    guard=True: no-op if the element already exists (one-time inject).
+    guard=False (default): remove any existing element first, then create fresh.
+    css_js_expr is a JS expression that evaluates to the CSS text string.
+    """
+    if guard:
+        return (
+            f"if (!document.getElementById('{style_id}')) {{\n"
+            f"    const style = document.createElement('style');\n"
+            f"    style.id = '{style_id}';\n"
+            f"    style.textContent = {css_js_expr};\n"
+            f"    document.head.appendChild(style);\n"
+            f"}}"
+        )
+    return (
+        f"const existing = document.getElementById('{style_id}');\n"
+        f"if (existing) existing.remove();\n"
+        f"const style = document.createElement('style');\n"
+        f"style.id = '{style_id}';\n"
+        f"style.textContent = {css_js_expr};\n"
+        f"document.head.appendChild(style);"
+    )
+
+
 _PERSISTENT_ROOT_JS = f"""() => {{
     if (document.getElementById('{PERSISTENT_ROOT_ID}')) return;
     const root = document.createElement('div');
@@ -640,16 +667,16 @@ class OverlayController:
 
     async def _show_click_effect(self, x: int, y: int, num_clicks: int) -> None:
         gap = int(CLICK_DURATION_MS * 0.5)
+        click_style = _inject_style_js(
+            CLICK_STYLE_ID,
+            "'@keyframes n1click{0%{width:5px;height:5px;opacity:0.6}100%{width:30px;height:30px;opacity:0}}'",
+            guard=True,
+        )
         await self._eval(
             f"""() => {{
                 const root = document.getElementById('{TRANSIENT_ROOT_ID}');
                 if (!root) return;
-                if (!document.getElementById('{CLICK_STYLE_ID}')) {{
-                    const style = document.createElement('style');
-                    style.id = '{CLICK_STYLE_ID}';
-                    style.textContent = '@keyframes n1click{{0%{{width:5px;height:5px;opacity:0.6}}100%{{width:30px;height:30px;opacity:0}}}}';
-                    document.head.appendChild(style);
-                }}
+                {click_style}
                 for (let i = 0; i < {num_clicks}; i++) {{
                     const delay = i * {gap};
                     const el = document.createElement('div');
@@ -697,20 +724,16 @@ class OverlayController:
         drift_scale = min(1.0 + (amount - 1) * 0.25, 1.75)
         tx = int({"right": 26, "left": -26}.get(direction, 0) * drift_scale)
         ty = int({"down": 26, "up": -26}.get(direction, 0) * drift_scale)
+        scroll_css_js = (
+            f"'@keyframes n1scroll{{0%{{opacity:0.85;transform:translate(-50%,-50%)}}100%{{opacity:0;transform:translate(calc(-50% + {tx}px),calc(-50% + {ty}px))}}}}"
+            f"@keyframes n1scrollSpin{{from{{transform:rotate(0deg)}}to{{transform:rotate({spin_deg}deg)}}}}'"  # noqa: E501
+        )
+        scroll_style = _inject_style_js(SCROLL_STYLE_ID, scroll_css_js)
         await self._eval(
             f"""() => {{
                 const root = document.getElementById('{TRANSIENT_ROOT_ID}');
                 if (!root) return;
-                const existing = document.getElementById('{SCROLL_STYLE_ID}');
-                if (existing) existing.remove();
-
-                const style = document.createElement('style');
-                style.id = '{SCROLL_STYLE_ID}';
-                style.textContent =
-                    '@keyframes n1scroll{{0%{{opacity:0.85;transform:translate(-50%,-50%)}}100%{{opacity:0;transform:translate(calc(-50% + {tx}px),calc(-50% + {ty}px))}}}}'
-                    + '@keyframes n1scrollSpin{{from{{transform:rotate(0deg)}}to{{transform:rotate({spin_deg}deg)}}}}';
-                document.head.appendChild(style);
-
+                {scroll_style}
                 // Hide the cursor for the duration of the scroll animation —
                 // the rotating arrow IS the visual focus, the cursor would
                 // just sit there idle while the page scrolls. Restored on
@@ -754,18 +777,15 @@ class OverlayController:
         show_below = cy_raw < 50
         cy = cy_raw + 30 if show_below else cy_raw - 7
 
+        type_style = _inject_style_js(
+            TYPE_STYLE_ID,
+            "'@keyframes n1tcaret{0%,100%{opacity:1}50%{opacity:0}}@keyframes n1tdot{0%,100%{transform:scale(1);opacity:0.5}50%{transform:scale(1.4);opacity:1}}@keyframes n1tfade{0%{opacity:0}15%{opacity:1}85%{opacity:1}100%{opacity:0}}'",
+        )
         await self._eval(
             f"""() => {{
                 const root = document.getElementById('{TRANSIENT_ROOT_ID}');
                 if (!root) return;
-                const existing = document.getElementById('{TYPE_STYLE_ID}');
-                if (existing) existing.remove();
-
-                const style = document.createElement('style');
-                style.id = '{TYPE_STYLE_ID}';
-                style.textContent = '@keyframes n1tcaret{{0%,100%{{opacity:1}}50%{{opacity:0}}}}@keyframes n1tdot{{0%,100%{{transform:scale(1);opacity:0.5}}50%{{transform:scale(1.4);opacity:1}}}}@keyframes n1tfade{{0%{{opacity:0}}15%{{opacity:1}}85%{{opacity:1}}100%{{opacity:0}}}}';
-                document.head.appendChild(style);
-
+                {type_style}
                 const container = document.createElement('div');
                 container.style.cssText = 'position:fixed;left:{cx + 14}px;top:{cy}px;pointer-events:none;z-index:{Z_INDEX};animation:n1tfade {EFFECT_DURATION_MS}ms ease-out forwards;display:flex;align-items:flex-end;gap:3px;';
 
@@ -790,18 +810,15 @@ class OverlayController:
         )
 
     async def _show_drag_effect(self, start_x: int, start_y: int, end_x: int, end_y: int) -> None:
+        drag_style = _inject_style_js(
+            DRAG_STYLE_ID,
+            "'@keyframes n1dfade{0%{opacity:0.5}100%{opacity:0}}@keyframes n1dtrail{0%{opacity:0.6}100%{opacity:0}}'",
+        )
         await self._eval(
             f"""() => {{
                 const root = document.getElementById('{TRANSIENT_ROOT_ID}');
                 if (!root) return;
-                const existing = document.getElementById('{DRAG_STYLE_ID}');
-                if (existing) existing.remove();
-
-                const style = document.createElement('style');
-                style.id = '{DRAG_STYLE_ID}';
-                style.textContent = '@keyframes n1dfade{{0%{{opacity:0.5}}100%{{opacity:0}}}}@keyframes n1dtrail{{0%{{opacity:0.6}}100%{{opacity:0}}}}';
-                document.head.appendChild(style);
-
+                {drag_style}
                 const pressed = document.createElement('div');
                 pressed.style.cssText = 'position:fixed;left:{start_x}px;top:{start_y}px;width:8px;height:8px;background:rgba(29,205,152,0.5);border-radius:50%;transform:translate(-50%,-50%);pointer-events:none;z-index:{Z_INDEX};animation:n1dfade {DRAG_DURATION_MS + 100}ms ease-out forwards;';
                 root.appendChild(pressed);
