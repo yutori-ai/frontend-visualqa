@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 from dataclasses import dataclass
 from typing import Any, TYPE_CHECKING
 
@@ -228,6 +229,24 @@ def tool_counts_as_interaction(tool_name: str) -> bool:
     return canonical_name not in _PASSIVE_ACTIONS
 
 
+def _is_coordinate_pair(coordinates: Any) -> bool:
+    """True when *coordinates* is a length-2 sequence of finite numbers.
+
+    Navigator occasionally emits a click/scroll/drag with empty or malformed
+    coordinates (e.g. ``[]`` when it intends to act on a ``ref`` instead). Such
+    values are not ``None``, so a bare ``is not None`` guard would forward them
+    to ``denormalize_coordinates`` and raise. Validate the shape here so the
+    caller can fall through to the generic renderer instead.
+    """
+
+    if not isinstance(coordinates, (list, tuple)) or len(coordinates) != 2:
+        return False
+    try:
+        return all(math.isfinite(float(value)) for value in coordinates)
+    except (TypeError, ValueError):
+        return False
+
+
 def render_action_trace(
     action_name: str,
     arguments: dict[str, Any],
@@ -241,7 +260,7 @@ def render_action_trace(
 
     if canonical_name in CLICK_ACTIONS | MOVE_ACTIONS and width and height:
         coordinates = arguments.get("coordinates")
-        if coordinates is not None:
+        if _is_coordinate_pair(coordinates):
             x, y = denormalize_coordinates(coordinates, width=width, height=height)
             modifier_suffix = (
                 _format_modifier_trace_suffix(arguments.get("modifier")) if canonical_name in CLICK_ACTIONS else ""
@@ -251,14 +270,14 @@ def render_action_trace(
     if canonical_name == "drag" and width and height:
         start = arguments.get("start_coordinates")
         end = arguments.get("coordinates")
-        if start is not None and end is not None:
+        if _is_coordinate_pair(start) and _is_coordinate_pair(end):
             start_x, start_y = denormalize_coordinates(start, width=width, height=height)
             end_x, end_y = denormalize_coordinates(end, width=width, height=height)
             return f"drag([{start_x}, {start_y}], [{end_x}, {end_y}])"
 
     if canonical_name == "scroll" and width and height:
         coordinates = arguments.get("coordinates")
-        if coordinates is not None:
+        if _is_coordinate_pair(coordinates):
             x, y = denormalize_coordinates(coordinates, width=width, height=height)
             direction = _normalize_scroll_direction(arguments)
             amount = arguments.get("amount", 1)

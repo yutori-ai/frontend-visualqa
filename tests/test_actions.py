@@ -199,6 +199,26 @@ def test_render_action_trace_formats_scaled_coordinates() -> None:
     assert result == "left_click([640, 200])"
 
 
+def test_render_action_trace_falls_through_on_empty_coordinates() -> None:
+    module = _import_actions_module()
+
+    # Navigator sometimes emits a click/scroll/drag with empty or malformed
+    # coordinates (it intends to act on a ref). These must not raise; they fall
+    # through to the generic renderer instead of crashing the whole run.
+    click = module.render_action_trace("left_click", {"coordinates": []}, width=1280, height=800)
+    assert click == "left_click(coordinates=[])"
+
+    scroll = module.render_action_trace(
+        "scroll", {"coordinates": [], "direction": "down", "amount": 3}, width=1280, height=800
+    )
+    assert "scroll(" in scroll and "denormalize" not in scroll
+
+    drag = module.render_action_trace(
+        "drag", {"start_coordinates": [10, 10], "coordinates": [None, 5]}, width=1280, height=800
+    )
+    assert drag.startswith("drag(")
+
+
 def test_tool_counts_as_interaction_marks_read_only_expanded_tools_non_interactive() -> None:
     module = _import_actions_module()
 
