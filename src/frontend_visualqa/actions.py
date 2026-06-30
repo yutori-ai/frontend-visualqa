@@ -100,11 +100,6 @@ DISALLOWED_ZOOM_KEYS = {"-", "=", "0"}
 SCROLL_DIRECTIONS = frozenset({"up", "down", "left", "right"})
 
 
-def _is_coordinate_pair(value: Any) -> bool:
-    """True if `value` is a list/tuple of exactly two elements (an [x, y] pair)."""
-    return isinstance(value, (list, tuple)) and len(value) == 2
-
-
 def _normalize_scroll_direction(arguments: dict[str, Any]) -> str:
     """Lowercased scroll direction from raw arguments, defaulting to 'down'."""
     return str(arguments.get("direction", "down")).lower()
