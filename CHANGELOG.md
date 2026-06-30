@@ -7,6 +7,9 @@ All notable changes to this project will be documented in this file.
 ### Added
 - `verify --video` records a Playwright video of the browser session. Recordings are saved under `<run-artifacts>/videos/` (`<run_id>.webm`, or `<run_id>-claim-<N>.webm` per claim when sessions aren't reused) and their paths are returned in `RunResult.video_paths`. The recording is moved into place on the filesystem after the context closes, so it saves reliably in persistent mode (where closing the context also stops the Playwright driver).
 
+### Changed
+- The Navigator request now defaults to the expanded tool set (`browser_tools_expanded-20260403`) instead of core, matching the Navigator browser extension's default. n1.5+ models are now offered the `extract_elements`, `find`, `set_element_value`, and `execute_js` DOM tools (the executor already handled them). Override with `NavigatorClient(tool_set=...)`; legacy `n1`/`n1-experimental` models still omit `tool_set` entirely.
+
 ## [0.8.4] - 2026-06-10
 
 ### Security
