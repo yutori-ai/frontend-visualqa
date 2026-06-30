@@ -11,7 +11,7 @@ from typing import Any, Protocol
 import httpx
 from tenacity import AsyncRetrying, retry_if_exception, stop_after_attempt, wait_exponential
 from yutori import AsyncYutoriClient
-from yutori.navigator import N1_5_MODEL, TOOL_SET_CORE, estimate_messages_size_bytes, trim_images_to_fit
+from yutori.navigator import N1_5_MODEL, TOOL_SET_EXPANDED, estimate_messages_size_bytes, trim_images_to_fit
 
 from frontend_visualqa.errors import NavigatorClientError, NavigatorRequestTimeout
 
@@ -153,7 +153,7 @@ class NavigatorClient:
         api_key: str | None = None,
         base_url: str = "https://api.yutori.com/v1",
         model: str = N1_5_MODEL,
-        tool_set: str | None = TOOL_SET_CORE,
+        tool_set: str | None = TOOL_SET_EXPANDED,
         disable_tools: list[str] | None = None,
         temperature: float = 0.3,
         timeout_seconds: float = 60.0,
