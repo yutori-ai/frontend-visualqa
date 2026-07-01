@@ -3,8 +3,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import io
-from functools import partial
-from http.server import BaseHTTPRequestHandler, SimpleHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from threading import Thread
 
@@ -20,12 +19,9 @@ from frontend_visualqa.browser import (
 )
 from frontend_visualqa.schemas import BrowserConfig, BrowserMode, DEFAULT_PERSISTENT_USER_DATA_DIR, ViewportConfig
 
+from fakes import serve_static_directory
+
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
-
-
-class _SilentStaticHandler(SimpleHTTPRequestHandler):
-    def log_message(self, format: str, *args: object) -> None:  # noqa: A003
-        return
 
 
 class _CookieHandler(BaseHTTPRequestHandler):
@@ -73,16 +69,8 @@ def _assert_webp_bytes(image_bytes: bytes, *, expected_size: tuple[int, int] | N
 
 @pytest.fixture()
 def example_url() -> str:
-    handler = partial(_SilentStaticHandler, directory=str(PACKAGE_ROOT / "examples"))
-    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
-    thread = Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    try:
-        yield f"http://127.0.0.1:{server.server_port}/test_page.html"
-    finally:
-        server.shutdown()
-        thread.join(timeout=5)
-        server.server_close()
+    for base_url in serve_static_directory(PACKAGE_ROOT / "examples"):
+        yield f"{base_url}/test_page.html"
 
 
 @pytest.fixture()

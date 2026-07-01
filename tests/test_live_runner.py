@@ -2,10 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import json
-from functools import partial
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from threading import Thread
 from typing import Any
 
 import pytest
@@ -16,30 +13,15 @@ from frontend_visualqa.claim_verifier import ClaimVerifier
 from frontend_visualqa.runner import VisualQARunner
 from frontend_visualqa.schemas import ViewportConfig
 
-from fakes import FakeFunction, FakeMessage, FakeNavigatorClient, FakeResponse, FakeToolCall
+from fakes import FakeFunction, FakeMessage, FakeNavigatorClient, FakeResponse, FakeToolCall, serve_static_directory
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 
 
-class _SilentStaticHandler(SimpleHTTPRequestHandler):
-    def log_message(self, format: str, *args: object) -> None:  # noqa: A003
-        return
-
-
 @pytest.fixture()
 def example_server() -> str:
-    handler = partial(_SilentStaticHandler, directory=str(PACKAGE_ROOT / "examples"))
-    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
-    thread = Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    try:
-        yield f"http://127.0.0.1:{server.server_port}"
-    finally:
-        server.shutdown()
-        thread.join(timeout=5)
-        server.server_close()
-
+    yield from serve_static_directory(PACKAGE_ROOT / "examples")
 
 
 async def _overlay_dom_state(page: Any) -> dict[str, Any]:
