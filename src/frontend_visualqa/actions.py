@@ -16,7 +16,7 @@ from frontend_visualqa.browser import (
 )
 from frontend_visualqa.errors import BrowserActionError
 from frontend_visualqa.tool_arguments import parse_tool_arguments, tool_call_name
-from frontend_visualqa.utils import safe_async_method_call
+from frontend_visualqa.utils import safe_async_method_call, safe_page_evaluate
 from yutori.navigator import (
     denormalize_coordinates,
     map_key_to_playwright,
@@ -144,24 +144,13 @@ def _get_clear_before(arguments: dict[str, Any]) -> bool:
     )
 
 
-async def _safe_page_evaluate(page: Any, script: str, arg: object | None = None, *, default: Any = None) -> Any:
-    """Best-effort ``page.evaluate``; return ``default`` on failure (logged at DEBUG)."""
-    try:
-        if arg is None:
-            return await page.evaluate(script)
-        return await page.evaluate(script, arg)
-    except Exception:
-        logger.debug("Page evaluate failed (best-effort)", exc_info=True)
-        return default
-
-
 async def focused_element_is_password(page: Any) -> bool | None:
     """Whether the currently focused element is a password input.
 
     Returns ``None`` when detection fails (page navigating, evaluate error).
     Callers must fail closed: redact unless the result is explicitly ``False``.
     """
-    result = await _safe_page_evaluate(
+    result = await safe_page_evaluate(
         page, "() => !!document.activeElement && document.activeElement.type === 'password'"
     )
     return None if result is None else bool(result)
@@ -173,7 +162,7 @@ async def referenced_element_is_password(page: Any, ref: str) -> bool | None:
     Returns ``None`` when detection fails (page navigating, evaluate error).
     Callers must fail closed: redact unless the result is explicitly ``False``.
     """
-    result = await _safe_page_evaluate(
+    result = await safe_page_evaluate(
         page,
         """(ref) => {
             const weakRef = window.__yutoriElementRefs && window.__yutoriElementRefs[ref];

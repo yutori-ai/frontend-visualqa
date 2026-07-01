@@ -8,6 +8,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from frontend_visualqa.text_utils import clip_text_preserving_lines
+from frontend_visualqa.utils import safe_page_evaluate
 
 if TYPE_CHECKING:
     from playwright.async_api import Page
@@ -858,13 +859,7 @@ class OverlayController:
         self, script: str, arg: object | None = None, *, default: Any = None
     ) -> Any:
         """Best-effort ``page.evaluate``; return ``default`` on failure (logged at DEBUG)."""
-        try:
-            if arg is None:
-                return await self._page.evaluate(script)
-            return await self._page.evaluate(script, arg)
-        except Exception:
-            logger.debug("Overlay evaluate failed (best-effort)", exc_info=True)
-            return default
+        return await safe_page_evaluate(self._page, script, arg, default=default, log_label="Overlay")
 
     async def _eval(self, script: str, arg: object | None = None) -> None:
         await self._safe_evaluate(script, arg)
