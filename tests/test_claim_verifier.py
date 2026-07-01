@@ -13,7 +13,17 @@ import pytest
 from frontend_visualqa.artifacts import RunArtifacts
 from frontend_visualqa.schemas import ViewportConfig
 
-from fakes import FakeArtifactManager, FakeChoice, FakeFunction, FakeMessage, FakeNavigatorClient, FakeResponse, FakeToolCall, instantiate_with_supported_kwargs
+from fakes import (
+    FakeArtifactManager,
+    FakeChoice,
+    FakeFunction,
+    FakeMessage,
+    FakeNavigatorClient,
+    FakeResponse,
+    FakeToolCall,
+    import_or_skip,
+    instantiate_with_supported_kwargs,
+)
 
 
 def _verdict_response(status: str, finding: str) -> FakeResponse:
@@ -25,25 +35,11 @@ def _verdict_response(status: str, finding: str) -> FakeResponse:
 
 
 def _import_claim_verifier_module():
-    import importlib
-
-    try:
-        return importlib.import_module("frontend_visualqa.claim_verifier")
-    except ModuleNotFoundError as exc:
-        if exc.name and exc.name.startswith("frontend_visualqa"):
-            pytest.skip("frontend_visualqa.claim_verifier is not implemented in this worktree yet")
-        raise
+    return import_or_skip("frontend_visualqa.claim_verifier")
 
 
 def _import_recovery_module():
-    import importlib
-
-    try:
-        return importlib.import_module("frontend_visualqa.recovery")
-    except ModuleNotFoundError as exc:
-        if exc.name and exc.name.startswith("frontend_visualqa"):
-            pytest.skip("frontend_visualqa.recovery is not implemented in this worktree yet")
-        raise
+    return import_or_skip("frontend_visualqa.recovery")
 
 
 def _field(result: Any, name: str) -> Any:

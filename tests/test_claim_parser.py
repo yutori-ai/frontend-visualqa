@@ -5,17 +5,11 @@ from pathlib import Path
 import pytest
 
 from frontend_visualqa.errors import ConfigurationError
+from fakes import import_or_skip
 
 
 def _import_claim_parser_module():
-    import importlib
-
-    try:
-        return importlib.import_module("frontend_visualqa.claim_parser")
-    except ModuleNotFoundError as exc:
-        if exc.name and exc.name.startswith("frontend_visualqa"):
-            pytest.skip("frontend_visualqa.claim_parser is not implemented yet")
-        raise
+    return import_or_skip("frontend_visualqa.claim_parser")
 
 
 def test_parse_claims_file_extracts_root_level_bullets_and_strips_task_markers(tmp_path: Path) -> None:
