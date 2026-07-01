@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 
+from fakes import import_or_skip
 from frontend_visualqa import __version__
 from frontend_visualqa.schemas import (
     BrowserConfig,
@@ -46,14 +47,7 @@ def _sample_claim_result(*, url: str, viewport: ViewportConfig) -> ClaimResult:
 
 
 def _import_mcp_server_module():
-    import importlib
-
-    try:
-        return importlib.import_module("frontend_visualqa.mcp_server")
-    except ModuleNotFoundError as exc:
-        if exc.name and exc.name.startswith("frontend_visualqa"):
-            pytest.skip("frontend_visualqa.mcp_server is not implemented in this worktree yet")
-        raise
+    return import_or_skip("frontend_visualqa.mcp_server")
 
 
 class FakeRunner:

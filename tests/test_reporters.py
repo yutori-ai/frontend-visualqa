@@ -5,18 +5,13 @@ from pathlib import Path
 
 import pytest
 
+from fakes import import_or_skip
 from frontend_visualqa.claim_parser import ParsedClaimLine, ParsedClaimsFile, parse_claims_file
 from frontend_visualqa.schemas import ClaimResult, RunResult, ViewportConfig
 
 
 def _import_reporters_module():
-    import importlib
-    try:
-        return importlib.import_module("frontend_visualqa.reporters")
-    except ModuleNotFoundError as exc:
-        if exc.name and exc.name.startswith("frontend_visualqa"):
-            pytest.skip("frontend_visualqa.reporters is not implemented yet")
-        raise
+    return import_or_skip("frontend_visualqa.reporters")
 
 
 def _sample_run_result(artifacts_dir: str) -> RunResult:

@@ -9,19 +9,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from fakes import instantiate_with_supported_kwargs
+from fakes import import_or_skip, instantiate_with_supported_kwargs
 from frontend_visualqa.schemas import ViewportConfig
 
 
 def _import_actions_module():
-    import importlib
-
-    try:
-        return importlib.import_module("frontend_visualqa.actions")
-    except ModuleNotFoundError as exc:
-        if exc.name and exc.name.startswith("frontend_visualqa"):
-            pytest.skip("frontend_visualqa.actions is not implemented in this worktree yet")
-        raise
+    return import_or_skip("frontend_visualqa.actions")
 
 
 async def _call_execute_action(

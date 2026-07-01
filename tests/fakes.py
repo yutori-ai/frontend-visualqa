@@ -2,17 +2,37 @@
 
 from __future__ import annotations
 
+import importlib
 import inspect
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import ModuleType
 from typing import Any
+
+import pytest
 
 from frontend_visualqa.artifacts import RunArtifacts
 
 
 def is_bootstrap_step_artifact(path: str | None) -> bool:
     return bool(path) and Path(path).name.startswith("step-00")
+
+
+def import_or_skip(module_path: str) -> ModuleType:
+    """Import *module_path*, skipping the test if it is not implemented yet.
+
+    Several test modules were written before their corresponding
+    ``frontend_visualqa`` module existed, so each defined its own
+    ``_import_X_module`` helper with this same import-or-skip guard. This is
+    the shared version they all delegate to now.
+    """
+    try:
+        return importlib.import_module(module_path)
+    except ModuleNotFoundError as exc:
+        if exc.name and exc.name.startswith("frontend_visualqa"):
+            pytest.skip(f"{module_path} is not implemented yet")
+        raise
 
 
 def instantiate_with_supported_kwargs(factory: Any, **candidates: Any) -> Any:

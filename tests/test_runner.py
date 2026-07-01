@@ -13,6 +13,7 @@ from frontend_visualqa.claim_parser import parse_claims_file
 from fakes import (
     FakeArtifactManager,
     FakeNavigatorClient,
+    import_or_skip,
     instantiate_with_supported_kwargs,
     is_bootstrap_step_artifact,
 )
@@ -29,14 +30,7 @@ from frontend_visualqa.schemas import (
 
 
 def _import_runner_module():
-    import importlib
-
-    try:
-        return importlib.import_module("frontend_visualqa.runner")
-    except ModuleNotFoundError as exc:
-        if exc.name and exc.name.startswith("frontend_visualqa"):
-            pytest.skip("frontend_visualqa.runner is not implemented in this worktree yet")
-        raise
+    return import_or_skip("frontend_visualqa.runner")
 
 
 @dataclass
