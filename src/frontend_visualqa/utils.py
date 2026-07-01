@@ -60,6 +60,24 @@ async def safe_async_method_call(
         logger.debug("%s %s failed", log_label or type(target).__name__, method_name, exc_info=True)
 
 
+async def safe_page_evaluate(
+    page: Any,
+    script: str,
+    arg: object | None = None,
+    *,
+    default: Any = None,
+    log_label: str = "Page",
+) -> Any:
+    """Best-effort ``page.evaluate``; return ``default`` on failure (logged at DEBUG)."""
+    try:
+        if arg is None:
+            return await page.evaluate(script)
+        return await page.evaluate(script, arg)
+    except Exception:
+        logger.debug("%s evaluate failed (best-effort)", log_label, exc_info=True)
+        return default
+
+
 def safe_callback_call(
     callback: Callable[..., Any] | None,
     *args: Any,
