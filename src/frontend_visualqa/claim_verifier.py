@@ -31,7 +31,7 @@ from frontend_visualqa.prompts import (
 )
 from frontend_visualqa.schemas import ClaimPage, ClaimProof, ClaimResult, ClaimStatus, ClaimTrace
 from frontend_visualqa.text_utils import clip_text
-from frontend_visualqa.tool_arguments import parse_tool_arguments, tool_call_name
+from frontend_visualqa.tool_arguments import parse_tool_arguments, tool_call_arguments_as_text, tool_call_name
 from frontend_visualqa.utils import safe_async_method_call, safe_method_call
 
 if TYPE_CHECKING:
@@ -690,7 +690,7 @@ class ClaimVerifier:
         if parse_failed:
             # The raw (unparseable) argument string is what the executor's
             # [ERROR] result will echo; treat the whole string as sensitive.
-            sensitive_text = self._tool_call_arguments_as_text(tool_call)
+            sensitive_text = tool_call_arguments_as_text(tool_call)
             tool_arguments = {sensitive_key: REDACTED_TYPE_TEXT}
         else:
             sensitive_text = str(tool_arguments[sensitive_key])
@@ -768,18 +768,6 @@ class ClaimVerifier:
             if isinstance(value, str):
                 redacted[key] = value.replace(sensitive_text, REDACTED_TYPE_TEXT)
         return redacted
-
-    @staticmethod
-    def _tool_call_arguments_as_text(tool_call: Any) -> str:
-        arguments = getattr(getattr(tool_call, "function", tool_call), "arguments", "")
-        if isinstance(arguments, str):
-            return arguments
-        if isinstance(arguments, dict):
-            try:
-                return json.dumps(arguments)
-            except TypeError:
-                pass
-        return str(arguments)
 
     @staticmethod
     def _extract_json_verdict(response: Any) -> tuple[str, str] | None:

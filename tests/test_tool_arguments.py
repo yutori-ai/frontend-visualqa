@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from frontend_visualqa.errors import BrowserActionError
-from frontend_visualqa.tool_arguments import parse_tool_arguments, tool_call_name
+from frontend_visualqa.tool_arguments import parse_tool_arguments, tool_call_arguments_as_text, tool_call_name
 
 
 def _tool_call(arguments: object) -> SimpleNamespace:
@@ -48,3 +48,15 @@ def test_tool_call_name_falls_back_to_top_level_name() -> None:
 
 def test_tool_call_name_defaults_to_empty_when_missing() -> None:
     assert tool_call_name(SimpleNamespace()) == ""
+
+
+def test_tool_call_arguments_as_text_passes_through_string() -> None:
+    assert tool_call_arguments_as_text(_tool_call("{invalid")) == "{invalid"
+
+
+def test_tool_call_arguments_as_text_encodes_dict_as_json() -> None:
+    assert tool_call_arguments_as_text(_tool_call({"text": "ATMOS"})) == '{"text": "ATMOS"}'
+
+
+def test_tool_call_arguments_as_text_defaults_to_empty_when_missing() -> None:
+    assert tool_call_arguments_as_text(SimpleNamespace()) == ""

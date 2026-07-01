@@ -19,6 +19,25 @@ def tool_call_name(tool_call: Any) -> str:
     return getattr(getattr(tool_call, "function", tool_call), "name", "")
 
 
+def tool_call_arguments_as_text(tool_call: Any) -> str:
+    """Return ``tool_call``'s raw arguments as text, best-effort.
+
+    Unlike :func:`parse_tool_arguments`, this never raises: dict arguments are
+    JSON-encoded, string arguments are passed through, and anything else falls
+    back to ``str()``. Useful for callers that need a text representation even
+    when the arguments are malformed (e.g. redacting an unparseable payload).
+    """
+    arguments = getattr(getattr(tool_call, "function", tool_call), "arguments", "")
+    if isinstance(arguments, str):
+        return arguments
+    if isinstance(arguments, dict):
+        try:
+            return json.dumps(arguments)
+        except TypeError:
+            pass
+    return str(arguments)
+
+
 def parse_tool_arguments(tool_call: Any) -> dict[str, Any]:
     """Parse chat-completions tool arguments into a JSON object."""
 
