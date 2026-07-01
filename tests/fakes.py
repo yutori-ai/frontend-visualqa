@@ -5,8 +5,12 @@ from __future__ import annotations
 import importlib
 import inspect
 import json
+from collections.abc import Iterator
 from dataclasses import dataclass, field
+from functools import partial
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from threading import Thread
 from types import ModuleType
 from typing import Any
 
@@ -17,6 +21,32 @@ from frontend_visualqa.artifacts import RunArtifacts
 
 def is_bootstrap_step_artifact(path: str | None) -> bool:
     return bool(path) and Path(path).name.startswith("step-00")
+
+
+class _SilentStaticHandler(SimpleHTTPRequestHandler):
+    """SimpleHTTPRequestHandler that suppresses per-request access logging."""
+
+    def log_message(self, format: str, *args: object) -> None:  # noqa: A003
+        return
+
+
+def serve_static_directory(directory: Path) -> Iterator[str]:
+    """Start a background ThreadingHTTPServer over *directory*, yielding its base URL.
+
+    Several test modules each defined their own identical static-file-server fixture
+    (an `_SilentStaticHandler` plus start/yield/shutdown boilerplate) to serve
+    `examples/` for live browser tests. This is the shared implementation they wrap.
+    """
+    handler = partial(_SilentStaticHandler, directory=str(directory))
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_port}"
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+        server.server_close()
 
 
 def import_or_skip(module_path: str) -> ModuleType:
