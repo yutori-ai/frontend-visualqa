@@ -13,7 +13,7 @@ from frontend_visualqa.claim_verifier import ClaimVerifier
 from frontend_visualqa.runner import VisualQARunner
 from frontend_visualqa.schemas import ViewportConfig
 
-from fakes import FakeFunction, FakeMessage, FakeNavigatorClient, FakeResponse, FakeToolCall, serve_static_directory
+from fakes import FakeNavigatorClient, FakeResponse, serve_static_directory, tool_call_message
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
@@ -99,9 +99,8 @@ async def instrumented_overlay_lifecycle(runner, OverlayController, run_kwargs):
             except Exception as exc:  # pragma: no cover
                 error = exc
             finally:
-                lifecycle_samples.append(
-                    {"phase": phase_name, "state": await _record_state(self), "error": error}
-                )
+                lifecycle_samples.append({"phase": phase_name, "state": await _record_state(self), "error": error})
+
         return instrumented
 
     OverlayController.claim_started = _make_instrumented("after_claim_started", originals["claim_started"])
@@ -133,17 +132,7 @@ async def test_live_runner_executes_real_browser_flow_and_passes_modal_claim(
     runner = _build_live_runner(
         tmp_path=tmp_path,
         responses=[
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-1",
-                        function=FakeFunction(
-                            name="left_click",
-                            arguments=json.dumps({"coordinates": [328, 435]}),
-                        ),
-                    )
-                ]
-            ),
+            tool_call_message(name="left_click", arguments=json.dumps({"coordinates": [328, 435]})),
             FakeResponse(parsed_json={"status": "passed", "finding": "The modal title reads Edit Task."}),
         ],
     )
@@ -180,7 +169,12 @@ async def test_live_runner_downgrades_false_positive_button_claim_with_grounding
     runner = _build_live_runner(
         tmp_path=tmp_path,
         responses=[
-            FakeResponse(parsed_json={ "status": "passed", "finding": "The Show Save Confirmation button is visible without scrolling.", })
+            FakeResponse(
+                parsed_json={
+                    "status": "passed",
+                    "finding": "The Show Save Confirmation button is visible without scrolling.",
+                }
+            )
         ],
     )
 
@@ -212,17 +206,7 @@ async def test_live_runner_headed_overlay_hides_restores_and_cleans_up(
         tmp_path=tmp_path,
         headless=False,
         responses=[
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-1",
-                        function=FakeFunction(
-                            name="left_click",
-                            arguments=json.dumps({"coordinates": [328, 435]}),
-                        ),
-                    )
-                ]
-            ),
+            tool_call_message(name="left_click", arguments=json.dumps({"coordinates": [328, 435]})),
             FakeResponse(parsed_json={"status": "passed", "finding": "The modal title reads Edit Task."}),
         ],
     )
@@ -324,7 +308,12 @@ async def test_live_runner_headed_overlay_zero_action_path_skips_hide_restore(
         tmp_path=tmp_path,
         headless=False,
         responses=[
-            FakeResponse(parsed_json={ "status": "passed", "finding": "The page title reads Frontend Visual QA Playground.", })
+            FakeResponse(
+                parsed_json={
+                    "status": "passed",
+                    "finding": "The page title reads Frontend Visual QA Playground.",
+                }
+            )
         ],
     )
 
