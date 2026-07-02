@@ -230,7 +230,7 @@ async def test_execute_action_left_click_scales_coordinates_before_dispatch() ->
         settle_delay_seconds=0,
     )
     page = FakePage()
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
 
     await _call_execute_action(executor, page, "left_click", {"coordinates": [500, 250]}, viewport)
 
@@ -258,7 +258,7 @@ async def test_navigation_actions_wait_for_domcontentloaded(
         settle_delay_seconds=0,
     )
     page = FakePage()
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
 
     await _call_execute_action(executor, page, action_name, arguments, viewport)
 
@@ -276,7 +276,7 @@ async def test_execute_action_type_and_scroll_use_keyboard_and_mouse_inputs() ->
         settle_delay_seconds=0,
     )
     page = FakePage()
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
 
     await _call_execute_action(
         executor,
@@ -308,7 +308,7 @@ async def test_execute_action_supports_hover_drag_and_multi_click_variants() -> 
         settle_delay_seconds=0,
     )
     page = FakePage()
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
 
     await _call_execute_action(executor, page, "hover", {"coordinates": [250, 500]}, viewport)
     await _call_execute_action(
@@ -357,7 +357,7 @@ async def test_execute_action_left_click_previews_before_dispatch_and_waits_for_
     )
     executor.overlay = overlay
 
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
     task = asyncio.create_task(_call_execute_action(executor, page, "left_click", {"coordinates": [500, 250]}, viewport))
 
     await asyncio.wait_for(preview_started.wait(), timeout=1)
@@ -400,7 +400,7 @@ async def test_execute_action_navigation_shows_status_before_dispatch() -> None:
     )
     executor.overlay = overlay
 
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
     trace = await _call_execute_action(
         executor,
         page,
@@ -437,7 +437,7 @@ async def test_execute_action_semantic_key_shortcut_uses_single_overlay_footer()
     )
     executor.overlay = overlay
 
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
     trace = await _call_execute_action(executor, page, "key_press", {"key_comb": "F5"}, viewport)
 
     assert trace == "key_press(F5)"
@@ -471,7 +471,7 @@ async def test_execute_action_hover_previews_before_mouse_move() -> None:
     )
     executor.overlay = overlay
 
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
     trace = await _call_execute_action(executor, page, "hover", {"coordinates": [250, 500]}, viewport)
 
     assert trace == "hover([320, 400])"
@@ -490,7 +490,7 @@ async def test_execute_action_mouse_move_and_ref_resolution_use_sdk_tool_helpers
     )
     page = FakePage()
     page.evaluate_results = [{"success": True, "coordinates": [301, 199]}]
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
 
     trace = await _call_execute_action(executor, page, "mouse_move", {"ref": "hero-button"}, viewport)
 
@@ -508,7 +508,7 @@ async def test_execute_action_click_modifier_holds_and_releases_keys() -> None:
         settle_delay_seconds=0,
     )
     page = FakePage()
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
 
     trace = await _call_execute_action(
         executor,
@@ -557,7 +557,7 @@ async def test_execute_action_drag_previews_before_drag_motion() -> None:
     )
     executor.overlay = overlay
 
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
     trace = await _call_execute_action(
         executor,
         page,
@@ -584,7 +584,7 @@ async def test_execute_action_key_press_supports_shortcuts_and_semantic_navigati
         settle_delay_seconds=0,
     )
     page = FakePage()
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
 
     await _call_execute_action(executor, page, "key_press", {"key": "ctrl+a"}, viewport)
     await _call_execute_action(executor, page, "key_press", {"key_comb": "F5"}, viewport)
@@ -605,7 +605,7 @@ async def test_execute_action_key_press_supports_repeated_key_sequences() -> Non
         settle_delay_seconds=0,
     )
     page = FakePage()
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
 
     trace = await _call_execute_action(executor, page, "key_press", {"key": "down down enter"}, viewport)
 
@@ -622,7 +622,7 @@ async def test_execute_action_key_press_ignores_zoom_shortcuts() -> None:
         settle_delay_seconds=0,
     )
     page = FakePage()
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
 
     trace = await _call_execute_action(executor, page, "key_press", {"key": "ctrl+minus"}, viewport)
 
@@ -639,7 +639,7 @@ async def test_execute_action_hold_key_supports_duration_and_fallback_press(monk
         settle_delay_seconds=0,
     )
     page = FakePage()
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
 
     async def _noop_sleep(_: float) -> None:
         return None
@@ -665,7 +665,7 @@ async def test_execute_action_screenshot_is_a_no_op_for_n1_default_tool_calls() 
         settle_delay_seconds=0,
     )
     page = FakePage()
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
 
     trace = await _call_execute_action(executor, page, "screenshot", {}, viewport)
 
@@ -683,7 +683,7 @@ async def test_execute_action_rejects_invalid_scroll_direction() -> None:
         settle_delay_seconds=0,
     )
     page = FakePage()
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
 
     with pytest.raises(module.BrowserActionError, match="unsupported scroll direction"):
         await _call_execute_action(
@@ -704,7 +704,7 @@ async def test_execute_tool_call_runs_find_without_counting_as_interaction(monke
         settle_delay_seconds=0,
     )
     page = FakePage()
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
 
     async def _fake_evaluate_tool_script(page_arg: Any, script: str, text: str) -> dict[str, Any]:
         assert page_arg is page
@@ -735,7 +735,7 @@ async def test_execute_action_click_modifier_released_on_failure() -> None:
         settle_delay_seconds=0,
     )
     page = FakePage()
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
 
     async def _failing_click(*_args: Any, **_kwargs: Any) -> None:
         raise RuntimeError("click exploded")
@@ -766,7 +766,7 @@ async def test_resolve_coordinates_falls_back_to_raw_when_ref_fails() -> None:
     page = FakePage()
     # Queue a failed evaluate result for ref resolution
     page.evaluate_results.append({"success": False, "message": "element not found"})
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
 
     trace = await _call_execute_action(
         executor, page, "left_click",
@@ -790,7 +790,7 @@ async def test_resolve_coordinates_raises_when_ref_fails_and_no_coords() -> None
     )
     page = FakePage()
     page.evaluate_results.append({"success": False, "message": "element not found"})
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
 
     with pytest.raises(module.BrowserActionError, match="element not found"):
         await _call_execute_action(
@@ -810,7 +810,7 @@ async def test_execute_action_type_masks_text_when_focused_element_is_password()
     )
     page = FakePage()
     page.evaluate_results.append(True)  # focused element is a password input
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
 
     trace = await _call_execute_action(executor, page, "type", {"text": "hunter2"}, viewport)
 
@@ -829,7 +829,7 @@ async def test_execute_action_type_keeps_text_for_non_password_fields() -> None:
     )
     page = FakePage()
     page.evaluate_results.append(False)  # focused element is not a password input
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
 
     trace = await _call_execute_action(executor, page, "type", {"text": "hello world"}, viewport)
 
@@ -846,7 +846,7 @@ async def test_execute_tool_call_set_element_value_masks_password_values(monkeyp
         settle_delay_seconds=0,
     )
     page = FakePage()
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
 
     async def _is_password(page_arg: Any, ref: str) -> bool:
         assert page_arg is page
@@ -886,7 +886,7 @@ async def test_execute_action_wait_caps_model_requested_duration(monkeypatch: py
         settle_delay_seconds=0,
     )
     page = FakePage()
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
     sleeps: list[float] = []
     real_sleep = asyncio.sleep
 
@@ -913,7 +913,7 @@ async def test_execute_action_type_masks_text_when_password_detection_fails() ->
         settle_delay_seconds=0,
     )
     page = FakePage()  # no evaluate result queued -> detection error
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
 
     trace = await _call_execute_action(executor, page, "type", {"text": "maybe-secret"}, viewport)
 

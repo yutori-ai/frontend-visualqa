@@ -141,7 +141,7 @@ async def test_live_runner_executes_real_browser_flow_and_passes_modal_claim(
         result = await runner.run(
             url=f"{example_server}/test_page.html",
             claims=["The modal title reads 'Edit Task'"],
-            viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+            viewport=ViewportConfig(),
             navigation_hint="Click the first task row to open the task modal before judging the claim.",
         )
     finally:
@@ -189,7 +189,7 @@ async def test_live_runner_downgrades_false_positive_button_claim_with_grounding
         result = await runner.run(
             url=f"{example_server}/test_page.html",
             claims=["The Save button is visible without scrolling"],
-            viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+            viewport=ViewportConfig(),
         )
     finally:
         await runner.close()
@@ -242,7 +242,7 @@ async def test_live_runner_headed_overlay_hides_restores_and_cleans_up(
     run_kwargs = dict(
         url=f"{example_server}/test_page.html",
         claims=["The modal title reads 'Edit Task'"],
-        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+        viewport=ViewportConfig(),
         navigation_hint="Click the first task row to open the task modal before judging the claim.",
         visualize=True,
     )
@@ -354,7 +354,7 @@ async def test_live_runner_headed_overlay_zero_action_path_skips_hide_restore(
     run_kwargs = dict(
         url=f"{example_server}/test_page.html",
         claims=["The page title reads 'Frontend Visual QA Playground'"],
-        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+        viewport=ViewportConfig(),
         visualize=True,
     )
 
