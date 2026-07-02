@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from fakes import assert_claim_result_payload_shape, import_or_skip
+from fakes import assert_claim_result_payload_shape, import_or_skip, make_claim_result
 from frontend_visualqa.claim_parser import ParsedClaimLine, ParsedClaimsFile, parse_claims_file
 from frontend_visualqa.schemas import ClaimResult, RunResult, ViewportConfig
 
@@ -248,33 +248,19 @@ def test_ctrf_reporter_maps_inconclusive_and_not_testable(tmp_path: Path) -> Non
         session_key="default",
         run_name=None,
         results=[
-            ClaimResult(
+            make_claim_result(
                 claim="Inconclusive claim",
                 status="inconclusive",
                 finding="Could not determine.",
-                proof=None,
-                page={"url": "http://localhost:3000", "viewport": viewport},
-                trace={
-                    "steps_taken": 0,
-                    "wrong_page_recovered": False,
-                    "screenshot_paths": [],
-                    "actions": [],
-                    "trace_path": None,
-                },
+                url="http://localhost:3000",
+                viewport=viewport,
             ),
-            ClaimResult(
+            make_claim_result(
                 claim="Not testable claim",
                 status="not_testable",
                 finding="Server was down.",
-                proof=None,
-                page={"url": "http://localhost:3000", "viewport": viewport},
-                trace={
-                    "steps_taken": 0,
-                    "wrong_page_recovered": False,
-                    "screenshot_paths": [],
-                    "actions": [],
-                    "trace_path": None,
-                },
+                url="http://localhost:3000",
+                viewport=viewport,
             ),
         ],
         summary="0/2 claims passed. 2 inconclusive.",
@@ -397,33 +383,19 @@ def test_markdown_reporter_preserves_navigation_hint_metadata_when_reannotated(t
         session_key="default",
         run_name="login-flow",
         results=[
-            ClaimResult(
+            make_claim_result(
                 claim='After logging in, the dashboard shows "Welcome back, Developer"',
                 status="failed",
                 finding="The page is still on the login screen.",
-                proof=None,
-                page={"url": "http://localhost:3000/login", "viewport": viewport},
-                trace={
-                    "steps_taken": 0,
-                    "wrong_page_recovered": False,
-                    "screenshot_paths": [],
-                    "actions": [],
-                    "trace_path": None,
-                },
+                url="http://localhost:3000/login",
+                viewport=viewport,
             ),
-            ClaimResult(
+            make_claim_result(
                 claim="The API Calls Today stat card shows the value 1,247",
                 status="passed",
                 finding="The stat card shows 1,247.",
-                proof=None,
-                page={"url": "http://localhost:3000/dashboard", "viewport": viewport},
-                trace={
-                    "steps_taken": 0,
-                    "wrong_page_recovered": False,
-                    "screenshot_paths": [],
-                    "actions": [],
-                    "trace_path": None,
-                },
+                url="http://localhost:3000/dashboard",
+                viewport=viewport,
             ),
         ],
         summary="1/2 claims passed. 1 failed.",
@@ -494,13 +466,12 @@ def test_markdown_reporter_re_annotation_strips_stale_details_and_summary(tmp_pa
         session_key="default",
         run_name=None,
         results=[
-            ClaimResult(
+            make_claim_result(
                 claim="The heading reads 'Dashboard'",
                 status="failed",
                 finding="Heading says 'Home' instead.",
-                proof=None,
-                page={"url": "http://localhost:3000", "viewport": viewport},
-                trace={"steps_taken": 0, "wrong_page_recovered": False, "screenshot_paths": [], "actions": [], "trace_path": None},
+                url="http://localhost:3000",
+                viewport=viewport,
             ),
         ],
         summary="0/1 claims passed. 1 failed.",
@@ -528,13 +499,12 @@ def test_markdown_reporter_re_annotation_strips_stale_details_and_summary(tmp_pa
         session_key="default",
         run_name=None,
         results=[
-            ClaimResult(
+            make_claim_result(
                 claim="The heading reads 'Dashboard'",
                 status="passed",
                 finding="Heading matches.",
-                proof=None,
-                page={"url": "http://localhost:3000", "viewport": viewport},
-                trace={"steps_taken": 0, "wrong_page_recovered": False, "screenshot_paths": [], "actions": [], "trace_path": None},
+                url="http://localhost:3000",
+                viewport=viewport,
             ),
         ],
         summary="1/1 claims passed.",
@@ -581,19 +551,12 @@ def test_markdown_reporter_strips_legacy_unmarked_annotations_on_rerun(tmp_path:
         session_key="default",
         run_name=None,
         results=[
-            ClaimResult(
+            make_claim_result(
                 claim="The heading reads 'Dashboard'",
                 status="passed",
                 finding="Heading matches.",
-                proof=None,
-                page={"url": "http://localhost:3000", "viewport": viewport},
-                trace={
-                    "steps_taken": 0,
-                    "wrong_page_recovered": False,
-                    "screenshot_paths": [],
-                    "actions": [],
-                    "trace_path": None,
-                },
+                url="http://localhost:3000",
+                viewport=viewport,
             ),
         ],
         summary="1/1 claims passed.",

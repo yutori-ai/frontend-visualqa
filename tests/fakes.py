@@ -17,6 +17,7 @@ from typing import Any
 import pytest
 
 from frontend_visualqa.artifacts import RunArtifacts
+from frontend_visualqa.schemas import ClaimResult, ViewportConfig
 
 
 def is_bootstrap_step_artifact(path: str | None) -> bool:
@@ -100,6 +101,43 @@ def assert_claim_result_payload_shape(result: dict[str, Any]) -> None:
     trace = result["trace"]
     assert isinstance(trace, dict)
     assert set(trace) == {"steps_taken", "wrong_page_recovered", "screenshot_paths", "actions", "trace_path"}
+
+
+_EMPTY_CLAIM_TRACE: dict[str, Any] = {
+    "steps_taken": 0,
+    "wrong_page_recovered": False,
+    "screenshot_paths": [],
+    "actions": [],
+    "trace_path": None,
+}
+
+
+def make_claim_result(
+    *,
+    claim: str,
+    status: str,
+    finding: str,
+    url: str,
+    viewport: ViewportConfig,
+    proof: dict[str, Any] | None = None,
+    trace: dict[str, Any] | None = None,
+) -> ClaimResult:
+    """Build a ``ClaimResult``, defaulting to the no-proof/empty-trace shape most fixtures use.
+
+    ``test_reporters.py`` independently hand-built this same no-proof/empty-trace ``ClaimResult``
+    skeleton (or a full-proof variant with an explicit ``proof``/``trace``) at every call site,
+    differing only in claim/status/finding/url. This is the shared constructor they delegate to
+    now — the write-side mirror of `assert_claim_result_payload_shape`, which already consolidated
+    the read/assert side.
+    """
+    return ClaimResult(
+        claim=claim,
+        status=status,
+        finding=finding,
+        proof=proof,
+        page={"url": url, "viewport": viewport},
+        trace=trace if trace is not None else dict(_EMPTY_CLAIM_TRACE),
+    )
 
 
 def instantiate_with_supported_kwargs(factory: Any, **candidates: Any) -> Any:
