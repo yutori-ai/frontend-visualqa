@@ -3,9 +3,8 @@ from __future__ import annotations
 import asyncio
 import base64
 import io
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
-from threading import Thread
 
 import pytest
 from PIL import Image
@@ -19,7 +18,7 @@ from frontend_visualqa.browser import (
 )
 from frontend_visualqa.schemas import BrowserConfig, BrowserMode, DEFAULT_PERSISTENT_USER_DATA_DIR, ViewportConfig
 
-from fakes import serve_static_directory
+from fakes import serve_http, serve_static_directory
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 
@@ -75,15 +74,7 @@ def example_url() -> str:
 
 @pytest.fixture()
 def cookie_server() -> str:
-    server = ThreadingHTTPServer(("127.0.0.1", 0), _CookieHandler)
-    thread = Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    try:
-        yield f"http://127.0.0.1:{server.server_port}"
-    finally:
-        server.shutdown()
-        thread.join(timeout=5)
-        server.server_close()
+    yield from serve_http(_CookieHandler)
 
 
 def test_image_bytes_to_data_url_prefixes_payload() -> None:

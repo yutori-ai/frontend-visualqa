@@ -8,7 +8,7 @@ import json
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from functools import partial
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler, SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from threading import Thread
 from types import ModuleType
@@ -30,14 +30,14 @@ class _SilentStaticHandler(SimpleHTTPRequestHandler):
         return
 
 
-def serve_static_directory(directory: Path) -> Iterator[str]:
-    """Start a background ThreadingHTTPServer over *directory*, yielding its base URL.
+def serve_http(handler: type[BaseHTTPRequestHandler] | partial) -> Iterator[str]:
+    """Start a background ThreadingHTTPServer with *handler*, yielding its base URL.
 
-    Several test modules each defined their own identical static-file-server fixture
-    (an `_SilentStaticHandler` plus start/yield/shutdown boilerplate) to serve
-    `examples/` for live browser tests. This is the shared implementation they wrap.
+    Several test modules each defined their own identical start/yield/shutdown/join/close
+    boilerplate for a one-off `ThreadingHTTPServer`, differing only in the request handler
+    (a static-file handler, a cookie-setting handler, etc). This is the shared lifecycle they
+    all delegate to now.
     """
-    handler = partial(_SilentStaticHandler, directory=str(directory))
     server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -47,6 +47,17 @@ def serve_static_directory(directory: Path) -> Iterator[str]:
         server.shutdown()
         thread.join(timeout=5)
         server.server_close()
+
+
+def serve_static_directory(directory: Path) -> Iterator[str]:
+    """Start a background ThreadingHTTPServer over *directory*, yielding its base URL.
+
+    Several test modules each defined their own identical static-file-server fixture
+    (an `_SilentStaticHandler` plus start/yield/shutdown boilerplate) to serve
+    `examples/` for live browser tests. This is the shared implementation they wrap.
+    """
+    handler = partial(_SilentStaticHandler, directory=str(directory))
+    yield from serve_http(handler)
 
 
 def import_or_skip(module_path: str) -> ModuleType:
