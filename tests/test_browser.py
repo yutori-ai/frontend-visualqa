@@ -205,7 +205,7 @@ async def test_browser_manager_capture_screenshot_falls_back_to_playwright_in_he
         session_key="default",
         context=context,  # type: ignore[arg-type]
         page=page,  # type: ignore[arg-type]
-        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+        viewport=ViewportConfig(),
     )
     manager = BrowserManager(config=BrowserConfig(headless=False))
 
@@ -260,7 +260,7 @@ async def test_browser_manager_capture_screenshot_times_out_stuck_cdp_and_falls_
         session_key="default",
         context=context,  # type: ignore[arg-type]
         page=page,  # type: ignore[arg-type]
-        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+        viewport=ViewportConfig(),
     )
     manager = BrowserManager(config=BrowserConfig(headless=True))
 
@@ -316,7 +316,7 @@ def test_browser_manager_normalize_cdp_capture_image_resizes_to_target_size() ->
 
 @pytest.mark.asyncio
 async def test_browser_manager_navigates_reuses_session_and_captures_webp(example_url: str) -> None:
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
 
     async with BrowserManager(headless=True, settle_delay_seconds=0) as manager:
         session = await manager.get_session("qa-fixture", viewport=viewport)
@@ -377,7 +377,7 @@ async def test_browser_manager_restart_session_preserves_last_url(example_url: s
 
 @pytest.mark.asyncio
 async def test_example_fixture_supports_modal_tabs_search_and_toast(example_url: str) -> None:
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
 
     async with BrowserManager(headless=True, settle_delay_seconds=0) as manager:
         session = await manager.get_session("interactive-fixture", viewport=viewport)
@@ -415,7 +415,7 @@ async def test_browser_manager_persistent_mode_preserves_cookies_across_relaunch
         headless=True,
         settle_delay_seconds=0,
     )
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
 
     async with BrowserManager(config=config) as manager:
         session = await manager.get_session(viewport=viewport)
@@ -445,7 +445,7 @@ async def test_browser_manager_persistent_mode_accepts_initial_named_session_key
             settle_delay_seconds=0,
         )
     )
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
 
     try:
         session = await manager.get_session("authenticated", viewport=viewport)
@@ -582,7 +582,7 @@ async def test_browser_manager_persistent_mode_uses_dedicated_automation_page(
             settle_delay_seconds=0,
         )
     )
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
 
     try:
         await manager.ensure_browser(viewport)
@@ -611,7 +611,7 @@ async def test_browser_manager_persistent_mode_relaunches_for_dpr_change(
             settle_delay_seconds=0,
         )
     )
-    initial_viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    initial_viewport = ViewportConfig()
     refreshed_viewport = ViewportConfig(width=1280, height=800, device_scale_factor=2)
 
     try:
@@ -641,7 +641,7 @@ async def test_browser_manager_persistent_mode_recovers_after_external_context_c
             settle_delay_seconds=0,
         )
     )
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
 
     try:
         session = await manager.get_session("default", viewport=viewport)
@@ -705,7 +705,7 @@ async def test_browser_manager_capture_screenshot_times_out_stuck_layout_metrics
         session_key="default",
         context=context,  # type: ignore[arg-type]
         page=page,  # type: ignore[arg-type]
-        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+        viewport=ViewportConfig(),
     )
     manager = BrowserManager(config=BrowserConfig(headless=True))
 

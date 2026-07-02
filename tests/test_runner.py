@@ -193,7 +193,7 @@ def _build_runner(
     claim_verifier: Any | None = None,
     reporters: list[str] | None = None,
 ) -> tuple[Any, FakeBrowserManager, FakeClaimVerifier]:
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
     browser = browser_manager or FakeBrowserManager(viewport)
     verifier = claim_verifier or FakeClaimVerifier(verifier_results)
     artifacts = FakeArtifactManager(tmp_path, run_id="run-001")
@@ -314,7 +314,7 @@ async def test_runner_run_aggregates_claim_results_and_resets_between_claims(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     module = _import_runner_module()
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
     runner, browser, verifier = _build_runner(
         module,
         tmp_path,
@@ -360,7 +360,7 @@ async def test_runner_run_uses_per_claim_navigation_hints_and_falls_back_to_glob
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     module = _import_runner_module()
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
     runner, _, verifier = _build_runner(
         module,
         tmp_path,
@@ -392,7 +392,7 @@ async def test_runner_run_uses_second_claim_navigation_hint_override(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     module = _import_runner_module()
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
     runner, _, verifier = _build_runner(
         module,
         tmp_path,
@@ -424,7 +424,7 @@ async def test_runner_run_request_reuses_prevalidated_input(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     module = _import_runner_module()
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
     runner, browser, verifier = _build_runner(
         module,
         tmp_path,
@@ -461,7 +461,7 @@ async def test_runner_saves_video_when_recording_enabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     module = _import_runner_module()
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
     browser = FakeBrowserManager(viewport, config=BrowserConfig(record_video=True))
     runner, browser, verifier = _build_runner(
         module,
@@ -494,7 +494,7 @@ async def test_runner_saves_per_claim_videos_without_session_reuse(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     module = _import_runner_module()
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
     browser = FakeBrowserManager(viewport, config=BrowserConfig(record_video=True))
     runner, browser, verifier = _build_runner(
         module,
@@ -524,7 +524,7 @@ async def test_runner_saves_video_when_navigation_fails_after_recording_starts(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     module = _import_runner_module()
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
     browser = FakeBrowserManager(viewport, config=BrowserConfig(record_video=True))
     runner, browser, verifier = _build_runner(
         module,
@@ -568,7 +568,7 @@ async def test_runner_ignores_callback_exceptions(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     module = _import_runner_module()
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
     runner, _, _ = _build_runner(
         module,
         tmp_path,
@@ -627,7 +627,7 @@ async def test_runner_writes_rerunnable_markdown_report_from_claims_file(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     module = _import_runner_module()
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
     claims_file = tmp_path / "claims.md"
     claims_file.write_text(
         """# Dashboard checks
@@ -714,7 +714,7 @@ async def test_runner_manage_browser_proxies_status_restart_viewport_and_close(
     )
     viewport = ViewportConfig(width=390, height=844, device_scale_factor=1)
 
-    await browser.get_session("managed", viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1))
+    await browser.get_session("managed", viewport=ViewportConfig())
     status = await _call_manage_browser(runner, action="status", session_key="managed")
     assert status.browser_running is True
     assert status.browser_mode == BrowserMode.ephemeral
@@ -1183,7 +1183,7 @@ async def test_runner_marks_claim_not_testable_when_reset_between_claims_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     module = _import_runner_module()
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
     browser = ResetFailingBrowserManager(viewport)
     runner, _, verifier = _build_runner(
         module,
@@ -1234,7 +1234,7 @@ async def test_runner_marks_claim_not_testable_when_verifier_raises(
         monkeypatch=monkeypatch,
         claim_verifier=exploding_verifier,
     )
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
     events: list[tuple[str, int, str, str | None]] = []
 
     result = await _call_run(
@@ -1267,7 +1267,7 @@ async def test_runner_take_screenshot_returns_not_testable_result_on_navigation_
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     module = _import_runner_module()
-    browser = NavigationFailingBrowserManager(ViewportConfig(width=1280, height=800, device_scale_factor=1))
+    browser = NavigationFailingBrowserManager(ViewportConfig())
     runner, _, _ = _build_runner(
         module,
         tmp_path,
@@ -1294,7 +1294,7 @@ async def test_runner_marks_claim_inconclusive_when_claim_timeout_expires(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     module = _import_runner_module()
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
     slow_verifier = SlowClaimVerifier(delay_seconds=0.05, result=_result("Claim one", "passed", viewport))
     runner, _, _ = _build_runner(
         module,
@@ -1335,7 +1335,7 @@ async def test_runner_handles_timeout_error_when_claim_timeout_is_disabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     module = _import_runner_module()
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
     verifier = TimeoutClaimVerifier()
     runner, _, _ = _build_runner(
         module,
@@ -1376,7 +1376,7 @@ async def test_runner_uses_partial_claim_result_when_timeout_interrupts_verifier
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     module = _import_runner_module()
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
     partial_result = ClaimResult(
         claim="Claim one",
         status="inconclusive",
@@ -1440,7 +1440,7 @@ async def test_runner_uses_partial_claim_result_when_verifier_crashes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     module = _import_runner_module()
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
     partial_result = ClaimResult(
         claim="Claim one",
         status="inconclusive",
@@ -1505,7 +1505,7 @@ async def test_runner_marks_remaining_claims_inconclusive_when_run_timeout_expir
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     module = _import_runner_module()
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
     slow_verifier = SlowClaimVerifier(delay_seconds=0.05, result=_result("Claim one", "passed", viewport))
     runner, _, _ = _build_runner(
         module,
@@ -1549,7 +1549,7 @@ async def test_runner_preserves_partial_claim_result_when_run_timeout_interrupts
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     module = _import_runner_module()
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
     partial_result = ClaimResult(
         claim="Claim one",
         status="inconclusive",
@@ -1615,7 +1615,7 @@ async def test_runner_preserves_partial_claim_result_when_run_timeout_interrupts
 
 def test_build_not_testable_run_uses_aggregate_summary() -> None:
     module = _import_runner_module()
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
     request = VerifyVisualClaimsInput(
         url="http://fixture.local/page",
         claims=["Claim one", "Claim two"],
@@ -1645,7 +1645,7 @@ def test_runner_passes_browser_config_to_browser_manager(monkeypatch: pytest.Mon
     class CapturingBrowserManager(FakeBrowserManager):
         def __init__(self, *, config: BrowserConfig | None = None, **kwargs: Any) -> None:
             del kwargs
-            super().__init__(ViewportConfig(width=1280, height=800, device_scale_factor=1))
+            super().__init__(ViewportConfig())
             captured["config"] = config
 
     artifacts = FakeArtifactManager(tmp_path, run_id="run-001")
@@ -1675,7 +1675,7 @@ def test_runner_passes_browser_config_visualize_to_default_claim_verifier(
     class CapturingBrowserManager(FakeBrowserManager):
         def __init__(self, *, config: BrowserConfig | None = None, **kwargs: Any) -> None:
             del kwargs
-            super().__init__(ViewportConfig(width=1280, height=800, device_scale_factor=1))
+            super().__init__(ViewportConfig())
             captured["browser_config"] = config
 
     class CapturingClaimVerifier:
@@ -1718,7 +1718,7 @@ async def test_runner_preserves_injected_claim_verifier_visualize_default(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     module = _import_runner_module()
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
     browser = FakeBrowserManager(viewport)
     verifier = FakeClaimVerifier([_result("Claim one", "passed", viewport)])
     verifier._visualize = True
@@ -1765,7 +1765,7 @@ async def test_per_call_visualize_override_does_not_leak_across_requests(
     """Two sequential run_request calls with different visualize values must
     not leak the first call's override into the second call."""
     module = _import_runner_module()
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
     browser = FakeBrowserManager(viewport)
     verifier = FakeClaimVerifier(
         [
@@ -1837,7 +1837,7 @@ async def test_runner_invokes_reporters_after_run(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     module = _import_runner_module()
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
     runner, browser, verifier = _build_runner(
         module,
         tmp_path,
@@ -1869,7 +1869,7 @@ async def test_runner_writes_both_native_and_ctrf_reports(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     module = _import_runner_module()
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
     from frontend_visualqa.reporters import get_reporters
 
     reporters = get_reporters(["native", "ctrf"])
@@ -1929,7 +1929,7 @@ async def test_runner_ctrf_only_does_not_write_native_report(
 ) -> None:
     """When only ctrf is selected, run_result.json must not be written."""
     module = _import_runner_module()
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+    viewport = ViewportConfig()
     from frontend_visualqa.reporters import get_reporters
 
     reporters = get_reporters(["ctrf"])
