@@ -6,6 +6,7 @@ from typing import Any
 
 import pytest
 
+from fakes import assert_claim_result_payload_shape
 from frontend_visualqa import __version__
 from frontend_visualqa.errors import ConfigurationError
 from frontend_visualqa.schemas import BrowserConfig, BrowserMode, BrowserStatusResult, ClaimResult, RunResult, ScreenshotResult, ViewportConfig
@@ -32,21 +33,6 @@ def _sample_claim_result(*, url: str, viewport: ViewportConfig, claim: str = "Th
             "trace_path": None,
         },
     )
-
-
-def _assert_claim_result_payload_shape(result: dict[str, Any]) -> None:
-    assert set(result) == {"claim", "status", "finding", "proof", "page", "trace"}
-
-    proof = result["proof"]
-    assert proof is not None
-    assert set(proof) == {"screenshot_path", "step", "after_action", "text", "text_path"}
-
-    page = result["page"]
-    assert set(page) == {"url", "viewport"}
-    assert set(page["viewport"]) == {"width", "height", "device_scale_factor"}
-
-    trace = result["trace"]
-    assert set(trace) == {"steps_taken", "wrong_page_recovered", "screenshot_paths", "actions", "trace_path"}
 
 
 class FakeRunner:
@@ -226,7 +212,7 @@ def test_handle_verify_closes_runner_and_forwards_browser_config(monkeypatch: An
     assert emitted[0]["runner_version"] == __version__
     assert emitted[0]["run_name"] == "auth-ci"
     claim_result = emitted[0]["results"][0]
-    _assert_claim_result_payload_shape(claim_result)
+    assert_claim_result_payload_shape(claim_result)
     assert claim_result["finding"] == "The modal title reads Edit Task."
     assert claim_result["proof"]["step"] == 0
     assert claim_result["page"]["url"] == "http://localhost:3000/tasks/123"

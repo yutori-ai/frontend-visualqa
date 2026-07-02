@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from fakes import import_or_skip
+from fakes import assert_claim_result_payload_shape, import_or_skip
 from frontend_visualqa import __version__
 from frontend_visualqa.schemas import (
     BrowserConfig,
@@ -124,21 +124,6 @@ async def _call_tool(module: Any, tool_name: str, arguments: dict[str, Any]) -> 
     raise AssertionError(f"Unable to call {tool_name}: module does not expose a direct handler or FastMCP instance")
 
 
-def _assert_claim_result_payload_shape(result: dict[str, Any]) -> None:
-    assert set(result) == {"claim", "status", "finding", "proof", "page", "trace"}
-
-    proof = result["proof"]
-    assert proof is not None
-    assert set(proof) == {"screenshot_path", "step", "after_action", "text", "text_path"}
-
-    page = result["page"]
-    assert set(page) == {"url", "viewport"}
-    assert set(page["viewport"]) == {"width", "height", "device_scale_factor"}
-
-    trace = result["trace"]
-    assert set(trace) == {"steps_taken", "wrong_page_recovered", "screenshot_paths", "actions", "trace_path"}
-
-
 def _install_fake_runner(module: Any, fake_runner: FakeRunner, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(module, "VisualQARunner", lambda *args, **kwargs: fake_runner, raising=False)
     monkeypatch.setattr(module, "runner", fake_runner, raising=False)
@@ -210,7 +195,7 @@ async def test_mcp_server_verify_visual_claims_delegates_to_runner(monkeypatch: 
     assert result["runner_version"] == __version__
     assert result["run_name"] == "auth-ci"
     claim_result = result["results"][0]
-    _assert_claim_result_payload_shape(claim_result)
+    assert_claim_result_payload_shape(claim_result)
     assert claim_result["finding"] == "The modal is visible."
     assert claim_result["proof"]["after_action"] == "left_click([419, 348])"
     assert claim_result["page"]["url"] == payload["url"]

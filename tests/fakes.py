@@ -65,6 +65,32 @@ def import_or_skip(module_path: str) -> ModuleType:
         raise
 
 
+def assert_claim_result_payload_shape(result: dict[str, Any]) -> None:
+    """Assert a serialized ``ClaimResult`` dict has the expected top-level and nested keys.
+
+    ``test_cli.py``, ``test_mcp_server.py``, and ``test_reporters.py`` each defined an
+    identical (or near-identical) ``_assert_claim_result_payload_shape`` helper to check the
+    same claim/status/finding/proof/page/trace contract. This is the shared version they all
+    delegate to now.
+    """
+    assert set(result) == {"claim", "status", "finding", "proof", "page", "trace"}
+
+    proof = result["proof"]
+    assert proof is not None
+    assert set(proof) == {"screenshot_path", "step", "after_action", "text", "text_path"}
+
+    page = result["page"]
+    assert isinstance(page, dict)
+    assert set(page) == {"url", "viewport"}
+    viewport = page["viewport"]
+    assert isinstance(viewport, dict)
+    assert set(viewport) == {"width", "height", "device_scale_factor"}
+
+    trace = result["trace"]
+    assert isinstance(trace, dict)
+    assert set(trace) == {"steps_taken", "wrong_page_recovered", "screenshot_paths", "actions", "trace_path"}
+
+
 def instantiate_with_supported_kwargs(factory: Any, **candidates: Any) -> Any:
     signature = inspect.signature(factory)
     kwargs = {
