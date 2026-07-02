@@ -113,6 +113,22 @@ def instantiate_with_supported_kwargs(factory: Any, **candidates: Any) -> Any:
     return factory(**kwargs)
 
 
+def instantiate_with_aliased_attrs(factory: Any, aliases: dict[str, Any], **extra_candidates: Any) -> Any:
+    """Instantiate *factory* via `instantiate_with_supported_kwargs`, then force-set every entry
+    of *aliases* as an attribute on the built instance.
+
+    `test_runner.py`'s ``_build_runner`` and `test_claim_verifier.py`'s ``_build_claim_verifier``
+    each construct a not-yet-settled class using several aliased constructor-parameter names for
+    the same fake dependency (e.g. both ``browser`` and ``browser_manager``), then force-set every
+    alias as an attribute afterward so tests work regardless of which name the real constructor
+    ultimately accepts. This is the shared version they delegate to.
+    """
+    instance = instantiate_with_supported_kwargs(factory, **aliases, **extra_candidates)
+    for name, value in aliases.items():
+        setattr(instance, name, value)
+    return instance
+
+
 @dataclass
 class FakeFunction:
     name: str
