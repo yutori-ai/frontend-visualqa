@@ -22,7 +22,7 @@ from fakes import (
     FakeResponse,
     FakeToolCall,
     import_or_skip,
-    instantiate_with_supported_kwargs,
+    instantiate_with_aliased_attrs,
 )
 
 
@@ -128,28 +128,19 @@ def _build_claim_verifier(
     artifacts = artifact_manager or FakeArtifactManager(tmp_path)
     navigator_client = FakeNavigatorClient(responses)
 
-    verifier = instantiate_with_supported_kwargs(
+    verifier = instantiate_with_aliased_attrs(
         module.ClaimVerifier,
-        browser_manager=browser,
-        browser=browser,
-        action_executor=action_executor,
-        artifact_manager=artifacts,
-        artifacts=artifacts,
-        navigator_client=navigator_client,
-        client=navigator_client,
+        {
+            "browser_manager": browser,
+            "browser": browser,
+            "action_executor": action_executor,
+            "artifact_manager": artifacts,
+            "artifacts": artifacts,
+            "navigator_client": navigator_client,
+            "client": navigator_client,
+        },
         visualize=visualize,
     )
-
-    for attribute_name, value in {
-        "browser_manager": browser,
-        "browser": browser,
-        "action_executor": action_executor,
-        "artifact_manager": artifacts,
-        "artifacts": artifacts,
-        "navigator_client": navigator_client,
-        "client": navigator_client,
-    }.items():
-        setattr(verifier, attribute_name, value)
 
     return verifier, navigator_client, action_executor
 

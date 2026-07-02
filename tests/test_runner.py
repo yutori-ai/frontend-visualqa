@@ -14,6 +14,7 @@ from fakes import (
     FakeArtifactManager,
     FakeNavigatorClient,
     import_or_skip,
+    instantiate_with_aliased_attrs,
     instantiate_with_supported_kwargs,
     is_bootstrap_step_artifact,
 )
@@ -203,26 +204,19 @@ def _build_runner(
     monkeypatch.setattr(module, "ArtifactManager", lambda *args, **kwargs: artifacts, raising=False)
     monkeypatch.setattr(module, "NavigatorClient", lambda *args, **kwargs: FakeNavigatorClient([]), raising=False)
 
-    runner = instantiate_with_supported_kwargs(
+    runner = instantiate_with_aliased_attrs(
         module.VisualQARunner,
-        browser_manager=browser,
-        browser=browser,
-        claim_verifier=verifier,
-        verifier=verifier,
-        artifact_manager=artifacts,
-        artifacts=artifacts,
+        {
+            "browser_manager": browser,
+            "browser": browser,
+            "claim_verifier": verifier,
+            "verifier": verifier,
+            "artifact_manager": artifacts,
+            "artifacts": artifacts,
+        },
         reporters=reporters,
     )
 
-    for attribute_name, value in {
-        "browser_manager": browser,
-        "browser": browser,
-        "claim_verifier": verifier,
-        "verifier": verifier,
-        "artifact_manager": artifacts,
-        "artifacts": artifacts,
-    }.items():
-        setattr(runner, attribute_name, value)
     if hasattr(verifier, "browser_manager"):
         verifier.browser_manager = browser
 
