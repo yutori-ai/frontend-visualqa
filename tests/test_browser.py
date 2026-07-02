@@ -66,6 +66,39 @@ def _assert_webp_bytes(image_bytes: bytes, *, expected_size: tuple[int, int] | N
         assert image.size == expected_size
 
 
+# CDP-vs-Playwright screenshot fallback response for a 640x400 layout at a 320x200 viewport,
+# shared by the capture_screenshot fake-CDP-session tests below.
+_LAYOUT_METRICS_RESPONSE: dict[str, object] = {
+    "visualViewport": {"clientWidth": 640, "clientHeight": 400},
+    "cssVisualViewport": {"pageX": 0, "pageY": 0, "clientWidth": 320, "clientHeight": 200},
+}
+
+
+class _FakeScreenshotPage:
+    """Playwright page stand-in used by the capture_screenshot CDP-fallback tests."""
+
+    def __init__(self, *, color: tuple[int, int, int] = (0, 0, 255)) -> None:
+        self._color = color
+        self.screenshot_calls: list[dict[str, object]] = []
+
+    async def screenshot(self, **kwargs: object) -> bytes:
+        self.screenshot_calls.append(kwargs)
+        return _png_bytes(color=self._color)
+
+
+class _FakeCdpContext:
+    """Browser context stand-in that hands back a pre-built fake CDP session."""
+
+    def __init__(self, cdp_session: object) -> None:
+        self.cdp_session = cdp_session
+        self.new_cdp_session_calls = 0
+
+    async def new_cdp_session(self, page: object) -> object:
+        del page
+        self.new_cdp_session_calls += 1
+        return self.cdp_session
+
+
 @pytest.fixture()
 def example_url() -> str:
     for base_url in serve_static_directory(PACKAGE_ROOT / "examples"):
@@ -102,36 +135,16 @@ async def test_browser_manager_capture_screenshot_prefers_cdp_in_headed_mode() -
             resolved_params = params or {}
             self.send_calls.append((method, resolved_params))
             if method == "Page.getLayoutMetrics":
-                return {
-                    "visualViewport": {"clientWidth": 640, "clientHeight": 400},
-                    "cssVisualViewport": {"pageX": 0, "pageY": 0, "clientWidth": 320, "clientHeight": 200},
-                }
+                return _LAYOUT_METRICS_RESPONSE
             return {"data": base64.b64encode(self.payload).decode("ascii")}
 
         async def detach(self) -> None:
             self.detach_calls += 1
 
-    class FakeContext:
-        def __init__(self, cdp_session: FakeCDPSession) -> None:
-            self.cdp_session = cdp_session
-            self.new_cdp_session_calls = 0
-
-        async def new_cdp_session(self, page: object) -> FakeCDPSession:
-            self.new_cdp_session_calls += 1
-            return self.cdp_session
-
-    class FakePage:
-        def __init__(self) -> None:
-            self.screenshot_calls: list[dict[str, object]] = []
-
-        async def screenshot(self, **kwargs: object) -> bytes:
-            self.screenshot_calls.append(kwargs)
-            return _png_bytes(color=(255, 0, 0))
-
     png_payload = _png_bytes(size=(640, 400))
     cdp_session = FakeCDPSession(png_payload)
-    context = FakeContext(cdp_session)
-    page = FakePage()
+    context = _FakeCdpContext(cdp_session)
+    page = _FakeScreenshotPage()
     session = BrowserSession(
         session_key="default",
         context=context,  # type: ignore[arg-type]
@@ -174,33 +187,15 @@ async def test_browser_manager_capture_screenshot_falls_back_to_playwright_in_he
 
         async def send(self, method: str, params: dict[str, object] | None = None) -> dict[str, str]:
             if method == "Page.getLayoutMetrics":
-                return {
-                    "visualViewport": {"clientWidth": 640, "clientHeight": 400},
-                    "cssVisualViewport": {"pageX": 0, "pageY": 0, "clientWidth": 320, "clientHeight": 200},
-                }
+                return _LAYOUT_METRICS_RESPONSE
             raise RuntimeError("capture failed")
 
         async def detach(self) -> None:
             self.detach_calls += 1
 
-    class FakeContext:
-        def __init__(self, cdp_session: FakeCDPSession) -> None:
-            self.cdp_session = cdp_session
-
-        async def new_cdp_session(self, page: object) -> FakeCDPSession:
-            return self.cdp_session
-
-    class FakePage:
-        def __init__(self) -> None:
-            self.screenshot_calls: list[dict[str, object]] = []
-
-        async def screenshot(self, **kwargs: object) -> bytes:
-            self.screenshot_calls.append(kwargs)
-            return _png_bytes(color=(0, 0, 255))
-
     cdp_session = FakeCDPSession()
-    context = FakeContext(cdp_session)
-    page = FakePage()
+    context = _FakeCdpContext(cdp_session)
+    page = _FakeScreenshotPage()
     session = BrowserSession(
         session_key="default",
         context=context,  # type: ignore[arg-type]
@@ -228,34 +223,16 @@ async def test_browser_manager_capture_screenshot_times_out_stuck_cdp_and_falls_
 
         async def send(self, method: str, params: dict[str, object] | None = None) -> dict[str, str]:
             if method == "Page.getLayoutMetrics":
-                return {
-                    "visualViewport": {"clientWidth": 640, "clientHeight": 400},
-                    "cssVisualViewport": {"pageX": 0, "pageY": 0, "clientWidth": 320, "clientHeight": 200},
-                }
+                return _LAYOUT_METRICS_RESPONSE
             await asyncio.sleep(1)
             return {"data": ""}
 
         async def detach(self) -> None:
             self.detach_calls += 1
 
-    class FakeContext:
-        def __init__(self, cdp_session: FakeCDPSession) -> None:
-            self.cdp_session = cdp_session
-
-        async def new_cdp_session(self, page: object) -> FakeCDPSession:
-            return self.cdp_session
-
-    class FakePage:
-        def __init__(self) -> None:
-            self.screenshot_calls: list[dict[str, object]] = []
-
-        async def screenshot(self, **kwargs: object) -> bytes:
-            self.screenshot_calls.append(kwargs)
-            return _png_bytes(color=(0, 0, 255))
-
     cdp_session = FakeCDPSession()
-    context = FakeContext(cdp_session)
-    page = FakePage()
+    context = _FakeCdpContext(cdp_session)
+    page = _FakeScreenshotPage()
     session = BrowserSession(
         session_key="default",
         context=context,  # type: ignore[arg-type]
@@ -682,25 +659,9 @@ async def test_browser_manager_capture_screenshot_times_out_stuck_layout_metrics
         async def detach(self) -> None:
             self.detach_calls += 1
 
-    class FakeContext:
-        def __init__(self, cdp_session: FakeCDPSession) -> None:
-            self.cdp_session = cdp_session
-
-        async def new_cdp_session(self, page: object) -> FakeCDPSession:
-            del page
-            return self.cdp_session
-
-    class FakePage:
-        def __init__(self) -> None:
-            self.screenshot_calls: list[dict[str, object]] = []
-
-        async def screenshot(self, **kwargs: object) -> bytes:
-            self.screenshot_calls.append(kwargs)
-            return _png_bytes(color=(0, 0, 255))
-
     cdp_session = FakeCDPSession()
-    context = FakeContext(cdp_session)
-    page = FakePage()
+    context = _FakeCdpContext(cdp_session)
+    page = _FakeScreenshotPage()
     session = BrowserSession(
         session_key="default",
         context=context,  # type: ignore[arg-type]
