@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from fakes import import_or_skip
+from fakes import assert_claim_result_payload_shape, import_or_skip
 from frontend_visualqa.claim_parser import ParsedClaimLine, ParsedClaimsFile, parse_claims_file
 from frontend_visualqa.schemas import ClaimResult, RunResult, ViewportConfig
 
@@ -123,27 +123,6 @@ def _duplicate_claim_run_result(artifacts_dir: str) -> RunResult:
     )
 
 
-
-
-def _assert_claim_result_payload_shape(result: dict[str, object]) -> None:
-    assert set(result) == {"claim", "status", "finding", "proof", "page", "trace"}
-
-    proof = result["proof"]
-    assert proof is not None
-    assert set(proof) == {"screenshot_path", "step", "after_action", "text", "text_path"}
-
-    page = result["page"]
-    assert isinstance(page, dict)
-    assert set(page) == {"url", "viewport"}
-    viewport = page["viewport"]
-    assert isinstance(viewport, dict)
-    assert set(viewport) == {"width", "height", "device_scale_factor"}
-
-    trace = result["trace"]
-    assert isinstance(trace, dict)
-    assert set(trace) == {"steps_taken", "wrong_page_recovered", "screenshot_paths", "actions", "trace_path"}
-
-
 def test_native_reporter_writes_run_result_json(tmp_path: Path) -> None:
     module = _import_reporters_module()
     reporter = module.NativeReporter()
@@ -156,8 +135,8 @@ def test_native_reporter_writes_run_result_json(tmp_path: Path) -> None:
     assert data["run_name"] == "dashboard-ci"
     first_result = data["results"][0]
     second_result = data["results"][1]
-    _assert_claim_result_payload_shape(first_result)
-    _assert_claim_result_payload_shape(second_result)
+    assert_claim_result_payload_shape(first_result)
+    assert_claim_result_payload_shape(second_result)
     assert first_result["status"] == "passed"
     assert second_result["status"] == "failed"
     assert first_result["finding"] == "Visible heading matched 'Dashboard'."
