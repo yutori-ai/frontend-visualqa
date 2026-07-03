@@ -7,7 +7,7 @@ import pytest
 
 from fakes import assert_claim_result_payload_shape, import_or_skip, make_claim_result
 from frontend_visualqa.claim_parser import ParsedClaimLine, ParsedClaimsFile, parse_claims_file
-from frontend_visualqa.schemas import ClaimResult, RunResult, ViewportConfig
+from frontend_visualqa.schemas import RunResult, ViewportConfig
 
 
 def _import_reporters_module():
@@ -21,10 +21,12 @@ def _sample_run_result(artifacts_dir: str) -> RunResult:
         session_key="default",
         run_name="dashboard-ci",
         results=[
-            ClaimResult(
+            make_claim_result(
                 claim="The heading reads 'Dashboard'",
                 status="passed",
                 finding="Visible heading matched 'Dashboard'.",
+                url="http://localhost:3000/dashboard",
+                viewport=viewport,
                 proof={
                     "screenshot_path": "artifacts/run-001/claim-01/step-00.webp",
                     "step": 0,
@@ -32,7 +34,6 @@ def _sample_run_result(artifacts_dir: str) -> RunResult:
                     "text": None,
                     "text_path": None,
                 },
-                page={"url": "http://localhost:3000/dashboard", "viewport": viewport},
                 trace={
                     "steps_taken": 0,
                     "wrong_page_recovered": False,
@@ -41,10 +42,12 @@ def _sample_run_result(artifacts_dir: str) -> RunResult:
                     "trace_path": None,
                 },
             ),
-            ClaimResult(
+            make_claim_result(
                 claim="The progress bar shows 100%",
                 status="failed",
                 finding="Progress bar shows 65%, not 100%.",
+                url="http://localhost:3000/dashboard",
+                viewport=viewport,
                 proof={
                     "screenshot_path": "artifacts/run-001/claim-02/step-01.webp",
                     "step": 1,
@@ -52,7 +55,6 @@ def _sample_run_result(artifacts_dir: str) -> RunResult:
                     "text": "Visible text included '65%'.",
                     "text_path": "artifacts/run-001/claim-02/step-01.txt",
                 },
-                page={"url": "http://localhost:3000/dashboard", "viewport": viewport},
                 trace={
                     "steps_taken": 1,
                     "wrong_page_recovered": False,
@@ -77,10 +79,12 @@ def _duplicate_claim_run_result(artifacts_dir: str) -> RunResult:
         session_key="default",
         run_name="duplicate-claims",
         results=[
-            ClaimResult(
+            make_claim_result(
                 claim="The heading reads 'Dashboard'",
                 status="passed",
                 finding="Visible heading matched 'Dashboard'.",
+                url="http://localhost:3000/dashboard",
+                viewport=viewport,
                 proof={
                     "screenshot_path": "artifacts/run-002/claim-01/step-00.webp",
                     "step": 0,
@@ -88,7 +92,6 @@ def _duplicate_claim_run_result(artifacts_dir: str) -> RunResult:
                     "text": None,
                     "text_path": None,
                 },
-                page={"url": "http://localhost:3000/dashboard", "viewport": viewport},
                 trace={
                     "steps_taken": 0,
                     "wrong_page_recovered": False,
@@ -97,10 +100,12 @@ def _duplicate_claim_run_result(artifacts_dir: str) -> RunResult:
                     "trace_path": None,
                 },
             ),
-            ClaimResult(
+            make_claim_result(
                 claim="The heading reads 'Dashboard'",
                 status="failed",
                 finding="The second heading is missing.",
+                url="http://localhost:3000/dashboard",
+                viewport=viewport,
                 proof={
                     "screenshot_path": "artifacts/run-002/claim-02/step-01.webp",
                     "step": 1,
@@ -108,7 +113,6 @@ def _duplicate_claim_run_result(artifacts_dir: str) -> RunResult:
                     "text": None,
                     "text_path": None,
                 },
-                page={"url": "http://localhost:3000/dashboard", "viewport": viewport},
                 trace={
                     "steps_taken": 1,
                     "wrong_page_recovered": False,

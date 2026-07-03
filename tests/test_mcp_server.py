@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from fakes import assert_claim_result_payload_shape, import_or_skip
+from fakes import assert_claim_result_payload_shape, import_or_skip, make_claim_result
 from frontend_visualqa import __version__
 from frontend_visualqa.schemas import (
     BrowserConfig,
@@ -21,10 +21,12 @@ from frontend_visualqa.schemas import (
 
 
 def _sample_claim_result(*, url: str, viewport: ViewportConfig) -> ClaimResult:
-    return ClaimResult(
+    return make_claim_result(
         claim="The edit modal opens when clicking the task row",
         status="passed",
         finding="The modal is visible.",
+        url=url,
+        viewport=viewport,
         proof={
             "screenshot_path": "artifacts/run-fake/claim-01/step-01.webp",
             "step": 1,
@@ -32,7 +34,6 @@ def _sample_claim_result(*, url: str, viewport: ViewportConfig) -> ClaimResult:
             "text": None,
             "text_path": None,
         },
-        page={"url": url, "viewport": viewport},
         trace={
             "steps_taken": 1,
             "wrong_page_recovered": False,

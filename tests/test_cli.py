@@ -6,17 +6,19 @@ from typing import Any
 
 import pytest
 
-from fakes import assert_claim_result_payload_shape
+from fakes import assert_claim_result_payload_shape, make_claim_result
 from frontend_visualqa import __version__
 from frontend_visualqa.errors import ConfigurationError
 from frontend_visualqa.schemas import BrowserConfig, BrowserMode, BrowserStatusResult, ClaimResult, RunResult, ScreenshotResult, ViewportConfig
 
 
 def _sample_claim_result(*, url: str, viewport: ViewportConfig, claim: str = "The modal title reads Edit Task") -> ClaimResult:
-    return ClaimResult(
+    return make_claim_result(
         claim=claim,
         status="passed",
         finding=f"{claim}.",
+        url=url,
+        viewport=viewport,
         proof={
             "screenshot_path": "artifacts/run-fake/claim-01/step-00.webp",
             "step": 0,
@@ -24,7 +26,6 @@ def _sample_claim_result(*, url: str, viewport: ViewportConfig, claim: str = "Th
             "text": None,
             "text_path": None,
         },
-        page={"url": url, "viewport": viewport},
         trace={
             "steps_taken": 0,
             "wrong_page_recovered": False,
@@ -583,12 +584,12 @@ def test_handle_verify_returns_nonzero_when_any_claim_is_not_passed(monkeypatch:
             overall_status="completed",
             session_key=kwargs["session_key"],
             results=[
-                ClaimResult(
+                make_claim_result(
                     claim="The modal title reads Edit Task",
                     status="failed",
                     finding="The modal title reads Create Task.",
-                    proof=None,
-                    page={"url": kwargs["url"], "viewport": viewport},
+                    url=kwargs["url"],
+                    viewport=viewport,
                     trace={
                         "steps_taken": 0,
                         "wrong_page_recovered": False,
