@@ -17,6 +17,7 @@ from fakes import (
     instantiate_with_aliased_attrs,
     instantiate_with_supported_kwargs,
     is_bootstrap_step_artifact,
+    make_claim_result,
 )
 
 from frontend_visualqa.schemas import (
@@ -277,10 +278,12 @@ async def _call_manage_browser(
 
 
 def _result(name: str, status: str, viewport: ViewportConfig) -> ClaimResult:
-    return ClaimResult(
+    return make_claim_result(
         claim=name,
         status=status,
         finding=f"{name}: {status}",
+        url="http://fixture.local/page",
+        viewport=viewport,
         proof={
             "screenshot_path": "artifacts/run-001/claim-01/step-01.webp",
             "step": 1,
@@ -288,7 +291,6 @@ def _result(name: str, status: str, viewport: ViewportConfig) -> ClaimResult:
             "text": f"{name}: {status}",
             "text_path": "artifacts/run-001/claim-01/step-01.txt",
         },
-        page={"url": "http://fixture.local/page", "viewport": viewport},
         trace={
             "steps_taken": 1,
             "wrong_page_recovered": False,
@@ -1371,10 +1373,12 @@ async def test_runner_uses_partial_claim_result_when_timeout_interrupts_verifier
 ) -> None:
     module = _import_runner_module()
     viewport = ViewportConfig()
-    partial_result = ClaimResult(
+    partial_result = make_claim_result(
         claim="Claim one",
         status="inconclusive",
         finding="Claim verification timed out after 1s before a verdict was recorded.",
+        url="http://fixture.local/page",
+        viewport=viewport,
         proof={
             "screenshot_path": "artifacts/run-001/claim-01/step-00.webp",
             "step": 0,
@@ -1382,7 +1386,6 @@ async def test_runner_uses_partial_claim_result_when_timeout_interrupts_verifier
             "text": None,
             "text_path": None,
         },
-        page={"url": "http://fixture.local/page", "viewport": viewport},
         trace={
             "steps_taken": 1,
             "wrong_page_recovered": False,
@@ -1435,10 +1438,12 @@ async def test_runner_uses_partial_claim_result_when_verifier_crashes(
 ) -> None:
     module = _import_runner_module()
     viewport = ViewportConfig()
-    partial_result = ClaimResult(
+    partial_result = make_claim_result(
         claim="Claim one",
         status="inconclusive",
         finding="Verification crashed unexpectedly before returning a verdict: unexpected verifier crash",
+        url="http://fixture.local/page",
+        viewport=viewport,
         proof={
             "screenshot_path": "artifacts/run-001/claim-01/step-01.webp",
             "step": 1,
@@ -1446,7 +1451,6 @@ async def test_runner_uses_partial_claim_result_when_verifier_crashes(
             "text": "Visible text included 'Dashboard'.",
             "text_path": "artifacts/run-001/claim-01/step-01.txt",
         },
-        page={"url": "http://fixture.local/page", "viewport": viewport},
         trace={
             "steps_taken": 1,
             "wrong_page_recovered": False,
@@ -1544,10 +1548,12 @@ async def test_runner_preserves_partial_claim_result_when_run_timeout_interrupts
 ) -> None:
     module = _import_runner_module()
     viewport = ViewportConfig()
-    partial_result = ClaimResult(
+    partial_result = make_claim_result(
         claim="Claim one",
         status="inconclusive",
         finding="Run timed out after 0.01s before this claim could finish.",
+        url="http://fixture.local/page",
+        viewport=viewport,
         proof={
             "screenshot_path": "artifacts/run-001/claim-01/step-01.webp",
             "step": 1,
@@ -1555,7 +1561,6 @@ async def test_runner_preserves_partial_claim_result_when_run_timeout_interrupts
             "text": "Visible text included 'Dashboard'.",
             "text_path": "artifacts/run-001/claim-01/step-01.txt",
         },
-        page={"url": "http://fixture.local/page", "viewport": viewport},
         trace={
             "steps_taken": 1,
             "wrong_page_recovered": False,
