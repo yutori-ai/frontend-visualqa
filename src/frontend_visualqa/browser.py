@@ -90,6 +90,25 @@ def _apply_record_video_kwargs(
     kwargs["record_video_size"] = _viewport_size_dict(viewport)
 
 
+def build_page_ready_checker(navigation_timeout_ms: int, *, wait_after_ready: float = 0.0) -> PageReadyChecker:
+    """Construct a ``PageReadyChecker`` with frontend-visualqa's standard tuning.
+
+    Shared by ``BrowserManager`` (post-navigation readiness) and
+    ``ActionExecutor`` (post-action readiness) so the two checkers cannot
+    drift out of sync. ``wait_after_ready`` is the only field the two
+    callers set differently.
+    """
+    return PageReadyChecker(
+        timeout=min(DEFAULT_PAGE_READY_TIMEOUT_SECONDS, max(1, int(navigation_timeout_ms / 1000))),
+        initial_wait=0.0,
+        wait_after_ready=wait_after_ready,
+        replace_native_select_dropdown=True,
+        disable_new_tabs=True,
+        disable_printing=True,
+        poll_interval=0.1,
+    )
+
+
 class BrowserManager:
     """Own the shared Chromium process and session-scoped browser contexts."""
 
@@ -111,14 +130,8 @@ class BrowserManager:
         self.headless = self.config.headless
         self.navigation_timeout_ms = self.config.navigation_timeout_ms
         self.settle_delay_seconds = self.config.settle_delay_seconds
-        self._page_ready_checker = PageReadyChecker(
-            timeout=min(DEFAULT_PAGE_READY_TIMEOUT_SECONDS, max(1, int(self.navigation_timeout_ms / 1000))),
-            initial_wait=0.0,
-            wait_after_ready=self.settle_delay_seconds,
-            replace_native_select_dropdown=True,
-            disable_new_tabs=True,
-            disable_printing=True,
-            poll_interval=0.1,
+        self._page_ready_checker = build_page_ready_checker(
+            self.navigation_timeout_ms, wait_after_ready=self.settle_delay_seconds
         )
         self._playwright: Playwright | None = None
         self._browser: Browser | None = None
