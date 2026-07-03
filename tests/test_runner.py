@@ -276,6 +276,34 @@ async def _call_manage_browser(
     return await runner.manage_browser(**filtered)
 
 
+def _goto_dashboard_partial_step() -> tuple[dict[str, Any], dict[str, Any]]:
+    """Build the proof/trace pair shared by the two partial-``ClaimResult`` tests below.
+
+    ``test_runner_uses_partial_claim_result_when_verifier_crashes`` and
+    ``test_runner_preserves_partial_claim_result_when_run_timeout_interrupts_current_claim``
+    each hand-built an identical "one `goto_url` step onto the dashboard" proof/trace
+    literal. Returns a fresh pair on every call so each test owns its own copy.
+    """
+    proof = {
+        "screenshot_path": "artifacts/run-001/claim-01/step-01.webp",
+        "step": 1,
+        "after_action": 'goto_url("http://fixture.local/dashboard")',
+        "text": "Visible text included 'Dashboard'.",
+        "text_path": "artifacts/run-001/claim-01/step-01.txt",
+    }
+    trace = {
+        "steps_taken": 1,
+        "wrong_page_recovered": False,
+        "screenshot_paths": [
+            "artifacts/run-001/claim-01/step-00.webp",
+            "artifacts/run-001/claim-01/step-01.webp",
+        ],
+        "actions": ['goto_url("http://fixture.local/dashboard")'],
+        "trace_path": "artifacts/run-001/claim-01/trace.json",
+    }
+    return proof, trace
+
+
 def _result(name: str, status: str, viewport: ViewportConfig) -> ClaimResult:
     return make_claim_result(
         claim=name,
@@ -1437,29 +1465,15 @@ async def test_runner_uses_partial_claim_result_when_verifier_crashes(
 ) -> None:
     module = _import_runner_module()
     viewport = ViewportConfig()
+    proof, trace = _goto_dashboard_partial_step()
     partial_result = make_claim_result(
         claim="Claim one",
         status="inconclusive",
         finding="Verification crashed unexpectedly before returning a verdict: unexpected verifier crash",
         url="http://fixture.local/page",
         viewport=viewport,
-        proof={
-            "screenshot_path": "artifacts/run-001/claim-01/step-01.webp",
-            "step": 1,
-            "after_action": 'goto_url("http://fixture.local/dashboard")',
-            "text": "Visible text included 'Dashboard'.",
-            "text_path": "artifacts/run-001/claim-01/step-01.txt",
-        },
-        trace={
-            "steps_taken": 1,
-            "wrong_page_recovered": False,
-            "screenshot_paths": [
-                "artifacts/run-001/claim-01/step-00.webp",
-                "artifacts/run-001/claim-01/step-01.webp",
-            ],
-            "actions": ['goto_url("http://fixture.local/dashboard")'],
-            "trace_path": "artifacts/run-001/claim-01/trace.json",
-        },
+        proof=proof,
+        trace=trace,
     )
     verifier = PartialExplodingClaimVerifier(partial_result)
     runner, _, _ = _build_runner(
@@ -1547,29 +1561,15 @@ async def test_runner_preserves_partial_claim_result_when_run_timeout_interrupts
 ) -> None:
     module = _import_runner_module()
     viewport = ViewportConfig()
+    proof, trace = _goto_dashboard_partial_step()
     partial_result = make_claim_result(
         claim="Claim one",
         status="inconclusive",
         finding="Run timed out after 0.01s before this claim could finish.",
         url="http://fixture.local/page",
         viewport=viewport,
-        proof={
-            "screenshot_path": "artifacts/run-001/claim-01/step-01.webp",
-            "step": 1,
-            "after_action": 'goto_url("http://fixture.local/dashboard")',
-            "text": "Visible text included 'Dashboard'.",
-            "text_path": "artifacts/run-001/claim-01/step-01.txt",
-        },
-        trace={
-            "steps_taken": 1,
-            "wrong_page_recovered": False,
-            "screenshot_paths": [
-                "artifacts/run-001/claim-01/step-00.webp",
-                "artifacts/run-001/claim-01/step-01.webp",
-            ],
-            "actions": ['goto_url("http://fixture.local/dashboard")'],
-            "trace_path": "artifacts/run-001/claim-01/trace.json",
-        },
+        proof=proof,
+        trace=trace,
     )
     verifier = RunTimeoutClaimVerifier(partial_result=partial_result)
     runner, _, _ = _build_runner(
