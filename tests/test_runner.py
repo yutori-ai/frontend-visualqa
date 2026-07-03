@@ -15,7 +15,6 @@ from fakes import (
     FakeNavigatorClient,
     import_or_skip,
     instantiate_with_aliased_attrs,
-    instantiate_with_supported_kwargs,
     is_bootstrap_step_artifact,
     make_claim_result,
 )
@@ -1723,20 +1722,19 @@ async def test_runner_preserves_injected_claim_verifier_visualize_default(
     verifier._visualize = True
     artifacts = FakeArtifactManager(tmp_path, run_id="run-001")
 
-    runner = instantiate_with_supported_kwargs(
+    runner = instantiate_with_aliased_attrs(
         module.VisualQARunner,
-        browser_manager=browser,
-        browser=browser,
-        claim_verifier=verifier,
-        verifier=verifier,
-        artifact_manager=artifacts,
-        artifacts=artifacts,
+        {
+            "browser_manager": browser,
+            "browser": browser,
+            "claim_verifier": verifier,
+            "verifier": verifier,
+            "artifact_manager": artifacts,
+            "artifacts": artifacts,
+        },
         browser_config=BrowserConfig(visualize=False),
         navigator_client=FakeNavigatorClient([]),
     )
-    runner.browser_manager = browser
-    runner.claim_verifier = verifier
-    runner.artifact_manager = artifacts
 
     async def _skip_preflight(url: str) -> None:
         del url
@@ -1775,20 +1773,19 @@ async def test_per_call_visualize_override_does_not_leak_across_requests(
     verifier._visualize = False
     artifacts = FakeArtifactManager(tmp_path, run_id="run-001")
 
-    runner = instantiate_with_supported_kwargs(
+    runner = instantiate_with_aliased_attrs(
         module.VisualQARunner,
-        browser_manager=browser,
-        browser=browser,
-        claim_verifier=verifier,
-        verifier=verifier,
-        artifact_manager=artifacts,
-        artifacts=artifacts,
+        {
+            "browser_manager": browser,
+            "browser": browser,
+            "claim_verifier": verifier,
+            "verifier": verifier,
+            "artifact_manager": artifacts,
+            "artifacts": artifacts,
+        },
         browser_config=BrowserConfig(visualize=False),
         navigator_client=FakeNavigatorClient([]),
     )
-    runner.browser_manager = browser
-    runner.claim_verifier = verifier
-    runner.artifact_manager = artifacts
 
     async def _skip_preflight(url: str) -> None:
         del url
