@@ -6,6 +6,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from frontend_visualqa.overlay import CURSOR_TRANSITION_MS, OverlayController
+
 
 def _make_mock_page(
     *,
@@ -27,11 +29,24 @@ def _make_mock_page(
     return page
 
 
+async def _started_controller(
+    *, focused_center: dict[str, int] | None = None
+) -> tuple[MagicMock, OverlayController]:
+    """Build a page + OverlayController, run claim_started, and clear the call log.
+
+    Most preview/status tests only care about evaluate() calls made by the action
+    under test, not the roots/styles claim_started() injects on the way in.
+    """
+    page = _make_mock_page(focused_center=focused_center)
+    controller = OverlayController(page)
+    await controller.claim_started()
+    page.evaluate.reset_mock()
+    return page, controller
+
+
 class TestOverlayControllerLifecycle:
     @pytest.mark.asyncio
     async def test_claim_started_injects_persistent_and_transient_roots(self) -> None:
-        from frontend_visualqa.overlay import OverlayController
-
         page = _make_mock_page()
         controller = OverlayController(page)
 
@@ -45,13 +60,7 @@ class TestOverlayControllerLifecycle:
 
     @pytest.mark.asyncio
     async def test_claim_ended_removes_all_roots_and_is_idempotent(self) -> None:
-        from frontend_visualqa.overlay import OverlayController
-
-        page = _make_mock_page()
-        controller = OverlayController(page)
-
-        await controller.claim_started()
-        page.evaluate.reset_mock()
+        page, controller = await _started_controller()
 
         await controller.claim_ended()
 
@@ -71,13 +80,7 @@ class TestOverlayControllerLifecycle:
 
     @pytest.mark.asyncio
     async def test_set_status_updates_label_when_active(self) -> None:
-        from frontend_visualqa.overlay import OverlayController
-
-        page = _make_mock_page()
-        controller = OverlayController(page)
-
-        await controller.claim_started()
-        page.evaluate.reset_mock()
+        page, controller = await _started_controller()
 
         await controller.set_status("Navigating")
 
@@ -92,8 +95,6 @@ class TestOverlayCursor:
     async def test_persistent_root_creates_cursor_img(self) -> None:
         # The cursor lives in the persistent root so it survives navigations
         # and screenshot hide/restore cycles. See OverlayController._restore_cursor_position.
-        from frontend_visualqa.overlay import OverlayController
-
         page = _make_mock_page()
         controller = OverlayController(page)
 
@@ -104,8 +105,6 @@ class TestOverlayCursor:
 
     @pytest.mark.asyncio
     async def test_move_cursor_updates_position(self) -> None:
-        from frontend_visualqa.overlay import OverlayController
-
         page = _make_mock_page()
         controller = OverlayController(page)
         controller._active = True
@@ -121,13 +120,7 @@ class TestOverlayCursor:
 class TestOverlayInformationalCards:
     @pytest.mark.asyncio
     async def test_show_thought_injects_thought_card_with_clipped_text(self) -> None:
-        from frontend_visualqa.overlay import OverlayController
-
-        page = _make_mock_page()
-        controller = OverlayController(page)
-
-        await controller.claim_started()
-        page.evaluate.reset_mock()
+        page, controller = await _started_controller()
 
         text = "Inspect the quota widget before deciding because the bar and label may disagree on completion."
         await controller.show_thought(text)
@@ -145,8 +138,6 @@ class TestOverlayInformationalCards:
 
     @pytest.mark.asyncio
     async def test_preview_action_clears_existing_thought_card_before_animating(self) -> None:
-        from frontend_visualqa.overlay import OverlayController
-
         page = _make_mock_page()
         controller = OverlayController(page)
 
@@ -168,8 +159,6 @@ class TestOverlayInformationalCards:
 
     @pytest.mark.asyncio
     async def test_set_status_non_analyzing_clears_existing_thought_card(self) -> None:
-        from frontend_visualqa.overlay import OverlayController
-
         page = _make_mock_page()
         controller = OverlayController(page)
 
@@ -185,8 +174,6 @@ class TestOverlayInformationalCards:
 
     @pytest.mark.asyncio
     async def test_set_status_analyzing_preserves_existing_thought_card(self) -> None:
-        from frontend_visualqa.overlay import OverlayController
-
         page = _make_mock_page()
         controller = OverlayController(page)
 
@@ -201,13 +188,7 @@ class TestOverlayInformationalCards:
 
     @pytest.mark.asyncio
     async def test_preview_action_uses_transient_layer_without_touching_status_chip(self) -> None:
-        from frontend_visualqa.overlay import OverlayController
-
-        page = _make_mock_page()
-        controller = OverlayController(page)
-
-        await controller.claim_started()
-        page.evaluate.reset_mock()
+        page, controller = await _started_controller()
 
         with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
             await controller.preview_action("double_click", x=100, y=200, num_clicks=2)
@@ -223,13 +204,7 @@ class TestOverlayInformationalCards:
 class TestOverlayPreviewAction:
     @pytest.mark.asyncio
     async def test_click_effect_uses_coordinates(self) -> None:
-        from frontend_visualqa.overlay import OverlayController
-
-        page = _make_mock_page()
-        controller = OverlayController(page)
-
-        await controller.claim_started()
-        page.evaluate.reset_mock()
+        page, controller = await _started_controller()
 
         with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
             await controller.preview_action("double_click", x=100, y=200, num_clicks=2)
@@ -258,13 +233,7 @@ class TestOverlayPreviewAction:
         # Scroll viz is now a circular-arrow SVG that drifts in the scroll
         # direction (carrying directionality) and spins clockwise for
         # down/right (carrying motion feel). See _show_scroll_effect.
-        from frontend_visualqa.overlay import OverlayController
-
-        page = _make_mock_page()
-        controller = OverlayController(page)
-
-        await controller.claim_started()
-        page.evaluate.reset_mock()
+        page, controller = await _started_controller()
 
         with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
             await controller.preview_action("scroll", x=640, y=400, direction="down")
@@ -281,13 +250,7 @@ class TestOverlayPreviewAction:
 
     @pytest.mark.asyncio
     async def test_scroll_effect_rotates_for_up_direction(self) -> None:
-        from frontend_visualqa.overlay import OverlayController
-
-        page = _make_mock_page()
-        controller = OverlayController(page)
-
-        await controller.claim_started()
-        page.evaluate.reset_mock()
+        page, controller = await _started_controller()
 
         with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
             await controller.preview_action("scroll", x=100, y=200, direction="up")
@@ -298,13 +261,7 @@ class TestOverlayPreviewAction:
 
     @pytest.mark.asyncio
     async def test_type_effect_uses_caret_and_dots(self) -> None:
-        from frontend_visualqa.overlay import OverlayController
-
-        page = _make_mock_page(focused_center={"x": 200, "y": 150})
-        controller = OverlayController(page)
-
-        await controller.claim_started()
-        page.evaluate.reset_mock()
+        page, controller = await _started_controller(focused_center={"x": 200, "y": 150})
 
         with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
             await controller.preview_action("type")
@@ -319,13 +276,7 @@ class TestOverlayPreviewAction:
 
     @pytest.mark.asyncio
     async def test_type_effect_skipped_when_no_focused_element(self) -> None:
-        from frontend_visualqa.overlay import OverlayController
-
-        page = _make_mock_page(focused_center=None)
-        controller = OverlayController(page)
-
-        await controller.claim_started()
-        page.evaluate.reset_mock()
+        page, controller = await _started_controller(focused_center=None)
 
         with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
             await controller.preview_action("type")
@@ -335,13 +286,7 @@ class TestOverlayPreviewAction:
 
     @pytest.mark.asyncio
     async def test_hover_action_moves_cursor(self) -> None:
-        from frontend_visualqa.overlay import OverlayController
-
-        page = _make_mock_page()
-        controller = OverlayController(page)
-
-        await controller.claim_started()
-        page.evaluate.reset_mock()
+        page, controller = await _started_controller()
 
         with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
             await controller.preview_action("hover", x=300, y=400)
@@ -356,13 +301,7 @@ class TestOverlayPreviewAction:
 
     @pytest.mark.asyncio
     async def test_drag_action_shows_trail_and_moves_cursor(self) -> None:
-        from frontend_visualqa.overlay import OverlayController
-
-        page = _make_mock_page()
-        controller = OverlayController(page)
-
-        await controller.claim_started()
-        page.evaluate.reset_mock()
+        page, controller = await _started_controller()
 
         with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
             await controller.preview_action("drag", x=500, y=600, start_x=100, start_y=200)
@@ -381,13 +320,7 @@ class TestOverlayPreviewAction:
 
     @pytest.mark.asyncio
     async def test_unknown_action_returns_none(self) -> None:
-        from frontend_visualqa.overlay import OverlayController
-
-        page = _make_mock_page()
-        controller = OverlayController(page)
-
-        await controller.claim_started()
-        page.evaluate.reset_mock()
+        page, controller = await _started_controller()
 
         with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
             await controller.preview_action("unknown_action_xyz", x=10, y=20)
@@ -400,8 +333,6 @@ class TestOverlayPreviewAction:
     @pytest.mark.asyncio
     async def test_teleport_when_offscreen_transition_when_onscreen(self) -> None:
         """Teleport (short sleep) when cursor is off-screen, full transition otherwise."""
-        from frontend_visualqa.overlay import CURSOR_TRANSITION_MS, OverlayController
-
         page = _make_mock_page()
         controller = OverlayController(page)
         await controller.claim_started()
@@ -421,12 +352,7 @@ class TestOverlayPreviewAction:
     @pytest.mark.asyncio
     async def test_move_cursor_js_contains_teleport_logic(self) -> None:
         """_move_cursor JS detects off-screen via left==='-200px' and branches."""
-        from frontend_visualqa.overlay import CURSOR_TRANSITION_MS, OverlayController
-
-        page = _make_mock_page()
-        controller = OverlayController(page)
-        await controller.claim_started()
-        page.evaluate.reset_mock()
+        page, controller = await _started_controller()
 
         await controller._move_cursor(50, 60)
 
@@ -448,13 +374,7 @@ class TestOverlayPreviewAction:
 class TestOverlayScreenshotBoundary:
     @pytest.mark.asyncio
     async def test_before_screenshot_hides_both_roots(self) -> None:
-        from frontend_visualqa.overlay import OverlayController
-
-        page = _make_mock_page()
-        controller = OverlayController(page)
-
-        await controller.claim_started()
-        page.evaluate.reset_mock()
+        page, controller = await _started_controller()
 
         await controller.before_screenshot()
 
@@ -466,13 +386,7 @@ class TestOverlayScreenshotBoundary:
 
     @pytest.mark.asyncio
     async def test_after_screenshot_restores_persistent_root_only(self) -> None:
-        from frontend_visualqa.overlay import OverlayController
-
-        page = _make_mock_page()
-        controller = OverlayController(page)
-
-        await controller.claim_started()
-        page.evaluate.reset_mock()
+        page, controller = await _started_controller()
 
         await controller.after_screenshot()
 
@@ -485,8 +399,6 @@ class TestOverlayScreenshotBoundary:
     @pytest.mark.asyncio
     async def test_follow_up_effect_restores_transient_root_visibility_after_screenshot(self) -> None:
         """Transient root stays hidden after capture and is re-shown when the next preview starts."""
-        from frontend_visualqa.overlay import OverlayController
-
         page = _make_mock_page()
         controller = OverlayController(page)
 
@@ -506,8 +418,6 @@ class TestOverlayScreenshotBoundary:
 
     @pytest.mark.asyncio
     async def test_clear_thought_is_noop_when_inactive(self) -> None:
-        from frontend_visualqa.overlay import OverlayController
-
         page = _make_mock_page()
         controller = OverlayController(page)
 
@@ -517,8 +427,6 @@ class TestOverlayScreenshotBoundary:
 
     @pytest.mark.asyncio
     async def test_after_screenshot_is_noop_when_inactive(self) -> None:
-        from frontend_visualqa.overlay import OverlayController
-
         page = _make_mock_page()
         controller = OverlayController(page)
 
@@ -530,8 +438,6 @@ class TestOverlayScreenshotBoundary:
 class TestOverlayBestEffort:
     @pytest.mark.asyncio
     async def test_overlay_methods_swallow_evaluate_failures(self) -> None:
-        from frontend_visualqa.overlay import OverlayController
-
         page = _make_mock_page(evaluate_side_effect=RuntimeError("page crashed"))
         controller = OverlayController(page)
 
@@ -552,12 +458,7 @@ class TestOverlayBestEffort:
 
 @pytest.mark.asyncio
 async def test_show_thought_preserves_markdown_line_structure() -> None:
-    from frontend_visualqa.overlay import OverlayController
-
-    page = _make_mock_page()
-    controller = OverlayController(page)
-    await controller.claim_started()
-    page.evaluate.reset_mock()
+    page, controller = await _started_controller()
 
     text = "# Plan\n- check the bar fill\n- compare against the label"
     await controller.show_thought(text)
