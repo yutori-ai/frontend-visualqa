@@ -204,6 +204,17 @@ class FakeMessage:
         return payload
 
 
+def tool_call_message(name: str, arguments: str, *, call_id: str = "tool-1") -> FakeMessage:
+    """Build a FakeMessage wrapping a single tool call, the shape most navigator-response fixtures need.
+
+    `test_claim_verifier.py` and `test_live_runner.py` each hand-built this identical
+    ``FakeMessage(tool_calls=[FakeToolCall(id=..., function=FakeFunction(name=..., arguments=...))])``
+    skeleton at dozens of call sites, differing only in the tool name/arguments/id. This is the
+    shared constructor they delegate to now.
+    """
+    return FakeMessage(tool_calls=[FakeToolCall(id=call_id, function=FakeFunction(name=name, arguments=arguments))])
+
+
 @dataclass
 class FakeChoice:
     message: FakeMessage

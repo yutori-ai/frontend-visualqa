@@ -24,6 +24,7 @@ from fakes import (
     RecordingFakeOverlay,
     import_or_skip,
     instantiate_with_aliased_attrs,
+    tool_call_message,
 )
 
 
@@ -230,17 +231,7 @@ async def test_claim_verifier_executes_actions_before_final_verdict(tmp_path: Pa
         module,
         tmp_path,
         responses=[
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-1",
-                        function=FakeFunction(
-                            name="goto_url",
-                            arguments=json.dumps({"url": "http://fixture.local/modal"}),
-                        ),
-                    )
-                ]
-            ),
+            tool_call_message(name="goto_url", arguments=json.dumps({"url": "http://fixture.local/modal"})),
             _verdict_response(status="passed", finding="The modal is now visible and titled Edit Task."),
         ],
     )
@@ -276,16 +267,8 @@ async def test_claim_verifier_requires_an_action_before_accepting_a_verdict_with
         tmp_path,
         responses=[
             _verdict_response(status="failed", finding="The cart badge shows 2 items."),
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-2",
-                        function=FakeFunction(
-                            name="goto_url",
-                            arguments=json.dumps({"url": "http://fixture.local/cart"}),
-                        ),
-                    )
-                ]
+            tool_call_message(
+                name="goto_url", arguments=json.dumps({"url": "http://fixture.local/cart"}), call_id="tool-2"
             ),
             _verdict_response(status="passed", finding="The cart badge now shows 3 items."),
         ],
@@ -321,28 +304,10 @@ async def test_claim_verifier_does_not_treat_read_only_tools_as_navigation_inter
         module,
         tmp_path,
         responses=[
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-1",
-                        function=FakeFunction(
-                            name="find",
-                            arguments=json.dumps({"text": "Cart"}),
-                        ),
-                    )
-                ]
-            ),
+            tool_call_message(name="find", arguments=json.dumps({"text": "Cart"})),
             _verdict_response(status="failed", finding="The cart badge shows 2 items."),
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-2",
-                        function=FakeFunction(
-                            name="goto_url",
-                            arguments=json.dumps({"url": "http://fixture.local/cart"}),
-                        ),
-                    )
-                ]
+            tool_call_message(
+                name="goto_url", arguments=json.dumps({"url": "http://fixture.local/cart"}), call_id="tool-2"
             ),
             _verdict_response(status="passed", finding="The cart badge now shows 3 items."),
         ],
@@ -385,16 +350,8 @@ async def test_claim_verifier_reprompts_when_model_says_action_is_needed_but_rec
                 status="inconclusive",
                 finding="I need to click on the product to open the detail page before I can verify this.",
             ),
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-2",
-                        function=FakeFunction(
-                            name="goto_url",
-                            arguments=json.dumps({"url": "http://fixture.local/products/1"}),
-                        ),
-                    )
-                ]
+            tool_call_message(
+                name="goto_url", arguments=json.dumps({"url": "http://fixture.local/products/1"}), call_id="tool-2"
             ),
             _verdict_response(
                 status="passed",
@@ -448,17 +405,7 @@ async def test_claim_verifier_uses_overlay_lifecycle_when_visualize_enabled(
         module,
         tmp_path,
         responses=[
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-1",
-                        function=FakeFunction(
-                            name="goto_url",
-                            arguments=json.dumps({"url": "http://fixture.local/modal"}),
-                        ),
-                    )
-                ]
-            ),
+            tool_call_message(name="goto_url", arguments=json.dumps({"url": "http://fixture.local/modal"})),
             _verdict_response(status="passed", finding="The modal is now visible and titled Edit Task."),
         ],
         visualize=True,
@@ -498,17 +445,7 @@ async def test_claim_verifier_reprompts_after_plain_text_thought_and_continues(t
         tmp_path,
         responses=[
             FakeMessage(content="I should open the task detail page before deciding."),
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-1",
-                        function=FakeFunction(
-                            name="goto_url",
-                            arguments=json.dumps({"url": "http://fixture.local/tasks/123"}),
-                        ),
-                    )
-                ]
-            ),
+            tool_call_message(name="goto_url", arguments=json.dumps({"url": "http://fixture.local/tasks/123"})),
             _verdict_response(status="passed", finding="The Task Details heading is visible."),
         ],
     )
@@ -551,7 +488,9 @@ async def test_claim_verifier_records_reasoning_events_and_shows_thought_for_too
                 tool_calls=[
                     FakeToolCall(
                         id="tool-1",
-                        function=FakeFunction(name="goto_url", arguments=json.dumps({"url": "http://fixture.local/save"})),
+                        function=FakeFunction(
+                            name="goto_url", arguments=json.dumps({"url": "http://fixture.local/save"})
+                        ),
                     )
                 ],
             ),
@@ -609,7 +548,8 @@ async def test_claim_verifier_records_reasoning_events_and_shows_thought_for_too
 
 @pytest.mark.asyncio
 async def test_claim_verifier_shows_post_capture_analysis_ui_after_action_screenshot(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     module = _import_claim_verifier_module()
     overlay_events: list[Any] = []
@@ -733,7 +673,9 @@ async def test_claim_verifier_seeds_first_model_turn_with_current_url_and_screen
     assert first_call_messages[0]["role"] == "user"
     first_content = first_call_messages[0]["content"]
     assert isinstance(first_content, list)
-    text_parts = [part.get("text", "") for part in first_content if isinstance(part, dict) and part.get("type") == "text"]
+    text_parts = [
+        part.get("text", "") for part in first_content if isinstance(part, dict) and part.get("type") == "text"
+    ]
     assert any("Current URL:" in text for text in text_parts)
     assert not any("Verifier-owned bootstrap observation." in text for text in text_parts)
     assert any(isinstance(part, dict) and part.get("type") == "image_url" for part in first_content)
@@ -820,7 +762,7 @@ async def test_claim_verifier_preserves_tool_call_order_when_action_and_verdict_
                             arguments=json.dumps({"url": "http://fixture.local/modal"}),
                         ),
                     ),
-                ]
+                ],
             ),
             _verdict_response(status="passed", finding="The modal is visible."),
         ],
@@ -1248,17 +1190,7 @@ async def test_claim_verifier_reuses_trimmed_history_across_requests(
         module,
         tmp_path,
         responses=[
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-1",
-                        function=FakeFunction(
-                            name="goto_url",
-                            arguments=json.dumps({"url": "http://fixture.local/modal"}),
-                        ),
-                    )
-                ]
-            ),
+            tool_call_message(name="goto_url", arguments=json.dumps({"url": "http://fixture.local/modal"})),
             _verdict_response(
                 status="passed",
                 finding="The modal is now visible and titled Edit Task.",
@@ -1335,7 +1267,9 @@ async def test_claim_verifier_writes_trace_json_with_action_and_verdict_events(t
                 tool_calls=[
                     FakeToolCall(
                         id="tool-1",
-                        function=FakeFunction(name="goto_url", arguments=json.dumps({"url": "http://fixture.local/save"})),
+                        function=FakeFunction(
+                            name="goto_url", arguments=json.dumps({"url": "http://fixture.local/save"})
+                        ),
                     )
                 ],
             ),
@@ -1399,9 +1333,12 @@ def test_extract_json_verdict_requires_valid_parsed_json() -> None:
         SimpleNamespace(parsed_json={"status": "passed", "finding": "The header matches."})
     ) == ("passed", "The header matches.")
     # Invalid status → None
-    assert module.ClaimVerifier._extract_json_verdict(
-        SimpleNamespace(parsed_json={"status": "unknown", "finding": "Something."})
-    ) is None
+    assert (
+        module.ClaimVerifier._extract_json_verdict(
+            SimpleNamespace(parsed_json={"status": "unknown", "finding": "Something."})
+        )
+        is None
+    )
     # Missing finding → default message
     assert module.ClaimVerifier._extract_json_verdict(
         SimpleNamespace(parsed_json={"status": "not_testable", "finding": ""})
@@ -1456,7 +1393,6 @@ def test_wrong_page_recovered_distinguishes_recovery_from_unrelated_navigation()
     )
 
 
-
 class FailingBrowserManager(FakeBrowserManager):
     def __init__(self, *, fail_on_capture_call: int) -> None:
         super().__init__()
@@ -1500,19 +1436,7 @@ async def test_claim_verifier_normalizes_post_action_screenshot_failures_to_not_
     verifier, _, action_executor = _build_claim_verifier(
         module,
         tmp_path,
-        responses=[
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-1",
-                        function=FakeFunction(
-                            name="goto_url",
-                            arguments=json.dumps({"url": "http://fixture.local/modal"}),
-                        ),
-                    )
-                ]
-            )
-        ],
+        responses=[tool_call_message(name="goto_url", arguments=json.dumps({"url": "http://fixture.local/modal"}))],
         browser_manager=FailingBrowserManager(fail_on_capture_call=2),
     )
 
@@ -1573,17 +1497,7 @@ async def test_claim_verifier_uses_json_verdict_in_force_stop_path(tmp_path: Pat
         module,
         tmp_path,
         responses=[
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-1",
-                        function=FakeFunction(
-                            name="goto_url",
-                            arguments=json.dumps({"url": "http://fixture.local/modal"}),
-                        ),
-                    )
-                ]
-            ),
+            tool_call_message(name="goto_url", arguments=json.dumps({"url": "http://fixture.local/modal"})),
             # After exhausting steps, the force-stop path asks for a final verdict.
             _verdict_response(
                 status="inconclusive",
@@ -1668,21 +1582,9 @@ async def test_claim_verifier_feeds_action_error_back_to_model_and_recovers(tmp_
         module,
         tmp_path,
         responses=[
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-1",
-                        function=FakeFunction(name="left_click", arguments=json.dumps({"ref": "e12"})),
-                    )
-                ]
-            ),
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-2",
-                        function=FakeFunction(name="goto_url", arguments=json.dumps({"url": "http://fixture.local/cart"})),
-                    )
-                ]
+            tool_call_message(name="left_click", arguments=json.dumps({"ref": "e12"})),
+            tool_call_message(
+                name="goto_url", arguments=json.dumps({"url": "http://fixture.local/cart"}), call_id="tool-2"
             ),
             _verdict_response(status="passed", finding="The cart badge shows 3 items."),
         ],
@@ -1766,14 +1668,7 @@ async def test_claim_verifier_redacts_password_typing_in_trace_events(tmp_path: 
         module,
         tmp_path,
         responses=[
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-1",
-                        function=FakeFunction(name="type", arguments=json.dumps({"text": "hunter2"})),
-                    )
-                ]
-            ),
+            tool_call_message(name="type", arguments=json.dumps({"text": "hunter2"})),
             _verdict_response(status="passed", finding="The password field accepts input."),
         ],
     )
@@ -1815,14 +1710,7 @@ async def test_claim_verifier_redacts_malformed_password_type_arguments(tmp_path
         module,
         tmp_path,
         responses=[
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-1",
-                        function=FakeFunction(name="type", arguments='{"text": "hunter2"'),
-                    )
-                ]
-            ),
+            tool_call_message(name="type", arguments='{"text": "hunter2"'),
             _verdict_response(status="inconclusive", finding="The type action arguments were malformed."),
         ],
         action_executor=module.ActionExecutor(navigation_timeout_ms=1_000, settle_delay_seconds=0),
@@ -1859,7 +1747,7 @@ async def test_claim_verifier_redacts_password_set_element_value_transcript(
             self.calls.append((tool_call.function.name, resolved_args))
             return SimpleNamespace(
                 trace=f"set_element_value(ref='password-input', value='{resolved_args['value']}')",
-                output_text=f"Set password value to \"{resolved_args['value']}\"",
+                output_text=f'Set password value to "{resolved_args["value"]}"',
                 current_url=session.page.url,
                 counts_as_interaction=True,
             )
@@ -1873,16 +1761,8 @@ async def test_claim_verifier_redacts_password_set_element_value_transcript(
         module,
         tmp_path,
         responses=[
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-1",
-                        function=FakeFunction(
-                            name="set_element_value",
-                            arguments=json.dumps({"ref": "password-input", "value": "hunter2"}),
-                        ),
-                    )
-                ]
+            tool_call_message(
+                name="set_element_value", arguments=json.dumps({"ref": "password-input", "value": "hunter2"})
             ),
             _verdict_response(status="passed", finding="The password field accepts input."),
         ],
@@ -2040,17 +1920,7 @@ async def test_claim_verifier_redacts_malformed_password_set_element_value_argum
         module,
         tmp_path,
         responses=[
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-1",
-                        function=FakeFunction(
-                            name="set_element_value",
-                            arguments='{"ref": "password-input", "value": "hunter2"',
-                        ),
-                    )
-                ]
-            ),
+            tool_call_message(name="set_element_value", arguments='{"ref": "password-input", "value": "hunter2"'),
             _verdict_response(status="inconclusive", finding="The arguments were malformed."),
         ],
         action_executor=module.ActionExecutor(navigation_timeout_ms=1_000, settle_delay_seconds=0),
@@ -2081,14 +1951,7 @@ async def test_claim_verifier_redacts_type_when_password_detection_fails(tmp_pat
         module,
         tmp_path,
         responses=[
-            FakeMessage(
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-1",
-                        function=FakeFunction(name="type", arguments=json.dumps({"text": "maybe-secret"})),
-                    )
-                ]
-            ),
+            tool_call_message(name="type", arguments=json.dumps({"text": "maybe-secret"})),
             _verdict_response(status="passed", finding="The field accepts input."),
         ],
     )
