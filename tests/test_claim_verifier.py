@@ -21,6 +21,7 @@ from fakes import (
     FakeNavigatorClient,
     FakeResponse,
     FakeToolCall,
+    RecordingFakeOverlay,
     import_or_skip,
     instantiate_with_aliased_attrs,
 )
@@ -440,30 +441,7 @@ async def test_claim_verifier_uses_overlay_lifecycle_when_visualize_enabled(
 ) -> None:
     module = _import_claim_verifier_module()
     events: list[Any] = []
-
-    class FakeOverlay:
-        async def claim_started(self) -> None:
-            events.append("claim_started")
-
-        async def set_status(self, label: str) -> None:
-            events.append(("set_status", label))
-
-        async def show_thought(self, text: str) -> None:
-            events.append(("show_thought", text))
-
-        async def clear_thought(self) -> None:
-            events.append("clear_thought")
-
-        async def before_screenshot(self) -> None:
-            events.append("before_screenshot")
-
-        async def after_screenshot(self) -> None:
-            events.append("after_screenshot")
-
-        async def claim_ended(self) -> None:
-            events.append("claim_ended")
-
-    fake_overlay = FakeOverlay()
+    fake_overlay = RecordingFakeOverlay(events)
     monkeypatch.setattr(module, "_create_overlay_controller", lambda page: fake_overlay)
 
     verifier, _, action_executor = _build_claim_verifier(
@@ -562,30 +540,7 @@ async def test_claim_verifier_records_reasoning_events_and_shows_thought_for_too
 ) -> None:
     module = _import_claim_verifier_module()
     overlay_events: list[Any] = []
-
-    class FakeOverlay:
-        async def claim_started(self) -> None:
-            overlay_events.append("claim_started")
-
-        async def set_status(self, label: str) -> None:
-            overlay_events.append(("set_status", label))
-
-        async def show_thought(self, text: str) -> None:
-            overlay_events.append(("show_thought", text))
-
-        async def clear_thought(self) -> None:
-            overlay_events.append("clear_thought")
-
-        async def before_screenshot(self) -> None:
-            overlay_events.append("before_screenshot")
-
-        async def after_screenshot(self) -> None:
-            overlay_events.append("after_screenshot")
-
-        async def claim_ended(self) -> None:
-            overlay_events.append("claim_ended")
-
-    monkeypatch.setattr(module, "_create_overlay_controller", lambda page: FakeOverlay())
+    monkeypatch.setattr(module, "_create_overlay_controller", lambda page: RecordingFakeOverlay(overlay_events))
     reasoning = "Inspect the Save button before deciding."
     verifier, _, _ = _build_claim_verifier(
         module,
@@ -658,30 +613,7 @@ async def test_claim_verifier_shows_post_capture_analysis_ui_after_action_screen
 ) -> None:
     module = _import_claim_verifier_module()
     overlay_events: list[Any] = []
-
-    class FakeOverlay:
-        async def claim_started(self) -> None:
-            overlay_events.append("claim_started")
-
-        async def set_status(self, label: str) -> None:
-            overlay_events.append(("set_status", label))
-
-        async def show_thought(self, text: str) -> None:
-            overlay_events.append(("show_thought", text))
-
-        async def clear_thought(self) -> None:
-            overlay_events.append("clear_thought")
-
-        async def before_screenshot(self) -> None:
-            overlay_events.append("before_screenshot")
-
-        async def after_screenshot(self) -> None:
-            overlay_events.append("after_screenshot")
-
-        async def claim_ended(self) -> None:
-            overlay_events.append("claim_ended")
-
-    monkeypatch.setattr(module, "_create_overlay_controller", lambda page: FakeOverlay())
+    monkeypatch.setattr(module, "_create_overlay_controller", lambda page: RecordingFakeOverlay(overlay_events))
     reasoning = "Click into the form before deciding."
     verifier, _, _ = _build_claim_verifier(
         module,
@@ -732,30 +664,7 @@ async def test_claim_verifier_does_not_show_thought_for_plain_text_turn_without_
 ) -> None:
     module = _import_claim_verifier_module()
     overlay_events: list[Any] = []
-
-    class FakeOverlay:
-        async def claim_started(self) -> None:
-            overlay_events.append("claim_started")
-
-        async def set_status(self, label: str) -> None:
-            overlay_events.append(("set_status", label))
-
-        async def show_thought(self, text: str) -> None:
-            overlay_events.append(("show_thought", text))
-
-        async def clear_thought(self) -> None:
-            overlay_events.append("clear_thought")
-
-        async def before_screenshot(self) -> None:
-            overlay_events.append("before_screenshot")
-
-        async def after_screenshot(self) -> None:
-            overlay_events.append("after_screenshot")
-
-        async def claim_ended(self) -> None:
-            overlay_events.append("claim_ended")
-
-    monkeypatch.setattr(module, "_create_overlay_controller", lambda page: FakeOverlay())
+    monkeypatch.setattr(module, "_create_overlay_controller", lambda page: RecordingFakeOverlay(overlay_events))
     original_capture = module.ClaimVerifier._capture_evidence_screenshot
 
     async def instrumented_capture(self: Any, *args: Any, **kwargs: Any) -> Any:
@@ -895,30 +804,7 @@ async def test_claim_verifier_preserves_tool_call_order_when_action_and_verdict_
 ) -> None:
     module = _import_claim_verifier_module()
     overlay_events: list[Any] = []
-
-    class FakeOverlay:
-        async def claim_started(self) -> None:
-            overlay_events.append("claim_started")
-
-        async def set_status(self, label: str) -> None:
-            overlay_events.append(("set_status", label))
-
-        async def show_thought(self, text: str) -> None:
-            overlay_events.append(("show_thought", text))
-
-        async def clear_thought(self) -> None:
-            overlay_events.append("clear_thought")
-
-        async def before_screenshot(self) -> None:
-            overlay_events.append("before_screenshot")
-
-        async def after_screenshot(self) -> None:
-            overlay_events.append("after_screenshot")
-
-        async def claim_ended(self) -> None:
-            overlay_events.append("claim_ended")
-
-    monkeypatch.setattr(module, "_create_overlay_controller", lambda page: FakeOverlay())
+    monkeypatch.setattr(module, "_create_overlay_controller", lambda page: RecordingFakeOverlay(overlay_events))
     reasoning = "Click the modal and then decide."
     verifier, _, action_executor = _build_claim_verifier(
         module,
