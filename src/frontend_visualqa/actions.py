@@ -12,7 +12,7 @@ from typing import Any, TYPE_CHECKING
 from frontend_visualqa.browser import (
     BrowserSession,
     DEFAULT_NAVIGATION_TIMEOUT_MS as BROWSER_NAVIGATION_TIMEOUT_MS,
-    DEFAULT_PAGE_READY_TIMEOUT_SECONDS,
+    build_page_ready_checker,
 )
 from frontend_visualqa.errors import BrowserActionError
 from frontend_visualqa.tool_arguments import parse_tool_arguments, tool_call_name
@@ -326,15 +326,7 @@ class ActionExecutor:
     ) -> None:
         self.navigation_timeout_ms = navigation_timeout_ms
         self.settle_delay_seconds = settle_delay_seconds
-        self.page_ready_checker = page_ready_checker or PageReadyChecker(
-            timeout=min(DEFAULT_PAGE_READY_TIMEOUT_SECONDS, max(1, int(navigation_timeout_ms / 1000))),
-            initial_wait=0.0,
-            wait_after_ready=0.0,
-            replace_native_select_dropdown=True,
-            disable_new_tabs=True,
-            disable_printing=True,
-            poll_interval=0.1,
-        )
+        self.page_ready_checker = page_ready_checker or build_page_ready_checker(navigation_timeout_ms)
         self._overlay: OverlayController | None = None
 
     @property
