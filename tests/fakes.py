@@ -246,6 +246,39 @@ class FakeNavigatorClient:
         return None
 
 
+class RecordingFakeOverlay:
+    """Fake ``OverlayController`` that appends each lifecycle call to an external list.
+
+    ``test_claim_verifier.py`` had five call sites that each defined an identical nested
+    ``FakeOverlay`` class (differing only in the name of the closure-captured events list) to
+    monkeypatch ``_create_overlay_controller``. This is the shared version they delegate to now.
+    """
+
+    def __init__(self, events: list[Any]) -> None:
+        self._events = events
+
+    async def claim_started(self) -> None:
+        self._events.append("claim_started")
+
+    async def set_status(self, label: str) -> None:
+        self._events.append(("set_status", label))
+
+    async def show_thought(self, text: str) -> None:
+        self._events.append(("show_thought", text))
+
+    async def clear_thought(self) -> None:
+        self._events.append("clear_thought")
+
+    async def before_screenshot(self) -> None:
+        self._events.append("before_screenshot")
+
+    async def after_screenshot(self) -> None:
+        self._events.append("after_screenshot")
+
+    async def claim_ended(self) -> None:
+        self._events.append("claim_ended")
+
+
 class FakeArtifactManager:
     def __init__(self, base_dir: Path, run_id: str = "run-test") -> None:
         self.base_dir = base_dir
