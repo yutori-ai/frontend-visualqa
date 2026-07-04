@@ -31,6 +31,8 @@ from frontend_visualqa.schemas import (
 )
 from frontend_visualqa.text_utils import clip_text
 
+logger = logging.getLogger(__name__)
+
 
 def build_parser() -> argparse.ArgumentParser:
     """Build the single-entrypoint CLI parser."""
@@ -566,7 +568,7 @@ async def _run_login(args: argparse.Namespace) -> int:
             try:
                 await manager.close()
             except Exception:
-                pass
+                logger.debug("Failed to close browser during login cleanup", exc_info=True)
 
 
 async def _run_status() -> dict[str, Any]:
