@@ -24,6 +24,29 @@ def example_server() -> str:
     yield from serve_static_directory(PACKAGE_ROOT / "examples")
 
 
+def _build_live_runner(
+    *,
+    tmp_path: Path,
+    responses: list[Any],
+    headless: bool = True,
+) -> VisualQARunner:
+    """Assemble a real BrowserManager/ArtifactManager/ClaimVerifier stack with a fake navigator client."""
+    browser_manager = BrowserManager(headless=headless, settle_delay_seconds=0)
+    navigator_client = FakeNavigatorClient(responses=responses)
+    artifact_manager = ArtifactManager(tmp_path / "artifacts")
+    claim_verifier = ClaimVerifier(
+        browser_manager=browser_manager,
+        artifact_manager=artifact_manager,
+        navigator_client=navigator_client,
+    )
+    return VisualQARunner(
+        browser_manager=browser_manager,
+        artifact_manager=artifact_manager,
+        navigator_client=navigator_client,
+        claim_verifier=claim_verifier,
+    )
+
+
 async def _overlay_dom_state(page: Any) -> dict[str, Any]:
     return await page.evaluate(
         """() => {
@@ -107,8 +130,8 @@ async def test_live_runner_executes_real_browser_flow_and_passes_modal_claim(
     example_server: str,
     tmp_path: Path,
 ) -> None:
-    browser_manager = BrowserManager(headless=True, settle_delay_seconds=0)
-    navigator_client = FakeNavigatorClient(
+    runner = _build_live_runner(
+        tmp_path=tmp_path,
         responses=[
             FakeMessage(
                 tool_calls=[
@@ -122,19 +145,7 @@ async def test_live_runner_executes_real_browser_flow_and_passes_modal_claim(
                 ]
             ),
             FakeResponse(parsed_json={"status": "passed", "finding": "The modal title reads Edit Task."}),
-        ]
-    )
-    artifact_manager = ArtifactManager(tmp_path / "artifacts")
-    claim_verifier = ClaimVerifier(
-        browser_manager=browser_manager,
-        artifact_manager=artifact_manager,
-        navigator_client=navigator_client,
-    )
-    runner = VisualQARunner(
-        browser_manager=browser_manager,
-        artifact_manager=artifact_manager,
-        navigator_client=navigator_client,
-        claim_verifier=claim_verifier,
+        ],
     )
 
     try:
@@ -166,23 +177,11 @@ async def test_live_runner_downgrades_false_positive_button_claim_with_grounding
     example_server: str,
     tmp_path: Path,
 ) -> None:
-    browser_manager = BrowserManager(headless=True, settle_delay_seconds=0)
-    navigator_client = FakeNavigatorClient(
+    runner = _build_live_runner(
+        tmp_path=tmp_path,
         responses=[
             FakeResponse(parsed_json={ "status": "passed", "finding": "The Show Save Confirmation button is visible without scrolling.", })
-        ]
-    )
-    artifact_manager = ArtifactManager(tmp_path / "artifacts")
-    claim_verifier = ClaimVerifier(
-        browser_manager=browser_manager,
-        artifact_manager=artifact_manager,
-        navigator_client=navigator_client,
-    )
-    runner = VisualQARunner(
-        browser_manager=browser_manager,
-        artifact_manager=artifact_manager,
-        navigator_client=navigator_client,
-        claim_verifier=claim_verifier,
+        ],
     )
 
     try:
@@ -209,8 +208,9 @@ async def test_live_runner_headed_overlay_hides_restores_and_cleans_up(
         pytest.skip("headed overlay implementation is not present in this partial worktree")
     from frontend_visualqa.overlay import OverlayController
 
-    browser_manager = BrowserManager(headless=False, settle_delay_seconds=0)
-    navigator_client = FakeNavigatorClient(
+    runner = _build_live_runner(
+        tmp_path=tmp_path,
+        headless=False,
         responses=[
             FakeMessage(
                 tool_calls=[
@@ -224,19 +224,7 @@ async def test_live_runner_headed_overlay_hides_restores_and_cleans_up(
                 ]
             ),
             FakeResponse(parsed_json={"status": "passed", "finding": "The modal title reads Edit Task."}),
-        ]
-    )
-    artifact_manager = ArtifactManager(tmp_path / "artifacts")
-    claim_verifier = ClaimVerifier(
-        browser_manager=browser_manager,
-        artifact_manager=artifact_manager,
-        navigator_client=navigator_client,
-    )
-    runner = VisualQARunner(
-        browser_manager=browser_manager,
-        artifact_manager=artifact_manager,
-        navigator_client=navigator_client,
-        claim_verifier=claim_verifier,
+        ],
     )
 
     run_kwargs = dict(
@@ -332,23 +320,12 @@ async def test_live_runner_headed_overlay_zero_action_path_skips_hide_restore(
         pytest.skip("headed overlay implementation is not present in this partial worktree")
     from frontend_visualqa.overlay import OverlayController
 
-    browser_manager = BrowserManager(headless=False, settle_delay_seconds=0)
-    navigator_client = FakeNavigatorClient(
+    runner = _build_live_runner(
+        tmp_path=tmp_path,
+        headless=False,
         responses=[
             FakeResponse(parsed_json={ "status": "passed", "finding": "The page title reads Frontend Visual QA Playground.", })
-        ]
-    )
-    artifact_manager = ArtifactManager(tmp_path / "artifacts")
-    claim_verifier = ClaimVerifier(
-        browser_manager=browser_manager,
-        artifact_manager=artifact_manager,
-        navigator_client=navigator_client,
-    )
-    runner = VisualQARunner(
-        browser_manager=browser_manager,
-        artifact_manager=artifact_manager,
-        navigator_client=navigator_client,
-        claim_verifier=claim_verifier,
+        ],
     )
 
     run_kwargs = dict(
