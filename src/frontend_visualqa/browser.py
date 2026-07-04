@@ -71,6 +71,25 @@ def _viewport_size_dict(viewport: ViewportConfig) -> dict[str, int]:
     return {"width": viewport.width, "height": viewport.height}
 
 
+def _apply_record_video_kwargs(
+    kwargs: dict[str, Any],
+    record_video_dir: str | None,
+    viewport: ViewportConfig,
+) -> None:
+    """Add Playwright's ``record_video_*`` keys to *kwargs* in place, if requested.
+
+    Shared by the persistent-mode launch path (``ensure_browser``) and the
+    ephemeral-mode context path (``_create_session``), which both need to
+    create the recording directory and set the same two keys before handing
+    *kwargs* to Playwright.
+    """
+    if not record_video_dir:
+        return
+    Path(record_video_dir).mkdir(parents=True, exist_ok=True)
+    kwargs["record_video_dir"] = record_video_dir
+    kwargs["record_video_size"] = _viewport_size_dict(viewport)
+
+
 class BrowserManager:
     """Own the shared Chromium process and session-scoped browser contexts."""
 
@@ -158,10 +177,7 @@ class BrowserManager:
                 "viewport": _viewport_size_dict(persistent_viewport),
                 "device_scale_factor": persistent_viewport.device_scale_factor,
             }
-            if record_video_dir:
-                Path(record_video_dir).mkdir(parents=True, exist_ok=True)
-                launch_kwargs["record_video_dir"] = record_video_dir
-                launch_kwargs["record_video_size"] = _viewport_size_dict(persistent_viewport)
+            _apply_record_video_kwargs(launch_kwargs, record_video_dir, persistent_viewport)
             self._persistent_context = await playwright.chromium.launch_persistent_context(**launch_kwargs)
             self._configure_context(self._persistent_context)
             self._persistent_context.on("close", lambda *_: self._handle_persistent_context_close())
@@ -482,10 +498,7 @@ class BrowserManager:
                 "viewport": _viewport_size_dict(viewport),
                 "device_scale_factor": viewport.device_scale_factor,
             }
-            if record_video_dir:
-                Path(record_video_dir).mkdir(parents=True, exist_ok=True)
-                context_kwargs["record_video_dir"] = record_video_dir
-                context_kwargs["record_video_size"] = _viewport_size_dict(viewport)
+            _apply_record_video_kwargs(context_kwargs, record_video_dir, viewport)
             context = await browser.new_context(**context_kwargs)
             self._configure_context(context)
             page = await context.new_page()
