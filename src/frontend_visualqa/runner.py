@@ -194,9 +194,7 @@ class VisualQARunner:
             # config opts in. Videos go under <run_dir>/videos/ so recordings
             # are co-located with screenshots, traces, and reports for the same
             # run. .webm files are finalized when the context closes.
-            record_video_dir: str | None = None
-            if self.browser_manager.config.record_video:
-                record_video_dir = str(Path(run_artifacts.run_dir) / "videos")
+            record_video_dir = self._record_video_dir_for(run_artifacts)
             if finding is None:
                 session, finding = await self._open_session_for_request(request, record_video_dir=record_video_dir)
             if finding is not None:
@@ -401,9 +399,7 @@ class VisualQARunner:
         if saved_video is not None:
             video_paths.append(saved_video)
 
-        record_video_dir: str | None = None
-        if self.browser_manager.config.record_video:
-            record_video_dir = str(Path(run_artifacts.run_dir) / "videos")
+        record_video_dir = self._record_video_dir_for(run_artifacts)
         restarted = await self.browser_manager.get_session(
             request.session_key,
             viewport=request.viewport,
@@ -687,6 +683,21 @@ class VisualQARunner:
             return None
 
     @staticmethod
+    def _videos_dir_for(run_artifacts: RunArtifacts) -> Path:
+        """Directory videos for this run are written to: ``<run_dir>/videos``."""
+        return Path(run_artifacts.run_dir) / "videos"
+
+    def _record_video_dir_for(self, run_artifacts: RunArtifacts) -> str | None:
+        """Playwright ``record_video_dir`` for this run, or ``None`` if recording is off.
+
+        Videos go under ``<run_dir>/videos/`` so recordings are co-located with
+        screenshots, traces, and reports for the same run.
+        """
+        if not self.browser_manager.config.record_video:
+            return None
+        return str(self._videos_dir_for(run_artifacts))
+
+    @staticmethod
     def _video_target_for(
         run_artifacts: RunArtifacts,
         *,
@@ -702,7 +713,7 @@ class VisualQARunner:
           claims): ``<run_id>-claim-<N>.webm``, where ``N`` is the claim
           covered by that session.
         """
-        videos_dir = Path(run_artifacts.run_dir) / "videos"
+        videos_dir = VisualQARunner._videos_dir_for(run_artifacts)
         if reuse_session or total_claims <= 1:
             return videos_dir / f"{run_artifacts.run_id}.webm"
         return videos_dir / f"{run_artifacts.run_id}-claim-{claim_index}.webm"
