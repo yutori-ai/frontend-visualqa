@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import inspect
 import json
 from collections.abc import Callable
@@ -1129,8 +1130,6 @@ class SlowClaimVerifier:
         self.calls: list[dict[str, Any]] = []
 
     async def verify(self, *args: Any, **kwargs: Any) -> ClaimResult:
-        import asyncio
-
         if args:
             kwargs["session"] = args[0]
         self.calls.append(kwargs)
@@ -1161,8 +1160,6 @@ class RunTimeoutClaimVerifier:
         self.delay_seconds = delay_seconds
 
     async def verify(self, *args: Any, **kwargs: Any) -> ClaimResult:
-        import asyncio
-
         if args:
             kwargs["session"] = args[0]
         self.calls.append(kwargs)
