@@ -653,6 +653,7 @@ class ActionExecutor:
         try:
             await page.wait_for_load_state("domcontentloaded", timeout=self.navigation_timeout_ms)
         except Exception:
+            logger.debug("Wait for domcontentloaded failed; continuing with action", exc_info=True)
             return
         try:
             await self.page_ready_checker.wait_until_ready(page, fast_mode=self.settle_delay_seconds == 0)

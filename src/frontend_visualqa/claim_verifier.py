@@ -507,6 +507,7 @@ class ClaimVerifier:
                 [event.model_dump(mode="json") for event in events],
             )
         except Exception:
+            logger.debug("Failed to save rich trace", exc_info=True)
             trace_path = None
         proof = None
         if progress.screenshot_paths:
