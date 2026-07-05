@@ -312,6 +312,7 @@ class ToolExecutionResult:
     output_text: str | None = None
     current_url: str | None = None
     counts_as_interaction: bool = True
+    action_failed: bool = False
 
 
 class ActionExecutor:

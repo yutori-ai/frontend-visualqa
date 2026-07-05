@@ -6,12 +6,13 @@ import asyncio
 import json
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, TYPE_CHECKING
 
 from frontend_visualqa.actions import (
     REDACTED_TYPE_TEXT,
     ActionExecutor,
+    ToolExecutionResult,
     focused_element_is_password,
     referenced_element_is_password,
 )
@@ -295,9 +296,9 @@ class ClaimVerifier:
                     execution = await self._execute_tool_call(session, tool_call)
                     if sensitive_text is not None:
                         execution = self._redact_sensitive_execution(execution, sensitive_text)
-                    trace = execution["trace"]
+                    trace = execution.trace
                     progress.action_trace.append(trace)
-                    output_text = execution.get("output_text")
+                    output_text = execution.output_text
                     await self._safe_hook_call(
                         "on_tool_end",
                         name=tool_name,
@@ -305,8 +306,8 @@ class ClaimVerifier:
                         output=output_text,
                         trace=trace,
                     )
-                    current_url = execution.get("current_url", session.page.url) or url
-                    counts_as_interaction = bool(execution.get("counts_as_interaction", True))
+                    current_url = execution.current_url or url
+                    counts_as_interaction = bool(execution.counts_as_interaction)
                     progress.url_history.append(current_url)
                     progress.step_count += 1
                     if counts_as_interaction:
@@ -343,7 +344,7 @@ class ClaimVerifier:
                                     "type": "text",
                                     "text": self._build_tool_result_text(
                                         trace=trace,
-                                        output_text=execution.get("output_text"),
+                                        output_text=execution.output_text,
                                         current_url=current_url,
                                     ),
                                 },
@@ -354,7 +355,7 @@ class ClaimVerifier:
                             ],
                         }
                     )
-                    if execution.get("action_failed"):
+                    if execution.action_failed:
                         consecutive_action_failures += 1
                         if consecutive_action_failures >= MAX_CONSECUTIVE_ACTION_FAILURES:
                             result = self._build_result(
@@ -362,7 +363,7 @@ class ClaimVerifier:
                                 status="inconclusive",
                                 finding=(
                                     f"Browser actions failed {consecutive_action_failures} times in a row "
-                                    f"without a verdict. Last error: {execution.get('output_text') or trace}"
+                                    f"without a verdict. Last error: {execution.output_text or trace}"
                                 ),
                             )
                             return await self._complete_result(result)
@@ -760,15 +761,15 @@ class ClaimVerifier:
                 return
 
     @staticmethod
-    def _redact_sensitive_execution(execution: dict[str, Any], sensitive_text: str) -> dict[str, Any]:
+    def _redact_sensitive_execution(execution: ToolExecutionResult, sensitive_text: str) -> ToolExecutionResult:
         if not sensitive_text:
             return execution
-        redacted = dict(execution)
-        for key in ("trace", "output_text"):
-            value = redacted.get(key)
-            if isinstance(value, str):
-                redacted[key] = value.replace(sensitive_text, REDACTED_TYPE_TEXT)
-        return redacted
+        updates: dict[str, Any] = {}
+        if isinstance(execution.trace, str):
+            updates["trace"] = execution.trace.replace(sensitive_text, REDACTED_TYPE_TEXT)
+        if isinstance(execution.output_text, str):
+            updates["output_text"] = execution.output_text.replace(sensitive_text, REDACTED_TYPE_TEXT)
+        return replace(execution, **updates) if updates else execution
 
     @staticmethod
     def _extract_json_verdict(response: Any) -> tuple[str, str] | None:
@@ -787,7 +788,7 @@ class ClaimVerifier:
             return status, finding
         return None
 
-    async def _execute_tool_call(self, session: BrowserSession, tool_call: Any) -> dict[str, Any]:
+    async def _execute_tool_call(self, session: BrowserSession, tool_call: Any) -> ToolExecutionResult:
         from frontend_visualqa.actions import tool_counts_as_interaction
 
         tool_name = tool_call_name(tool_call)
@@ -798,26 +799,26 @@ class ClaimVerifier:
             # malformed arguments), not an environment block. Feed the error
             # back as the tool result so the model can correct itself; verify()
             # gives up as inconclusive after MAX_CONSECUTIVE_ACTION_FAILURES.
-            return {
-                "trace": f"{tool_name} failed",
-                "output_text": f"[ERROR] {exc}",
-                "current_url": session.page.url,
-                "counts_as_interaction": False,
-                "action_failed": True,
-            }
+            return ToolExecutionResult(
+                trace=f"{tool_name} failed",
+                output_text=f"[ERROR] {exc}",
+                current_url=session.page.url,
+                counts_as_interaction=False,
+                action_failed=True,
+            )
         if isinstance(result, str):
-            return {
-                "trace": result,
-                "output_text": None,
-                "current_url": session.page.url,
-                "counts_as_interaction": tool_counts_as_interaction(tool_name),
-            }
-        return {
-            "trace": getattr(result, "trace", str(result)),
-            "output_text": getattr(result, "output_text", None),
-            "current_url": getattr(result, "current_url", None) or session.page.url,
-            "counts_as_interaction": getattr(result, "counts_as_interaction", True),
-        }
+            return ToolExecutionResult(
+                trace=result,
+                output_text=None,
+                current_url=session.page.url,
+                counts_as_interaction=tool_counts_as_interaction(tool_name),
+            )
+        return ToolExecutionResult(
+            trace=getattr(result, "trace", str(result)),
+            output_text=getattr(result, "output_text", None),
+            current_url=getattr(result, "current_url", None) or session.page.url,
+            counts_as_interaction=getattr(result, "counts_as_interaction", True),
+        )
 
     async def _finalize_result(
         self,
