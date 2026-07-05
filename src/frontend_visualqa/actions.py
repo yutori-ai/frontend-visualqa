@@ -529,13 +529,11 @@ class ActionExecutor:
                         logger.debug("Blocked disallowed zoom chord in hold_key: %s", combo)
                     else:
                         await self._best_effort_overlay_set_status("Holding key")
-                        for key_name in modifier_keys:
-                            await page.keyboard.down(key_name)
+                        await self._press_modifier_keys(page, key_text)
                         try:
                             await asyncio.sleep(min(float(hold_duration), 100.0))
                         finally:
-                            for key_name in reversed(modifier_keys):
-                                await page.keyboard.up(key_name)
+                            await self._release_modifier_keys(page, modifier_keys)
                 else:
                     for key_name in _mapped_key_presses(key_text):
                         if is_disallowed_zoom_shortcut(key_name):
