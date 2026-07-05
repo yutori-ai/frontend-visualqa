@@ -11,6 +11,7 @@ import pytest
 from pydantic import ValidationError
 
 from frontend_visualqa.claim_parser import parse_claims_file
+from frontend_visualqa.reporters import get_reporters
 from fakes import (
     FakeArtifactManager,
     FakeNavigatorClient,
@@ -1861,8 +1862,6 @@ async def test_runner_writes_both_native_and_ctrf_reports(
 ) -> None:
     module = _import_runner_module()
     viewport = ViewportConfig()
-    from frontend_visualqa.reporters import get_reporters
-
     reporters = get_reporters(["native", "ctrf"])
     runner, browser, verifier = _build_runner(
         module,
@@ -1921,8 +1920,6 @@ async def test_runner_ctrf_only_does_not_write_native_report(
     """When only ctrf is selected, run_result.json must not be written."""
     module = _import_runner_module()
     viewport = ViewportConfig()
-    from frontend_visualqa.reporters import get_reporters
-
     reporters = get_reporters(["ctrf"])
     runner, browser, verifier = _build_runner(
         module,

@@ -320,7 +320,7 @@ def get_reporters(names: list[str]) -> list[Reporter]:
         if cls is None:
             raise ValueError(
                 f"Unknown reporter: {name!r}. "
-                f"Available reporters: {sorted(_REPORTERS.keys())}"
+                f"Available reporters: {sorted(_REPORTERS)}"
             )
         reporters.append(cls())
     return reporters
