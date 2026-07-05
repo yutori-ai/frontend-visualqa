@@ -7,6 +7,7 @@ from typing import Any
 import pytest
 
 from fakes import assert_claim_result_payload_shape, make_claim_result
+import frontend_visualqa.cli as cli
 from frontend_visualqa import __version__
 from frontend_visualqa.errors import ConfigurationError
 from frontend_visualqa.schemas import BrowserConfig, BrowserMode, BrowserStatusResult, ClaimResult, RunResult, ScreenshotResult, ViewportConfig
@@ -151,8 +152,6 @@ async def _noop_preflight_verify_auth() -> None:
 
 
 def test_build_parser_supports_version_flag_without_subcommand(capsys: pytest.CaptureFixture[str]) -> None:
-    import frontend_visualqa.cli as cli
-
     with pytest.raises(SystemExit) as exc_info:
         cli.build_parser().parse_args(["--version"])
 
@@ -161,8 +160,6 @@ def test_build_parser_supports_version_flag_without_subcommand(capsys: pytest.Ca
 
 
 def test_handle_verify_closes_runner_and_forwards_browser_config(monkeypatch: Any) -> None:
-    import frontend_visualqa.cli as cli
-
     fake_runner = FakeRunner()
     emitted: list[dict[str, Any]] = []
     browser_configs: list[BrowserConfig | None] = []
@@ -221,8 +218,6 @@ def test_handle_verify_closes_runner_and_forwards_browser_config(monkeypatch: An
 
 
 def test_handle_screenshot_closes_runner_and_forwards_browser_config(monkeypatch: Any) -> None:
-    import frontend_visualqa.cli as cli
-
     fake_runner = FakeRunner()
     emitted: list[dict[str, Any]] = []
     browser_configs: list[BrowserConfig | None] = []
@@ -258,8 +253,6 @@ def test_handle_screenshot_closes_runner_and_forwards_browser_config(monkeypatch
 
 
 def test_handle_status_closes_runner(monkeypatch: Any) -> None:
-    import frontend_visualqa.cli as cli
-
     fake_runner = FakeRunner()
     emitted: list[dict[str, Any]] = []
     monkeypatch.setattr(cli, "_new_runner", lambda **_: fake_runner)
@@ -274,8 +267,6 @@ def test_handle_status_closes_runner(monkeypatch: Any) -> None:
 
 
 def test_handle_serve_configures_server_and_closes_cached_mcp_runners(monkeypatch: Any) -> None:
-    import frontend_visualqa.cli as cli
-
     fake_server = FakeServer()
     configured: list[BrowserConfig] = []
     closed: list[str] = []
@@ -305,8 +296,6 @@ def test_handle_serve_configures_server_and_closes_cached_mcp_runners(monkeypatc
 
 
 def test_handle_verify_passes_reporters_to_runner(monkeypatch: Any) -> None:
-    import frontend_visualqa.cli as cli
-
     fake_runner = FakeRunner()
     emitted: list[dict[str, Any]] = []
     captured_reporters: list[list[str] | None] = []
@@ -348,9 +337,7 @@ def test_handle_verify_passes_reporters_to_runner(monkeypatch: Any) -> None:
 
 
 def test_verify_parser_rejects_claims_and_claims_file_together(capsys: pytest.CaptureFixture[str]) -> None:
-    from frontend_visualqa.cli import build_parser
-
-    parser = build_parser()
+    parser = cli.build_parser()
     with pytest.raises(SystemExit, match="2"):
         parser.parse_args(
             [
@@ -370,8 +357,6 @@ def test_handle_verify_reads_claims_file_and_emits_progress(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    import frontend_visualqa.cli as cli
-
     claims_file = tmp_path / "claims.md"
     claims_file.write_text(
         """# Dashboard checks
@@ -439,8 +424,6 @@ def test_handle_verify_reads_claims_file_with_second_claim_navigation_hint(
     monkeypatch: Any,
     tmp_path: Path,
 ) -> None:
-    import frontend_visualqa.cli as cli
-
     claims_file = tmp_path / "claims.md"
     claims_file.write_text(
         """# Dashboard checks
@@ -495,8 +478,6 @@ def test_handle_verify_rejects_missing_claims_file(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    import frontend_visualqa.cli as cli
-
     emitted: list[dict[str, Any]] = []
     monkeypatch.setattr(cli, "_emit_json", emitted.append)
     monkeypatch.setattr(cli, "_preflight_verify_auth", _noop_preflight_verify_auth)
@@ -534,8 +515,6 @@ def test_handle_verify_checks_claims_file_before_auth_preflight(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    import frontend_visualqa.cli as cli
-
     emitted: list[dict[str, Any]] = []
 
     async def _failing_preflight() -> None:
@@ -573,8 +552,6 @@ def test_handle_verify_checks_claims_file_before_auth_preflight(
 
 
 def test_handle_verify_returns_nonzero_when_any_claim_is_not_passed(monkeypatch: Any) -> None:
-    import frontend_visualqa.cli as cli
-
     fake_runner = FakeRunner()
     emitted: list[dict[str, Any]] = []
 
@@ -641,8 +618,6 @@ def test_handle_verify_returns_nonzero_without_json_when_auth_preflight_fails(
     monkeypatch: Any,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    import frontend_visualqa.cli as cli
-
     emitted: list[dict[str, Any]] = []
     new_runner_calls: list[object] = []
 
@@ -683,13 +658,11 @@ def test_handle_verify_returns_nonzero_without_json_when_auth_preflight_fails(
 
 
 def test_verify_parser_supports_visualize_flags_and_headed_default() -> None:
-    from frontend_visualqa.cli import _build_browser_config, build_parser
-
-    parser = build_parser()
+    parser = cli.build_parser()
 
     headed_args = parser.parse_args(["verify", "http://localhost:3000", "--claims", "test", "--headed"])
     assert headed_args.visualize is None
-    assert _build_browser_config(headed_args).visualize is True
+    assert cli._build_browser_config(headed_args).visualize is True
 
     explicit_true_args = parser.parse_args([
         "verify",
@@ -699,7 +672,7 @@ def test_verify_parser_supports_visualize_flags_and_headed_default() -> None:
         "--visualize",
     ])
     assert explicit_true_args.visualize is True
-    assert _build_browser_config(explicit_true_args).visualize is True
+    assert cli._build_browser_config(explicit_true_args).visualize is True
 
     explicit_false_args = parser.parse_args([
         "verify",
@@ -710,13 +683,11 @@ def test_verify_parser_supports_visualize_flags_and_headed_default() -> None:
         "--no-visualize",
     ])
     assert explicit_false_args.visualize is False
-    assert _build_browser_config(explicit_false_args).visualize is False
+    assert cli._build_browser_config(explicit_false_args).visualize is False
 
 
 def test_session_arg_help_mentions_persistent_singleton_and_run_name_scope() -> None:
-    from frontend_visualqa.cli import build_parser
-
-    parser = build_parser()
+    parser = cli.build_parser()
     subparsers = next(action for action in parser._actions if getattr(action, "choices", None))
     verify_help = " ".join(subparsers.choices["verify"].format_help().split())
     screenshot_help = " ".join(subparsers.choices["screenshot"].format_help().split())
@@ -728,8 +699,6 @@ def test_session_arg_help_mentions_persistent_singleton_and_run_name_scope() -> 
 
 
 def test_handle_login_requires_tty(monkeypatch: Any, capsys: pytest.CaptureFixture[str]) -> None:
-    import frontend_visualqa.cli as cli
-
     monkeypatch.setattr(cli.sys, "stdin", SimpleNamespace(isatty=lambda: False))
 
     exit_code = cli._handle_login(SimpleNamespace(url="http://localhost:3000/login", user_data_dir=None))
@@ -739,17 +708,13 @@ def test_handle_login_requires_tty(monkeypatch: Any, capsys: pytest.CaptureFixtu
 
 
 def test_verify_rejects_invalid_reporter_at_parse_time(capsys: pytest.CaptureFixture[str]) -> None:
-    from frontend_visualqa.cli import build_parser
-
-    parser = build_parser()
+    parser = cli.build_parser()
     with pytest.raises(SystemExit, match="2"):
         parser.parse_args(["verify", "http://localhost:3000", "--claims", "x", "--reporter", "bogus"])
     assert "invalid choice" in capsys.readouterr().err
 
 
 def test_handle_login_rejects_invalid_url(monkeypatch: Any, capsys: pytest.CaptureFixture[str]) -> None:
-    import frontend_visualqa.cli as cli
-
     monkeypatch.setattr(cli.sys, "stdin", SimpleNamespace(isatty=lambda: True))
 
     exit_code = cli._handle_login(SimpleNamespace(url="localhost:3000/login", user_data_dir=None))
@@ -763,8 +728,6 @@ async def test_run_login_opens_headed_persistent_browser_and_saves_profile(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    import frontend_visualqa.cli as cli
-
     created_managers: list[FakeBrowserManager] = []
 
     def _fake_browser_manager(*, config: BrowserConfig) -> FakeBrowserManager:
@@ -802,8 +765,6 @@ async def test_run_login_exits_cleanly_when_browser_window_closes_first(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    import frontend_visualqa.cli as cli
-
     created_managers: list[ClosingFakeBrowserManager] = []
 
     def _fake_browser_manager(*, config: BrowserConfig) -> ClosingFakeBrowserManager:
@@ -834,8 +795,6 @@ def test_handle_verify_rejects_invalid_input_before_auth_preflight(
     monkeypatch: Any,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    import frontend_visualqa.cli as cli
-
     preflight_calls: list[None] = []
 
     async def _recording_preflight() -> None:
@@ -880,8 +839,6 @@ def test_handle_verify_rejects_invalid_input_before_auth_preflight(
 
 
 def test_handle_screenshot_returns_nonzero_when_not_testable(monkeypatch: Any) -> None:
-    import frontend_visualqa.cli as cli
-
     fake_runner = FakeRunner()
 
     async def _not_testable_screenshot(**kwargs: Any) -> ScreenshotResult:
@@ -924,8 +881,6 @@ def test_handle_screenshot_rejects_invalid_url(
     monkeypatch: Any,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    import frontend_visualqa.cli as cli
-
     monkeypatch.setattr(cli, "_new_runner", lambda **_: pytest.fail("runner must not be constructed"))
 
     exit_code = cli._handle_screenshot(
