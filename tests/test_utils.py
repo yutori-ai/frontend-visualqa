@@ -4,6 +4,7 @@ import logging
 
 import pytest
 
+from frontend_visualqa.text_utils import clip_text_preserving_lines
 from frontend_visualqa.utils import (
     safe_async_method_call,
     safe_callback_call,
@@ -238,8 +239,6 @@ def test_safe_callback_call_uses_caller_logger_when_supplied(
 
 
 def test_clip_text_preserving_lines_keeps_line_structure() -> None:
-    from frontend_visualqa.text_utils import clip_text_preserving_lines
-
     text = "# Plan\r\n- check the bar\r- check the label\n"
     clipped = clip_text_preserving_lines(text, 520, ellipsis="…")
 
@@ -247,8 +246,6 @@ def test_clip_text_preserving_lines_keeps_line_structure() -> None:
 
 
 def test_clip_text_preserving_lines_truncates_with_ellipsis() -> None:
-    from frontend_visualqa.text_utils import clip_text_preserving_lines
-
     text = "- first line\n" + "x" * 600
     clipped = clip_text_preserving_lines(text, 50, ellipsis="…")
 
