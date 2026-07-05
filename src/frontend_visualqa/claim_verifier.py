@@ -15,6 +15,7 @@ from frontend_visualqa.actions import (
     ToolExecutionResult,
     focused_element_is_password,
     referenced_element_is_password,
+    tool_counts_as_interaction,
 )
 from frontend_visualqa.artifacts import ArtifactManager, RunArtifacts
 from frontend_visualqa.browser import BrowserManager, BrowserSession, image_bytes_to_data_url
@@ -789,8 +790,6 @@ class ClaimVerifier:
         return None
 
     async def _execute_tool_call(self, session: BrowserSession, tool_call: Any) -> ToolExecutionResult:
-        from frontend_visualqa.actions import tool_counts_as_interaction
-
         tool_name = tool_call_name(tool_call)
         try:
             result = await self.action_executor.execute_tool_call(session, tool_call)
