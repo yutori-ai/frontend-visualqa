@@ -151,6 +151,61 @@ async def _noop_preflight_verify_auth() -> None:
     return None
 
 
+def _verify_args(**overrides: Any) -> SimpleNamespace:
+    """Build the ``SimpleNamespace`` argparse-args shape ``cli._handle_verify`` expects.
+
+    Every `cli._handle_verify(SimpleNamespace(...))` call site in this module repeated the same
+    ~18-field namespace, differing from each other in only a few fields. This is the shared
+    builder they delegate to now, mirroring the `instantiate_with_aliased_attrs`/`make_claim_result`
+    pattern in `fakes.py`: defaults cover the common case, and callers pass only the fields under
+    test as overrides.
+    """
+    defaults = dict(
+        url="http://localhost:3000/tasks/123",
+        claims=["The modal title reads Edit Task"],
+        claims_file=None,
+        width=1280,
+        height=800,
+        device_scale_factor=1.0,
+        browser_mode="ephemeral",
+        user_data_dir=None,
+        headed=False,
+        session_key="default",
+        run_name=None,
+        reuse_session=True,
+        reset_between_claims=True,
+        max_steps_per_claim=12,
+        claim_timeout_seconds=120.0,
+        run_timeout_seconds=300.0,
+        navigation_hint=None,
+        reporter=None,
+    )
+    defaults.update(overrides)
+    return SimpleNamespace(**defaults)
+
+
+def _screenshot_args(**overrides: Any) -> SimpleNamespace:
+    """Build the ``SimpleNamespace`` argparse-args shape ``cli._handle_screenshot`` expects.
+
+    Mirrors `_verify_args` above for the smaller ~11-field screenshot namespace repeated across
+    `cli._handle_screenshot(SimpleNamespace(...))` call sites.
+    """
+    defaults = dict(
+        url="http://localhost:3000/tasks/123",
+        width=1280,
+        height=800,
+        device_scale_factor=1.0,
+        browser_mode="ephemeral",
+        user_data_dir=None,
+        headed=False,
+        session_key="default",
+        run_name=None,
+        reuse_session=True,
+    )
+    defaults.update(overrides)
+    return SimpleNamespace(**defaults)
+
+
 def test_build_parser_supports_version_flag_without_subcommand(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit) as exc_info:
         cli.build_parser().parse_args(["--version"])
@@ -173,25 +228,14 @@ def test_handle_verify_closes_runner_and_forwards_browser_config(monkeypatch: An
     monkeypatch.setattr(cli, "_preflight_verify_auth", _noop_preflight_verify_auth)
 
     exit_code = cli._handle_verify(
-        SimpleNamespace(
-            url="http://localhost:3000/tasks/123",
-            claims=["The modal title reads Edit Task"],
-            claims_file=None,
-            width=1280,
-            height=800,
-            device_scale_factor=1.0,
+        _verify_args(
             browser_mode="persistent",
             user_data_dir="/tmp/frontend-visualqa-profile",
             headed=True,
             session_key="verify-session",
             run_name="auth-ci",
-            reuse_session=True,
-            reset_between_claims=True,
             max_steps_per_claim=4,
-            claim_timeout_seconds=120.0,
-            run_timeout_seconds=300.0,
             navigation_hint="Open the modal first.",
-            reporter=None,
         )
     )
 
@@ -230,14 +274,9 @@ def test_handle_screenshot_closes_runner_and_forwards_browser_config(monkeypatch
     monkeypatch.setattr(cli, "_emit_json", emitted.append)
 
     exit_code = cli._handle_screenshot(
-        SimpleNamespace(
-            url="http://localhost:3000/tasks/123",
+        _screenshot_args(
             width=390,
             height=844,
-            device_scale_factor=1.0,
-            browser_mode="ephemeral",
-            user_data_dir=None,
-            headed=False,
             session_key="shot-session",
             run_name="mobile-home",
             reuse_session=False,
@@ -308,28 +347,7 @@ def test_handle_verify_passes_reporters_to_runner(monkeypatch: Any) -> None:
     monkeypatch.setattr(cli, "_emit_json", emitted.append)
     monkeypatch.setattr(cli, "_preflight_verify_auth", _noop_preflight_verify_auth)
 
-    exit_code = cli._handle_verify(
-        SimpleNamespace(
-            url="http://localhost:3000/tasks/123",
-            claims=["The modal title reads Edit Task"],
-            claims_file=None,
-            width=1280,
-            height=800,
-            device_scale_factor=1.0,
-            browser_mode="ephemeral",
-            user_data_dir=None,
-            headed=False,
-            session_key="default",
-            run_name=None,
-            reuse_session=True,
-            reset_between_claims=True,
-            max_steps_per_claim=12,
-            claim_timeout_seconds=120.0,
-            run_timeout_seconds=300.0,
-            navigation_hint=None,
-            reporter=["native", "ctrf"],
-        )
-    )
+    exit_code = cli._handle_verify(_verify_args(reporter=["native", "ctrf"]))
 
     assert exit_code == 0
     assert captured_reporters == [["native", "ctrf"]]
@@ -381,23 +399,9 @@ def test_handle_verify_reads_claims_file_and_emits_progress(
     monkeypatch.setattr(cli, "_preflight_verify_auth", _noop_preflight_verify_auth)
 
     exit_code = cli._handle_verify(
-        SimpleNamespace(
-            url="http://localhost:3000/tasks/123",
+        _verify_args(
             claims=None,
             claims_file=str(claims_file),
-            width=1280,
-            height=800,
-            device_scale_factor=1.0,
-            browser_mode="ephemeral",
-            user_data_dir=None,
-            headed=False,
-            session_key="default",
-            run_name=None,
-            reuse_session=True,
-            reset_between_claims=True,
-            max_steps_per_claim=12,
-            claim_timeout_seconds=120.0,
-            run_timeout_seconds=300.0,
             navigation_hint="Fallback hint for claims without one.",
             reporter=["markdown"],
         )
@@ -443,25 +447,10 @@ def test_handle_verify_reads_claims_file_with_second_claim_navigation_hint(
     monkeypatch.setattr(cli, "_preflight_verify_auth", _noop_preflight_verify_auth)
 
     exit_code = cli._handle_verify(
-        SimpleNamespace(
-            url="http://localhost:3000/tasks/123",
+        _verify_args(
             claims=None,
             claims_file=str(claims_file),
-            width=1280,
-            height=800,
-            device_scale_factor=1.0,
-            browser_mode="ephemeral",
-            user_data_dir=None,
-            headed=False,
-            session_key="default",
-            run_name=None,
-            reuse_session=True,
-            reset_between_claims=True,
-            max_steps_per_claim=12,
-            claim_timeout_seconds=120.0,
-            run_timeout_seconds=300.0,
             navigation_hint="Fallback hint for claims without one.",
-            reporter=None,
         )
     )
 
@@ -482,28 +471,7 @@ def test_handle_verify_rejects_missing_claims_file(
     monkeypatch.setattr(cli, "_emit_json", emitted.append)
     monkeypatch.setattr(cli, "_preflight_verify_auth", _noop_preflight_verify_auth)
 
-    exit_code = cli._handle_verify(
-        SimpleNamespace(
-            url="http://localhost:3000/tasks/123",
-            claims=None,
-            claims_file=str(tmp_path / "missing.md"),
-            width=1280,
-            height=800,
-            device_scale_factor=1.0,
-            browser_mode="ephemeral",
-            user_data_dir=None,
-            headed=False,
-            session_key="default",
-            run_name=None,
-            reuse_session=True,
-            reset_between_claims=True,
-            max_steps_per_claim=12,
-            claim_timeout_seconds=120.0,
-            run_timeout_seconds=300.0,
-            navigation_hint=None,
-            reporter=None,
-        )
-    )
+    exit_code = cli._handle_verify(_verify_args(claims=None, claims_file=str(tmp_path / "missing.md")))
 
     assert exit_code == 1
     assert emitted == []
@@ -523,28 +491,7 @@ def test_handle_verify_checks_claims_file_before_auth_preflight(
     monkeypatch.setattr(cli, "_emit_json", emitted.append)
     monkeypatch.setattr(cli, "_preflight_verify_auth", _failing_preflight)
 
-    exit_code = cli._handle_verify(
-        SimpleNamespace(
-            url="http://localhost:3000/tasks/123",
-            claims=None,
-            claims_file=str(tmp_path / "missing.md"),
-            width=1280,
-            height=800,
-            device_scale_factor=1.0,
-            browser_mode="ephemeral",
-            user_data_dir=None,
-            headed=False,
-            session_key="default",
-            run_name=None,
-            reuse_session=True,
-            reset_between_claims=True,
-            max_steps_per_claim=12,
-            claim_timeout_seconds=120.0,
-            run_timeout_seconds=300.0,
-            navigation_hint=None,
-            reporter=None,
-        )
-    )
+    exit_code = cli._handle_verify(_verify_args(claims=None, claims_file=str(tmp_path / "missing.md")))
 
     assert exit_code == 1
     assert emitted == []
@@ -587,28 +534,7 @@ def test_handle_verify_returns_nonzero_when_any_claim_is_not_passed(monkeypatch:
     monkeypatch.setattr(cli, "_emit_json", emitted.append)
     monkeypatch.setattr(cli, "_preflight_verify_auth", _noop_preflight_verify_auth)
 
-    exit_code = cli._handle_verify(
-        SimpleNamespace(
-            url="http://localhost:3000/tasks/123",
-            claims=["The modal title reads Edit Task"],
-            claims_file=None,
-            width=1280,
-            height=800,
-            device_scale_factor=1.0,
-            browser_mode="ephemeral",
-            user_data_dir=None,
-            headed=False,
-            session_key="default",
-            run_name=None,
-            reuse_session=True,
-            reset_between_claims=True,
-            max_steps_per_claim=12,
-            claim_timeout_seconds=120.0,
-            run_timeout_seconds=300.0,
-            navigation_hint=None,
-            reporter=None,
-        )
-    )
+    exit_code = cli._handle_verify(_verify_args())
 
     assert exit_code == 1
     assert emitted[0]["results"][0]["status"] == "failed"
@@ -628,28 +554,7 @@ def test_handle_verify_returns_nonzero_without_json_when_auth_preflight_fails(
     monkeypatch.setattr(cli, "_new_runner", lambda **_: new_runner_calls.append(object()))
     monkeypatch.setattr(cli, "_emit_json", emitted.append)
 
-    exit_code = cli._handle_verify(
-        SimpleNamespace(
-            url="http://localhost:3000/tasks/123",
-            claims=["The modal title reads Edit Task"],
-            claims_file=None,
-            width=1280,
-            height=800,
-            device_scale_factor=1.0,
-            browser_mode="ephemeral",
-            user_data_dir=None,
-            headed=False,
-            session_key="default",
-            run_name=None,
-            reuse_session=True,
-            reset_between_claims=True,
-            max_steps_per_claim=12,
-            claim_timeout_seconds=120.0,
-            run_timeout_seconds=300.0,
-            navigation_hint=None,
-            reporter=None,
-        )
-    )
+    exit_code = cli._handle_verify(_verify_args())
 
     assert exit_code == 1
     assert emitted == []
@@ -806,26 +711,10 @@ def test_handle_verify_rejects_invalid_input_before_auth_preflight(
     )
 
     exit_code = cli._handle_verify(
-        SimpleNamespace(
+        _verify_args(
             url="localhost:3000",  # missing http:// scheme
-            claims=["The modal title reads Edit Task"],
-            claims_file=None,
-            width=1280,
-            height=800,
-            device_scale_factor=1.0,
-            browser_mode="ephemeral",
-            user_data_dir=None,
-            headed=False,
             visualize=None,
-            session_key="default",
-            run_name=None,
-            reuse_session=True,
-            reset_between_claims=True,
             max_steps_per_claim=0,  # below the ge=1 bound
-            claim_timeout_seconds=120.0,
-            run_timeout_seconds=300.0,
-            navigation_hint=None,
-            reporter=None,
             verbose=0,
         )
     )
@@ -857,21 +746,7 @@ def test_handle_screenshot_returns_nonzero_when_not_testable(monkeypatch: Any) -
     monkeypatch.setattr(cli, "_new_runner", lambda **_: fake_runner)
     monkeypatch.setattr(cli, "_emit_json", emitted.append)
 
-    exit_code = cli._handle_screenshot(
-        SimpleNamespace(
-            url="http://localhost:3000",
-            width=1280,
-            height=800,
-            device_scale_factor=1.0,
-            browser_mode="ephemeral",
-            user_data_dir=None,
-            headed=False,
-            visualize=None,
-            session_key="default",
-            run_name=None,
-            reuse_session=True,
-        )
-    )
+    exit_code = cli._handle_screenshot(_screenshot_args(url="http://localhost:3000", visualize=None))
 
     assert exit_code == 1
     assert emitted[0]["status"] == "not_testable"
@@ -883,21 +758,7 @@ def test_handle_screenshot_rejects_invalid_url(
 ) -> None:
     monkeypatch.setattr(cli, "_new_runner", lambda **_: pytest.fail("runner must not be constructed"))
 
-    exit_code = cli._handle_screenshot(
-        SimpleNamespace(
-            url="ftp://example.com",
-            width=1280,
-            height=800,
-            device_scale_factor=1.0,
-            browser_mode="ephemeral",
-            user_data_dir=None,
-            headed=False,
-            visualize=None,
-            session_key="default",
-            run_name=None,
-            reuse_session=True,
-        )
-    )
+    exit_code = cli._handle_screenshot(_screenshot_args(url="ftp://example.com", visualize=None))
 
     assert exit_code == 1
     assert "url must start with" in capsys.readouterr().err
