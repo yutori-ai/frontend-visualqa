@@ -8,15 +8,20 @@ from typing import Any
 from frontend_visualqa.errors import BrowserActionError
 
 
-def tool_call_name(tool_call: Any) -> str:
-    """Return ``tool_call.function.name`` (or ``tool_call.name``), defaulting to ``""``.
+def _function_obj(tool_call: Any) -> Any:
+    """Return ``tool_call.function`` if present, else ``tool_call`` itself.
 
-    Mirrors the unwrap-or-fallback pattern in :func:`parse_tool_arguments`:
-    chat-completions tool calls expose the action name on a nested
+    Chat-completions tool calls expose their name/arguments on a nested
     ``function`` attribute, while flatter test stubs / shorthand objects
-    sometimes attach ``name`` directly to the tool-call itself.
+    sometimes attach them directly to the tool-call. Shared by every
+    function below that needs to read off a tool call.
     """
-    return getattr(getattr(tool_call, "function", tool_call), "name", "")
+    return getattr(tool_call, "function", tool_call)
+
+
+def tool_call_name(tool_call: Any) -> str:
+    """Return ``tool_call.function.name`` (or ``tool_call.name``), defaulting to ``""``."""
+    return getattr(_function_obj(tool_call), "name", "")
 
 
 def tool_call_arguments_as_text(tool_call: Any) -> str:
@@ -27,7 +32,7 @@ def tool_call_arguments_as_text(tool_call: Any) -> str:
     back to ``str()``. Useful for callers that need a text representation even
     when the arguments are malformed (e.g. redacting an unparseable payload).
     """
-    arguments = getattr(getattr(tool_call, "function", tool_call), "arguments", "")
+    arguments = getattr(_function_obj(tool_call), "arguments", "")
     if isinstance(arguments, str):
         return arguments
     if isinstance(arguments, dict):
@@ -41,7 +46,7 @@ def tool_call_arguments_as_text(tool_call: Any) -> str:
 def parse_tool_arguments(tool_call: Any) -> dict[str, Any]:
     """Parse chat-completions tool arguments into a JSON object."""
 
-    arguments = getattr(getattr(tool_call, "function", tool_call), "arguments", "{}") or "{}"
+    arguments = getattr(_function_obj(tool_call), "arguments", "{}") or "{}"
     if isinstance(arguments, dict):
         return arguments
     try:
