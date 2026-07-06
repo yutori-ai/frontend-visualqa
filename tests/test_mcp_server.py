@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 
+import frontend_visualqa.runner as runner_module
 from fakes import assert_claim_result_payload_shape, import_or_skip, make_claim_result
 from frontend_visualqa import __version__
 from frontend_visualqa.schemas import (
@@ -282,8 +283,6 @@ async def test_configure_server_passes_browser_config_to_new_runner(monkeypatch:
     fake_runner = FakeRunner()
     captured: dict[str, Any] = {}
 
-    import frontend_visualqa.runner as runner_module
-
     def fake_visual_qa_runner(*, browser_config: BrowserConfig | None = None, **kwargs: Any) -> FakeRunner:
         del kwargs
         captured["browser_config"] = browser_config
@@ -305,8 +304,6 @@ async def test_configure_server_rejects_changes_after_runner_creation(monkeypatc
     module = _import_mcp_server_module()
     _reset_server_module_state(module)
     fake_runner = FakeRunner()
-
-    import frontend_visualqa.runner as runner_module
 
     monkeypatch.setattr(runner_module, "VisualQARunner", lambda **kwargs: fake_runner)
 
