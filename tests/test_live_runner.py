@@ -24,6 +24,21 @@ def example_server() -> str:
     yield from serve_static_directory(PACKAGE_ROOT / "examples")
 
 
+def _import_overlay_controller_or_skip() -> Any:
+    """Import ``OverlayController``, skipping the calling test in a partial worktree.
+
+    Some worktrees for this suite check out only part of ``src/``, so the
+    headed-overlay tests below need to skip gracefully instead of failing on
+    import when ``overlay.py`` isn't present.
+    """
+    overlay_path = PACKAGE_ROOT / "src/frontend_visualqa/overlay.py"
+    if not overlay_path.exists():
+        pytest.skip("headed overlay implementation is not present in this partial worktree")
+    from frontend_visualqa.overlay import OverlayController
+
+    return OverlayController
+
+
 def _build_live_runner(
     *,
     tmp_path: Path,
@@ -197,10 +212,7 @@ async def test_live_runner_headed_overlay_hides_restores_and_cleans_up(
     example_server: str,
     tmp_path: Path,
 ) -> None:
-    overlay_path = PACKAGE_ROOT / "src/frontend_visualqa/overlay.py"
-    if not overlay_path.exists():
-        pytest.skip("headed overlay implementation is not present in this partial worktree")
-    from frontend_visualqa.overlay import OverlayController
+    OverlayController = _import_overlay_controller_or_skip()
 
     runner = _build_live_runner(
         tmp_path=tmp_path,
@@ -299,10 +311,7 @@ async def test_live_runner_headed_overlay_zero_action_path_skips_hide_restore(
     example_server: str,
     tmp_path: Path,
 ) -> None:
-    overlay_path = PACKAGE_ROOT / "src/frontend_visualqa/overlay.py"
-    if not overlay_path.exists():
-        pytest.skip("headed overlay implementation is not present in this partial worktree")
-    from frontend_visualqa.overlay import OverlayController
+    OverlayController = _import_overlay_controller_or_skip()
 
     runner = _build_live_runner(
         tmp_path=tmp_path,
