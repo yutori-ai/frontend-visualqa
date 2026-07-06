@@ -203,8 +203,9 @@ class VisualQARunner:
                 # --video still yields an artifact and the context is closed.
                 early_video_paths: list[str] = []
                 if session is not None:
-                    saved = await self._save_session_video(
+                    await self._save_and_track_video(
                         session,
+                        early_video_paths,
                         target=self._video_target_for(
                             run_artifacts,
                             reuse_session=request.reuse_session,
@@ -212,8 +213,6 @@ class VisualQARunner:
                             total_claims=len(request.claims),
                         ),
                     )
-                    if saved is not None:
-                        early_video_paths.append(saved)
                 return self._finalize_not_testable_run(
                     request=request,
                     run_artifacts=run_artifacts,
@@ -340,9 +339,7 @@ class VisualQARunner:
                 claim_index=min(next_claim_index, len(request.claims)),
                 total_claims=len(request.claims),
             )
-            saved_video = await self._save_session_video(session, target=video_target)
-            if saved_video is not None:
-                video_paths.append(saved_video)
+            await self._save_and_track_video(session, video_paths, target=video_target)
             run_result = RunResult(
                 overall_status=overall_status,
                 started_at=run_started_at,
@@ -387,8 +384,9 @@ class VisualQARunner:
         # is about to be discarded, so save its video (which closes the context
         # and finalizes the .webm) before spinning up a fresh one. The saved
         # path is keyed to the claim this session covered (claim_index - 1).
-        saved_video = await self._save_session_video(
+        await self._save_and_track_video(
             session,
+            video_paths,
             target=self._video_target_for(
                 run_artifacts,
                 reuse_session=False,
@@ -396,8 +394,6 @@ class VisualQARunner:
                 total_claims=len(request.claims),
             ),
         )
-        if saved_video is not None:
-            video_paths.append(saved_video)
 
         record_video_dir = self._record_video_dir_for(run_artifacts)
         restarted = await self.browser_manager.get_session(
@@ -681,6 +677,12 @@ class VisualQARunner:
         except Exception:  # noqa: BLE001 - best-effort video save must not propagate
             logger.debug("Failed to save session video to %s", target, exc_info=True)
             return None
+
+    async def _save_and_track_video(self, session: Any, video_paths: list[str], *, target: Path) -> None:
+        """Save ``session``'s video to ``target`` and append it to ``video_paths`` if produced."""
+        saved = await self._save_session_video(session, target=target)
+        if saved is not None:
+            video_paths.append(saved)
 
     @staticmethod
     def _videos_dir_for(run_artifacts: RunArtifacts) -> Path:
