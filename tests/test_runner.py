@@ -8,11 +8,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 from pydantic import ValidationError
 
 from frontend_visualqa.claim_parser import parse_claims_file
 from frontend_visualqa.reporters import get_reporters
+from frontend_visualqa.runner import VisualQARunner
 from fakes import (
     FakeArtifactManager,
     FakeNavigatorClient,
@@ -1942,10 +1944,6 @@ async def test_runner_ctrf_only_does_not_write_native_report(
 
 @pytest.mark.asyncio
 async def test_preflight_url_defers_to_browser_navigation_on_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
-    import httpx
-
-    from frontend_visualqa.runner import VisualQARunner
-
     async def _timeout_head(self: Any, url: str, **kwargs: Any) -> Any:
         del self, url, kwargs
         raise httpx.ConnectTimeout("connection timed out")
@@ -1961,10 +1959,6 @@ async def test_preflight_url_defers_to_browser_navigation_on_timeout(monkeypatch
 
 @pytest.mark.asyncio
 async def test_preflight_url_reports_unreachable_on_connection_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    import httpx
-
-    from frontend_visualqa.runner import VisualQARunner
-
     async def _refused_head(self: Any, url: str, **kwargs: Any) -> Any:
         del self, url, kwargs
         raise httpx.ConnectError("connection refused")
