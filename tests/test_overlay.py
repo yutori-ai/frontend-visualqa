@@ -313,6 +313,39 @@ class TestOverlayInformationalCards:
         assert not any("__n1ThoughtCard" in script and "current.remove()" in script for script in scripts)
 
     @pytest.mark.asyncio
+    async def test_show_result_injects_fullscreen_verdict_card(self) -> None:
+        from frontend_visualqa.overlay import OverlayController
+
+        page = _make_mock_page()
+        controller = OverlayController(page)
+
+        await controller.claim_started()
+        page.evaluate.reset_mock()
+
+        await controller.show_result("failed", "The submit button stayed disabled.", claim="Submit is enabled")
+
+        # Full-screen card injected with the failed accent color.
+        card_call = next(call for call in page.evaluate.call_args_list if "__n1ResultCard" in str(call.args[0]))
+        card_script = str(card_call.args[0])
+        assert "position:fixed;inset:0" in card_script
+        arg = card_call.args[1]
+        assert arg["status_label"] == "Failed"
+        assert arg["accent"] == "#FF5A5F"
+        assert arg["finding"] == "The submit button stayed disabled."
+        assert arg["claim"] == "Submit is enabled"
+
+    @pytest.mark.asyncio
+    async def test_show_result_noop_when_inactive(self) -> None:
+        from frontend_visualqa.overlay import OverlayController
+
+        page = _make_mock_page()
+        controller = OverlayController(page)
+
+        await controller.show_result("passed", "All good.", claim="It works")
+
+        page.evaluate.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_preview_action_uses_transient_layer_without_touching_status_chip(
         self, patched_sleep: AsyncMock
     ) -> None:

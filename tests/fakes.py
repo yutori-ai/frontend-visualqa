@@ -313,6 +313,9 @@ class RecordingFakeOverlay:
     async def after_screenshot(self) -> None:
         self._events.append("after_screenshot")
 
+    async def show_result(self, status: str, finding: str, *, claim: str | None = None) -> None:
+        self._events.append(("show_result", status, finding, claim))
+
     async def claim_ended(self) -> None:
         self._events.append("claim_ended")
 

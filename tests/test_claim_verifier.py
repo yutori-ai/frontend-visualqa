@@ -28,6 +28,18 @@ from fakes import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _no_final_result_hold(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Skip the end-of-run full-screen verdict hold so tests don't sleep 4s each.
+
+    The hold is real behavior in visualize mode (it keeps the verdict card on
+    screen long enough to be captured on the session video); tests only care
+    that the card is shown, not that we actually wait.
+    """
+    module = _import_claim_verifier_module()
+    monkeypatch.setattr(module, "FINAL_RESULT_HOLD_SECONDS", 0.0)
+
+
 def _verdict_response(status: str, finding: str) -> FakeResponse:
     """Build a FakeResponse with parsed_json for a structured JSON verdict."""
     return FakeResponse(
@@ -455,6 +467,14 @@ async def test_claim_verifier_uses_overlay_lifecycle_when_visualize_enabled(
     )
     assert post_capture_status_index > after_index
     assert events[-1] == "claim_ended"
+    # The full-screen verdict is shown right before teardown so it lands as the
+    # last frame on the session video.
+    assert events[-2] == (
+        "show_result",
+        "passed",
+        "The modal is now visible and titled Edit Task.",
+        "The modal opens on click",
+    )
     assert action_executor.calls == [("goto_url", {"url": "http://fixture.local/modal"})]
     assert action_executor.overlays_seen == [fake_overlay]
     assert action_executor.overlay is None
@@ -1948,3 +1968,89 @@ async def test_claim_verifier_redacts_type_when_password_detection_fails(tmp_pat
     assert "maybe-secret" not in transcript
     action_events = [event for event in _field(result, "trace").events if event.type == "action"]
     assert action_events[0].action_args["text"] == "[redacted]"
+
+
+@pytest.mark.asyncio
+async def test_claim_verifier_stops_early_when_bot_blocked(tmp_path: Path) -> None:
+    """A high-confidence bot-block short-circuits to not_testable before acting."""
+    module = _import_claim_verifier_module()
+    from frontend_visualqa.bot_detection import BrowserActivityMonitor
+
+    monitor = BrowserActivityMonitor()
+    monitor.last_main_status = 403  # main document returned a blocking status
+    monitor.last_main_url = "https://shop.example/cart"
+
+    # If detection did NOT fire, this tool call would be executed.
+    responses = [
+        FakeMessage(
+            tool_calls=[
+                FakeToolCall(
+                    id="t1",
+                    function=FakeFunction(name="goto_url", arguments=json.dumps({"url": "http://x/"})),
+                )
+            ]
+        )
+    ]
+    verifier, navigator_client, action_executor = _build_claim_verifier(module, tmp_path, responses=responses)
+
+    page = EvaluatingPage(url="https://shop.example/cart", visual_state={"title": "", "text": ""})
+    session = SimpleNamespace(
+        page=page,
+        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+        activity=monitor,
+    )
+    run = RunArtifacts(run_id="run-test", run_dir=tmp_path)
+
+    result = await verifier.verify(
+        session=session,
+        claim="the cart shows the added items",
+        url="https://shop.example/cart",
+        claim_index=1,
+        run_artifacts=run,
+        max_steps=5,
+        navigation_hint=None,
+    )
+
+    assert _field(result, "status") == "not_testable"
+    assert action_executor.calls == []  # never acted
+    assert navigator_client.calls == []  # never even asked the model
+    assert "403" in _field(result, "finding")
+
+
+@pytest.mark.asyncio
+async def test_claim_verifier_bot_block_detection_can_be_disabled(tmp_path: Path) -> None:
+    """With detect_bot_block off, a blocked page is NOT short-circuited."""
+    module = _import_claim_verifier_module()
+    from frontend_visualqa.bot_detection import BrowserActivityMonitor
+
+    monitor = BrowserActivityMonitor()
+    monitor.last_main_status = 403
+
+    verifier, navigator_client, action_executor = _build_claim_verifier(
+        module,
+        tmp_path,
+        responses=[_verdict_response(status="passed", finding="Looks fine despite the status.")],
+    )
+    # Turn detection off via the browser manager config.
+    verifier.browser_manager.config = SimpleNamespace(detect_bot_block=False)
+
+    page = EvaluatingPage(url="https://shop.example/cart", visual_state={"title": "", "text": ""})
+    session = SimpleNamespace(
+        page=page,
+        viewport=ViewportConfig(width=1280, height=800, device_scale_factor=1),
+        activity=monitor,
+    )
+    run = RunArtifacts(run_id="run-test", run_dir=tmp_path)
+
+    result = await verifier.verify(
+        session=session,
+        claim="the cart shows the added items",
+        url="https://shop.example/cart",
+        claim_index=1,
+        run_artifacts=run,
+        max_steps=5,
+        navigation_hint=None,
+    )
+
+    # Detection disabled → the model's verdict stands, not an early not_testable.
+    assert _field(result, "status") == "passed"

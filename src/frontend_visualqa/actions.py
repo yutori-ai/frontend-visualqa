@@ -40,6 +40,18 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 DEFAULT_WAIT_SECONDS = 1.0
+
+# Hard ceiling on a single tool call. A wedged Playwright driver call — e.g. a
+# click that opens a modal/native dialog the page never resolves — has no
+# timeout of its own and can freeze the entire run indefinitely (observed on
+# uline.com add-to-cart: a click blocked for minutes, uncancellable via SIGINT).
+# Bounding the whole dispatch converts that hang into a BrowserActionError, which
+# the verifier feeds back to the model and, after repeated failures, force-stops
+# gracefully (rendering the final verdict + finalizing the video) instead of
+# hanging forever. Must sit comfortably above the sum of a legitimate action's
+# internal waits: domcontentloaded (navigation_timeout_ms, default 20s) +
+# page_ready (~8s) + the ``wait`` action's own sleep (MAX_WAIT_ACTION_SECONDS).
+DEFAULT_ACTION_TIMEOUT_MS = 90_000
 # Hard cap on a single model-requested wait. Claim timeouts usually bound this
 # anyway, but library/MCP callers can pass claim_timeout_seconds=None, and a
 # runaway wait(600) must not stall the loop indefinitely.
@@ -326,8 +338,21 @@ class ActionExecutor:
         navigation_timeout_ms: int = BROWSER_NAVIGATION_TIMEOUT_MS,
         settle_delay_seconds: float | None = None,
         page_ready_checker: PageReadyChecker | None = None,
+        action_timeout_ms: int | None = None,
     ) -> None:
         self.navigation_timeout_ms = navigation_timeout_ms
+        # Per-action hard ceiling. Derived from navigation_timeout_ms so callers
+        # that raise the navigation budget also raise the hang guard, and floored
+        # at DEFAULT_ACTION_TIMEOUT_MS so it always clears a legit action's
+        # internal waits (domcontentloaded + page_ready + a full ``wait`` sleep).
+        self.action_timeout_ms = (
+            action_timeout_ms
+            if action_timeout_ms is not None
+            else max(
+                DEFAULT_ACTION_TIMEOUT_MS,
+                navigation_timeout_ms * 3 + int(MAX_WAIT_ACTION_SECONDS * 1000),
+            )
+        )
         self.settle_delay_seconds = settle_delay_seconds
         self.page_ready_checker = page_ready_checker or build_page_ready_checker(navigation_timeout_ms)
         self._overlay: OverlayController | None = None
@@ -341,9 +366,30 @@ class ActionExecutor:
         self._overlay = value
 
     async def execute_tool_call(self, session: BrowserSession, tool_call: Any) -> ToolExecutionResult | str:
-        """Execute a tool call object with ``function.name`` and JSON arguments."""
+        """Execute a tool call object with ``function.name`` and JSON arguments.
+
+        The dispatch is wrapped in a hard timeout so a wedged Playwright driver
+        call cannot freeze the run. On timeout the pending call is cancelled and
+        a BrowserActionError is raised, which the verifier surfaces to the model
+        and treats as an action failure.
+        """
 
         action_name = tool_call_name(tool_call)
+        try:
+            return await asyncio.wait_for(
+                self._dispatch_tool_call(session, tool_call, action_name),
+                timeout=self.action_timeout_ms / 1000,
+            )
+        except (asyncio.TimeoutError, TimeoutError) as exc:
+            raise BrowserActionError(
+                f"action '{action_name}' did not complete within "
+                f"{self.action_timeout_ms // 1000}s and was aborted — the page may "
+                f"have opened a blocking dialog or stopped responding"
+            ) from exc
+
+    async def _dispatch_tool_call(
+        self, session: BrowserSession, tool_call: Any, action_name: str
+    ) -> ToolExecutionResult | str:
         if action_name in EXPANDED_TOOL_NAMES:
             arguments = parse_tool_arguments(tool_call)
             return await self._execute_expanded_tool(session, action_name, arguments)
