@@ -6,6 +6,8 @@ import asyncio
 import json
 import logging
 import math
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Any, TYPE_CHECKING
 
@@ -391,16 +393,13 @@ class ActionExecutor:
                     y=y,
                     num_clicks=3 if canonical_name == "triple_click" else 2 if canonical_name == "double_click" else 1,
                 )
-                modifier_keys = await self._press_modifier_keys(page, raw_arguments.get("modifier"))
-                try:
+                async with self._held_modifier_keys(page, raw_arguments.get("modifier")):
                     if canonical_name == "double_click":
                         await page.mouse.dblclick(x, y)
                     else:
                         click_count = 3 if canonical_name == "triple_click" else 1
                         button = {"middle_click": "middle", "right_click": "right"}.get(canonical_name, "left")
                         await page.mouse.click(x, y, button=button, click_count=click_count)
-                finally:
-                    await self._release_modifier_keys(page, modifier_keys)
 
             elif canonical_name == "drag":
                 start = raw_arguments.get("start_coordinates")
@@ -463,8 +462,7 @@ class ActionExecutor:
                 await self._best_effort_overlay_preview_action(
                     action_type="scroll", x=x, y=y, direction=direction, amount=amount
                 )
-                modifier_keys = await self._press_modifier_keys(page, raw_arguments.get("modifier"))
-                try:
+                async with self._held_modifier_keys(page, raw_arguments.get("modifier")):
                     await page.mouse.move(x, y)
                     scroll_deltas = {
                         "right": (width * 0.1, 0.0),
@@ -474,8 +472,6 @@ class ActionExecutor:
                     }
                     dx, dy = scroll_deltas[direction]
                     await page.mouse.wheel(dx * amount, dy * amount)
-                finally:
-                    await self._release_modifier_keys(page, modifier_keys)
 
             elif canonical_name == "type":
                 text = str(raw_arguments.get("text", ""))
@@ -530,11 +526,8 @@ class ActionExecutor:
                         logger.debug("Blocked disallowed zoom chord in hold_key: %s", combo)
                     else:
                         await self._best_effort_overlay_set_status("Holding key")
-                        await self._press_modifier_keys(page, key_text)
-                        try:
+                        async with self._held_modifier_keys(page, key_text):
                             await asyncio.sleep(min(float(hold_duration), 100.0))
-                        finally:
-                            await self._release_modifier_keys(page, modifier_keys)
                 else:
                     for key_name in _mapped_key_presses(key_text):
                         if is_disallowed_zoom_shortcut(key_name):
@@ -737,6 +730,21 @@ class ActionExecutor:
     async def _release_modifier_keys(page: Any, modifier_keys: list[str]) -> None:
         for key_name in reversed(modifier_keys):
             await page.keyboard.up(key_name)
+
+    @asynccontextmanager
+    async def _held_modifier_keys(self, page: Any, modifier: Any) -> AsyncIterator[None]:
+        """Press *modifier* down for the duration of the block, then release it.
+
+        Wraps :meth:`_press_modifier_keys`/:meth:`_release_modifier_keys` in a
+        try/finally so the click, scroll, and hold_key paths (which each need
+        modifiers held for a gesture and reliably released afterward, even on
+        error) don't hand-roll the same press/try/finally-release shape.
+        """
+        modifier_keys = await self._press_modifier_keys(page, modifier)
+        try:
+            yield
+        finally:
+            await self._release_modifier_keys(page, modifier_keys)
 
     async def _best_effort_overlay_preview_action(self, **kwargs: Any) -> None:
         """Preview an action on the overlay without breaking the main flow."""
