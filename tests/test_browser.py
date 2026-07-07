@@ -414,24 +414,20 @@ async def test_browser_manager_persistent_mode_preserves_cookies_across_relaunch
 
 @pytest.mark.asyncio
 async def test_browser_manager_persistent_mode_accepts_initial_named_session_key(tmp_path: Path) -> None:
-    manager = BrowserManager(
-        config=BrowserConfig(
-            mode=BrowserMode.persistent,
-            user_data_dir=str(tmp_path / "browser-profile"),
-            headless=True,
-            settle_delay_seconds=0,
-        )
+    config = BrowserConfig(
+        mode=BrowserMode.persistent,
+        user_data_dir=str(tmp_path / "browser-profile"),
+        headless=True,
+        settle_delay_seconds=0,
     )
     viewport = ViewportConfig()
 
-    try:
+    async with BrowserManager(config=config) as manager:
         session = await manager.get_session("authenticated", viewport=viewport)
         status = manager.status()
 
         assert session.session_key == "authenticated"
         assert [item.session_key for item in status.sessions] == ["authenticated"]
-    finally:
-        await manager.close()
 
 
 @pytest.mark.asyncio
@@ -440,16 +436,14 @@ async def test_browser_manager_persistent_mode_rejects_switching_active_session_
     operation: str,
     tmp_path: Path,
 ) -> None:
-    manager = BrowserManager(
-        config=BrowserConfig(
-            mode=BrowserMode.persistent,
-            user_data_dir=str(tmp_path / "browser-profile"),
-            headless=True,
-            settle_delay_seconds=0,
-        )
+    config = BrowserConfig(
+        mode=BrowserMode.persistent,
+        user_data_dir=str(tmp_path / "browser-profile"),
+        headless=True,
+        settle_delay_seconds=0,
     )
 
-    try:
+    async with BrowserManager(config=config) as manager:
         await manager.get_session("authenticated", viewport=ViewportConfig())
 
         with pytest.raises(ValueError, match=PERSISTENT_SESSION_KEY_ERROR):
@@ -461,44 +455,36 @@ async def test_browser_manager_persistent_mode_rejects_switching_active_session_
                 await manager.restart_session("secondary", viewport=ViewportConfig())
             else:
                 await manager.set_viewport("secondary", ViewportConfig())
-    finally:
-        await manager.close()
 
 
 @pytest.mark.asyncio
 async def test_browser_manager_persistent_mode_allows_new_named_session_after_close(tmp_path: Path) -> None:
-    manager = BrowserManager(
-        config=BrowserConfig(
-            mode=BrowserMode.persistent,
-            user_data_dir=str(tmp_path / "browser-profile"),
-            headless=True,
-            settle_delay_seconds=0,
-        )
+    config = BrowserConfig(
+        mode=BrowserMode.persistent,
+        user_data_dir=str(tmp_path / "browser-profile"),
+        headless=True,
+        settle_delay_seconds=0,
     )
 
-    try:
+    async with BrowserManager(config=config) as manager:
         await manager.get_session("authenticated", viewport=ViewportConfig())
         await manager.close_session("authenticated")
         session = await manager.get_session("reviewer", viewport=ViewportConfig())
 
         assert session.session_key == "reviewer"
         assert [item.session_key for item in manager.status().sessions] == ["reviewer"]
-    finally:
-        await manager.close()
 
 
 @pytest.mark.asyncio
 async def test_browser_manager_persistent_mode_dead_session_releases_lock_for_new_name(tmp_path: Path) -> None:
-    manager = BrowserManager(
-        config=BrowserConfig(
-            mode=BrowserMode.persistent,
-            user_data_dir=str(tmp_path / "browser-profile"),
-            headless=True,
-            settle_delay_seconds=0,
-        )
+    config = BrowserConfig(
+        mode=BrowserMode.persistent,
+        user_data_dir=str(tmp_path / "browser-profile"),
+        headless=True,
+        settle_delay_seconds=0,
     )
 
-    try:
+    async with BrowserManager(config=config) as manager:
         session = await manager.get_session("authenticated", viewport=ViewportConfig())
         # Simulate a crashed page (e.g., user closed the tab in headed mode).
         await session.page.close()
@@ -507,8 +493,6 @@ async def test_browser_manager_persistent_mode_dead_session_releases_lock_for_ne
         # before validation.
         new_session = await manager.get_session("reviewer", viewport=ViewportConfig())
         assert new_session.session_key == "reviewer"
-    finally:
-        await manager.close()
 
 
 @pytest.mark.asyncio
@@ -517,21 +501,21 @@ async def test_browser_manager_persistent_mode_dead_session_releases_lock_for_li
     operation: str,
     tmp_path: Path,
 ) -> None:
-    manager = BrowserManager(
-        config=BrowserConfig(
-            mode=BrowserMode.persistent,
-            user_data_dir=str(tmp_path / "browser-profile"),
-            headless=True,
-            settle_delay_seconds=0,
-        )
+    config = BrowserConfig(
+        mode=BrowserMode.persistent,
+        user_data_dir=str(tmp_path / "browser-profile"),
+        headless=True,
+        settle_delay_seconds=0,
     )
 
-    try:
+    async with BrowserManager(config=config) as manager:
         session = await manager.get_session("authenticated", viewport=ViewportConfig())
         await session.page.close()
 
         if operation == "set_viewport":
-            resized = await manager.set_viewport("reviewer", ViewportConfig(width=390, height=844, device_scale_factor=1))
+            resized = await manager.set_viewport(
+                "reviewer", ViewportConfig(width=390, height=844, device_scale_factor=1)
+            )
             assert resized.session_key == "reviewer"
             assert resized.viewport.width == 390
         elif operation == "restart_session":
@@ -542,8 +526,6 @@ async def test_browser_manager_persistent_mode_dead_session_releases_lock_for_li
             status = manager.status()
             assert status.browser_running is False
             assert status.sessions == []
-    finally:
-        await manager.close()
 
 
 @pytest.mark.asyncio
@@ -551,17 +533,15 @@ async def test_browser_manager_persistent_mode_uses_dedicated_automation_page(
     example_url: str,
     tmp_path: Path,
 ) -> None:
-    manager = BrowserManager(
-        config=BrowserConfig(
-            mode=BrowserMode.persistent,
-            user_data_dir=str(tmp_path / "browser-profile"),
-            headless=True,
-            settle_delay_seconds=0,
-        )
+    config = BrowserConfig(
+        mode=BrowserMode.persistent,
+        user_data_dir=str(tmp_path / "browser-profile"),
+        headless=True,
+        settle_delay_seconds=0,
     )
     viewport = ViewportConfig()
 
-    try:
+    async with BrowserManager(config=config) as manager:
         await manager.ensure_browser(viewport)
         assert manager._persistent_context is not None
         restored_page = await manager._persistent_context.new_page()
@@ -571,8 +551,6 @@ async def test_browser_manager_persistent_mode_uses_dedicated_automation_page(
 
         assert session.page is not restored_page
         assert session.page.url == "about:blank"
-    finally:
-        await manager.close()
 
 
 @pytest.mark.asyncio
@@ -580,18 +558,16 @@ async def test_browser_manager_persistent_mode_relaunches_for_dpr_change(
     example_url: str,
     tmp_path: Path,
 ) -> None:
-    manager = BrowserManager(
-        config=BrowserConfig(
-            mode=BrowserMode.persistent,
-            user_data_dir=str(tmp_path / "browser-profile"),
-            headless=True,
-            settle_delay_seconds=0,
-        )
+    config = BrowserConfig(
+        mode=BrowserMode.persistent,
+        user_data_dir=str(tmp_path / "browser-profile"),
+        headless=True,
+        settle_delay_seconds=0,
     )
     initial_viewport = ViewportConfig()
     refreshed_viewport = ViewportConfig(width=1280, height=800, device_scale_factor=2)
 
-    try:
+    async with BrowserManager(config=config) as manager:
         session = await manager.get_session("default", viewport=initial_viewport)
         await manager.goto(session, example_url)
         original_context = session.context
@@ -601,8 +577,6 @@ async def test_browser_manager_persistent_mode_relaunches_for_dpr_change(
         assert refreshed.context is not original_context
         assert refreshed.viewport == refreshed_viewport
         assert refreshed.page.url == example_url
-    finally:
-        await manager.close()
 
 
 @pytest.mark.asyncio
@@ -610,17 +584,15 @@ async def test_browser_manager_persistent_mode_recovers_after_external_context_c
     example_url: str,
     tmp_path: Path,
 ) -> None:
-    manager = BrowserManager(
-        config=BrowserConfig(
-            mode=BrowserMode.persistent,
-            user_data_dir=str(tmp_path / "browser-profile"),
-            headless=True,
-            settle_delay_seconds=0,
-        )
+    config = BrowserConfig(
+        mode=BrowserMode.persistent,
+        user_data_dir=str(tmp_path / "browser-profile"),
+        headless=True,
+        settle_delay_seconds=0,
     )
     viewport = ViewportConfig()
 
-    try:
+    async with BrowserManager(config=config) as manager:
         session = await manager.get_session("default", viewport=viewport)
         await manager.goto(session, example_url)
         await session.context.close()
@@ -636,8 +608,6 @@ async def test_browser_manager_persistent_mode_recovers_after_external_context_c
         # Navigate to example_url and verify we have a working page.
         await manager.goto(recovered, example_url)
         assert await recovered.page.locator("h1").text_content() == "Frontend Visual QA Playground"
-    finally:
-        await manager.close()
 
 
 @pytest.mark.asyncio
