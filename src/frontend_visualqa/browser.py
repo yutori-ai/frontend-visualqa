@@ -424,11 +424,7 @@ class BrowserManager:
         self._validate_session_key(session_key)
         previous = self._sessions.get(session_key)
         current_url = previous.page.url if previous and previous.page.url else None
-        await self.close_session(session_key)
-        session = await self.get_session(session_key, viewport=viewport, reuse_session=False)
-        if preserve_url and current_url:
-            await self.goto(session, current_url)
-        return session
+        return await self._recreate_session(session_key, viewport, current_url=current_url if preserve_url else None)
 
     async def close_session(self, session_key: str) -> None:
         """Close a single session if it exists."""
@@ -520,16 +516,29 @@ class BrowserManager:
             return session
 
         if session.viewport.device_scale_factor != desired.device_scale_factor:
-            current_url = session.page.url or None
-            session_key = session.session_key
-            await self.close_session(session_key)
-            refreshed = await self.get_session(session_key, viewport=desired, reuse_session=False)
-            if current_url:
-                await self.goto(refreshed, current_url)
-            return refreshed
+            return await self._recreate_session(session.session_key, desired, current_url=session.page.url or None)
 
         await session.page.set_viewport_size(_viewport_size_dict(desired))
         session.viewport = desired
+        return session
+
+    async def _recreate_session(
+        self,
+        session_key: str,
+        viewport: ViewportConfig | None,
+        *,
+        current_url: str | None,
+    ) -> BrowserSession:
+        """Close and reopen ``session_key`` with ``viewport``, restoring ``current_url`` if given.
+
+        Shared by ``restart_session`` and ``_ensure_viewport``'s device-scale-factor
+        change path, both of which must tear down and recreate the underlying
+        Playwright context (a DPR change can't be applied to a live context).
+        """
+        await self.close_session(session_key)
+        session = await self.get_session(session_key, viewport=viewport, reuse_session=False)
+        if current_url:
+            await self.goto(session, current_url)
         return session
 
     async def _ensure_playwright(self) -> Playwright:
