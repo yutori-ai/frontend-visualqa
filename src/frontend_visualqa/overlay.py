@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import json
 import logging
 from typing import TYPE_CHECKING, Any
 
@@ -31,8 +32,14 @@ THOUGHT_STYLE_ID = "__n1ThoughtStyle"
 CLICK_STYLE_ID = "__n1ClickStyle"
 SCROLL_STYLE_ID = "__n1ScrollStyle"
 TYPE_STYLE_ID = "__n1TypeStyle"
+PASTE_STYLE_ID = "__n1PasteStyle"
+COPY_STYLE_ID = "__n1CopyStyle"
 
 CURSOR_ID = "__n1Cursor"
+BADGE_ID = "__n1Badge"
+BADGE_SLOT_ID = "__n1BadgeSlot"
+BADGE_LOGO_ID = "__n1BadgeLogo"
+BADGE_GLYPH_ID = "__n1BadgeGlyph"
 DRAG_STYLE_ID = "__n1DragStyle"
 CLICK_DURATION_MS = 250
 SCROLL_DURATION_MS = 1500
@@ -41,53 +48,80 @@ CURSOR_TRANSITION_MS = 350
 THOUGHT_DURATION_MS = 2000
 
 _CURSOR_SVG = (
-    '<svg width="134" height="181" viewBox="0 0 134 181" fill="none" xmlns="http://www.w3.org/2000/svg">'
-    '<g id="Yutori Cursor"><g id="Yutori Cursor_2" filter="url(#filter0_ddddii_2284_14081)">'
-    '<path d="M31.1586 11.5639C29.9123 8.57945 32.7297 5.50285 35.812 6.48228L99.1562 26.6099C104.603 28.3406 104.391 36.1195 98.8584 37.5515L92.5099 39.1945C80.7217 42.2453 71.8947 52.0409 70.0833 64.0819L68.6149 73.8422C67.7576 79.541 59.9482 80.5074 57.7275 75.1895L31.1586 11.5639Z" fill="url(#paint0_linear_2284_14081)"/>'
-    '<path d="M31.1586 11.5639C29.9123 8.57945 32.7297 5.50285 35.812 6.48228L99.1562 26.6099C104.603 28.3406 104.391 36.1195 98.8584 37.5515L92.5099 39.1945C80.7217 42.2453 71.8947 52.0409 70.0833 64.0819L68.6149 73.8422C67.7576 79.541 59.9482 80.5074 57.7275 75.1895L31.1586 11.5639Z" stroke="url(#paint1_linear_2284_14081)" stroke-width="1.89844"/>'
-    '</g></g><defs>'
-    '<filter id="filter0_ddddii_2284_14081" x="0.655027" y="0.845703" width="132.671" height="180.046" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">'
-    '<feFlood flood-opacity="0" result="BackgroundImageFix"/>'
-    '<feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>'
-    '<feOffset dy="4.5"/><feGaussianBlur stdDeviation="4.5"/>'
-    '<feColorMatrix type="matrix" values="0 0 0 0 0.0627451 0 0 0 0 0.403922 0 0 0 0 0.435294 0 0 0 0.07 0"/>'
-    '<feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_2284_14081"/>'
-    '<feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>'
-    '<feOffset dy="18"/><feGaussianBlur stdDeviation="9"/>'
-    '<feColorMatrix type="matrix" values="0 0 0 0 0.0627451 0 0 0 0 0.403922 0 0 0 0 0.435294 0 0 0 0.06 0"/>'
-    '<feBlend mode="normal" in2="effect1_dropShadow_2284_14081" result="effect2_dropShadow_2284_14081"/>'
-    '<feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>'
-    '<feOffset dy="40.5"/><feGaussianBlur stdDeviation="12.375"/>'
-    '<feColorMatrix type="matrix" values="0 0 0 0 0.0627451 0 0 0 0 0.403922 0 0 0 0 0.435294 0 0 0 0.04 0"/>'
-    '<feBlend mode="normal" in2="effect2_dropShadow_2284_14081" result="effect3_dropShadow_2284_14081"/>'
-    '<feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>'
-    '<feOffset dy="72"/><feGaussianBlur stdDeviation="14.625"/>'
-    '<feColorMatrix type="matrix" values="0 0 0 0 0.0627451 0 0 0 0 0.403922 0 0 0 0 0.435294 0 0 0 0.01 0"/>'
-    '<feBlend mode="normal" in2="effect3_dropShadow_2284_14081" result="effect4_dropShadow_2284_14081"/>'
-    '<feBlend mode="normal" in="SourceGraphic" in2="effect4_dropShadow_2284_14081" result="shape"/>'
-    '<feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>'
-    '<feOffset dx="2.25" dy="-4.5"/><feGaussianBlur stdDeviation="4.5"/>'
-    '<feComposite in2="hardAlpha" operator="arithmetic" k2="-1" k3="1"/>'
-    '<feColorMatrix type="matrix" values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.15 0"/>'
-    '<feBlend mode="normal" in2="shape" result="effect5_innerShadow_2284_14081"/>'
-    '<feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>'
-    '<feOffset dx="-2.25" dy="6.75"/><feGaussianBlur stdDeviation="4.5"/>'
-    '<feComposite in2="hardAlpha" operator="arithmetic" k2="-1" k3="1"/>'
-    '<feColorMatrix type="matrix" values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.4 0"/>'
-    '<feBlend mode="normal" in2="effect5_innerShadow_2284_14081" result="effect6_innerShadow_2284_14081"/>'
-    '</filter>'
-    '<linearGradient id="paint0_linear_2284_14081" x1="79.2133" y1="2.92857" x2="31.285" y2="73.7171" gradientUnits="userSpaceOnUse">'
-    '<stop stop-color="#18AA7E"/><stop offset="0.45" stop-color="#148F6A"/>'
-    '<stop offset="0.75" stop-color="#148F6A"/><stop offset="1" stop-color="#159871"/>'
-    '</linearGradient>'
-    '<linearGradient id="paint1_linear_2284_14081" x1="78.201" y1="2.92858" x2="32.6124" y2="76.674" gradientUnits="userSpaceOnUse">'
-    '<stop stop-color="#5AE8BD"/><stop offset="0.5" stop-color="#127D5D"/>'
-    '<stop offset="0.9" stop-color="#148F6A"/><stop offset="1" stop-color="#19B385"/>'
-    '</linearGradient>'
-    '</defs></svg>'
+    '<svg width="110" height="130" viewBox="0 0 110 130" fill="none" xmlns="http://www.w3.org/2000/svg"> <g id="Default Live Cursor"> <g id="Badge" filter="url(#filter0_ddddii_45_139)"> <rect x="45.3307" y="27.3717" width="48" height="48" rx="10.962" fill="url(#paint0_linear_45_139)"/> <rect x="45.3307" y="27.3717" width="48" height="48" rx="10.962" stroke="url(#paint1_linear_45_139)"/> <g id="yLoop"> <path d="M80.8847 38.0808C82.1521 37.5842 83.3202 38.0103 83.6386 38.9578C83.9999 40.0335 83.2812 40.9254 82.2812 41.3797C73.98 45.1497 65.5645 51.8231 65.5644 57.1961C65.5644 60.7133 67.6232 61.8054 69.2607 61.8054C70.8982 61.8053 72.9687 60.7132 72.9687 57.1961C72.9687 55.1469 71.7266 53.1005 70.5117 51.6082C70.5117 51.6082 71.8191 50.0465 73.3418 48.9539C75.573 51.5308 76.9794 54.0813 76.9794 57.1961C76.9794 62.1932 73.7452 65.8716 69.2607 65.8719C64.776 65.8718 61.541 62.1933 61.541 57.1961C61.541 49.1584 73.6804 40.9043 80.8847 38.0808ZM55.0224 38.9597C55.3407 38.012 56.5088 37.5851 57.7763 38.0818C60.72 39.2354 64.4873 41.296 67.914 43.8777C66.3195 45.1252 65.0859 46.4549 65.0859 46.4549C62.4438 44.5139 59.4042 42.7542 56.3798 41.3806C55.38 40.9264 54.6614 40.0353 55.0224 38.9597Z" fill="url(#paint2_linear_45_139)"/> <path d="M80.8847 38.0808C82.1521 37.5842 83.3202 38.0103 83.6386 38.9578C83.9999 40.0335 83.2812 40.9254 82.2812 41.3797C73.98 45.1497 65.5645 51.8231 65.5644 57.1961C65.5644 60.7133 67.6232 61.8054 69.2607 61.8054C70.8982 61.8053 72.9687 60.7132 72.9687 57.1961C72.9687 55.1469 71.7266 53.1005 70.5117 51.6082C70.5117 51.6082 71.8191 50.0465 73.3418 48.9539C75.573 51.5308 76.9794 54.0813 76.9794 57.1961C76.9794 62.1932 73.7452 65.8716 69.2607 65.8719C64.776 65.8718 61.541 62.1933 61.541 57.1961C61.541 49.1584 73.6804 40.9043 80.8847 38.0808ZM55.0224 38.9597C55.3407 38.012 56.5088 37.5851 57.7763 38.0818C60.72 39.2354 64.4873 41.296 67.914 43.8777C66.3195 45.1252 65.0859 46.4549 65.0859 46.4549C62.4438 44.5139 59.4042 42.7542 56.3798 41.3806C55.38 40.9264 54.6614 40.0353 55.0224 38.9597Z" fill="#F8FAFC" style="mix-blend-mode:overlay"/> <path d="M80.8847 38.0808C82.1521 37.5842 83.3202 38.0103 83.6386 38.9578C83.9999 40.0335 83.2812 40.9254 82.2812 41.3797C73.98 45.1497 65.5645 51.8231 65.5644 57.1961C65.5644 60.7133 67.6232 61.8054 69.2607 61.8054C70.8982 61.8053 72.9687 60.7132 72.9687 57.1961C72.9687 55.1469 71.7266 53.1005 70.5117 51.6082C70.5117 51.6082 71.8191 50.0465 73.3418 48.9539C75.573 51.5308 76.9794 54.0813 76.9794 57.1961C76.9794 62.1932 73.7452 65.8716 69.2607 65.8719C64.776 65.8718 61.541 62.1933 61.541 57.1961C61.541 49.1584 73.6804 40.9043 80.8847 38.0808ZM55.0224 38.9597C55.3407 38.012 56.5088 37.5851 57.7763 38.0818C60.72 39.2354 64.4873 41.296 67.914 43.8777C66.3195 45.1252 65.0859 46.4549 65.0859 46.4549C62.4438 44.5139 59.4042 42.7542 56.3798 41.3806C55.38 40.9264 54.6614 40.0353 55.0224 38.9597Z" fill="#F8FAFC" fill-opacity="0.5"/> </g> </g> <g id="Yutori Cursor" filter="url(#filter1_ddddii_45_139)"> <path d="M17.7686 7.16441C16.8071 4.87975 18.9606 2.51614 21.3246 3.26145L51.2884 12.7081C54.3315 13.6675 54.214 18.0135 51.1235 18.8071C43.5544 20.7507 37.8792 27.0293 36.7077 34.7557L36.5332 35.9063C36.0312 39.2174 31.4966 39.7823 30.1974 36.6956L17.7686 7.16441Z" fill="url(#paint3_linear_45_139)"/> <path d="M17.7686 7.16441C16.8071 4.87975 18.9606 2.51614 21.3246 3.26145L51.2884 12.7081C54.3315 13.6675 54.214 18.0135 51.1235 18.8071C43.5544 20.7507 37.8792 27.0293 36.7077 34.7557L36.5332 35.9063C36.0312 39.2174 31.4966 39.7823 30.1974 36.6956L17.7686 7.16441Z" stroke="url(#paint4_linear_45_139)"/> </g> </g> <defs> <filter id="filter0_ddddii_45_139" x="29.2307" y="24.4717" width="80.2" height="105.4" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB"> <feFlood flood-opacity="0" result="BackgroundImageFix"/> <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/> <feOffset dy="2.4"/> <feGaussianBlur stdDeviation="2.4"/> <feColorMatrix type="matrix" values="0 0 0 0 0.0627451 0 0 0 0 0.403922 0 0 0 0 0.435294 0 0 0 0.07 0"/> <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_45_139"/> <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/> <feOffset dy="9.6"/> <feGaussianBlur stdDeviation="4.8"/> <feColorMatrix type="matrix" values="0 0 0 0 0.0627451 0 0 0 0 0.403922 0 0 0 0 0.435294 0 0 0 0.06 0"/> <feBlend mode="normal" in2="effect1_dropShadow_45_139" result="effect2_dropShadow_45_139"/> <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/> <feOffset dy="21.6"/> <feGaussianBlur stdDeviation="6.6"/> <feColorMatrix type="matrix" values="0 0 0 0 0.0627451 0 0 0 0 0.403922 0 0 0 0 0.435294 0 0 0 0.04 0"/> <feBlend mode="normal" in2="effect2_dropShadow_45_139" result="effect3_dropShadow_45_139"/> <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/> <feOffset dy="38.4"/> <feGaussianBlur stdDeviation="7.8"/> <feColorMatrix type="matrix" values="0 0 0 0 0.0627451 0 0 0 0 0.403922 0 0 0 0 0.435294 0 0 0 0.01 0"/> <feBlend mode="normal" in2="effect3_dropShadow_45_139" result="effect4_dropShadow_45_139"/> <feBlend mode="normal" in="SourceGraphic" in2="effect4_dropShadow_45_139" result="shape"/> <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/> <feOffset dx="1.2" dy="-2.4"/> <feGaussianBlur stdDeviation="2.4"/> <feComposite in2="hardAlpha" operator="arithmetic" k2="-1" k3="1"/> <feColorMatrix type="matrix" values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.15 0"/> <feBlend mode="normal" in2="shape" result="effect5_innerShadow_45_139"/> <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/> <feOffset dx="-1.2" dy="3.6"/> <feGaussianBlur stdDeviation="2.4"/> <feComposite in2="hardAlpha" operator="arithmetic" k2="-1" k3="1"/> <feColorMatrix type="matrix" values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.4 0"/> <feBlend mode="normal" in2="effect5_innerShadow_45_139" result="effect6_innerShadow_45_139"/> </filter> <filter id="filter1_ddddii_45_139" x="1.90735e-06" y="4.29153e-06" width="71.0401" height="98.1868" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB"> <feFlood flood-opacity="0" result="BackgroundImageFix"/> <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/> <feOffset dy="2.62043"/> <feGaussianBlur stdDeviation="2.62043"/> <feColorMatrix type="matrix" values="0 0 0 0 0.0627451 0 0 0 0 0.403922 0 0 0 0 0.435294 0 0 0 0.07 0"/> <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_45_139"/> <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/> <feOffset dy="10.4817"/> <feGaussianBlur stdDeviation="5.24087"/> <feColorMatrix type="matrix" values="0 0 0 0 0.0627451 0 0 0 0 0.403922 0 0 0 0 0.435294 0 0 0 0.06 0"/> <feBlend mode="normal" in2="effect1_dropShadow_45_139" result="effect2_dropShadow_45_139"/> <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/> <feOffset dy="23.5839"/> <feGaussianBlur stdDeviation="7.20619"/> <feColorMatrix type="matrix" values="0 0 0 0 0.0627451 0 0 0 0 0.403922 0 0 0 0 0.435294 0 0 0 0.04 0"/> <feBlend mode="normal" in2="effect2_dropShadow_45_139" result="effect3_dropShadow_45_139"/> <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/> <feOffset dy="41.9269"/> <feGaussianBlur stdDeviation="8.51641"/> <feColorMatrix type="matrix" values="0 0 0 0 0.0627451 0 0 0 0 0.403922 0 0 0 0 0.435294 0 0 0 0.01 0"/> <feBlend mode="normal" in2="effect3_dropShadow_45_139" result="effect4_dropShadow_45_139"/> <feBlend mode="normal" in="SourceGraphic" in2="effect4_dropShadow_45_139" result="shape"/> <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/> <feOffset dx="1.31022" dy="-2.62043"/> <feGaussianBlur stdDeviation="2.62043"/> <feComposite in2="hardAlpha" operator="arithmetic" k2="-1" k3="1"/> <feColorMatrix type="matrix" values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.15 0"/> <feBlend mode="normal" in2="shape" result="effect5_innerShadow_45_139"/> <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/> <feOffset dx="-1.31022" dy="3.93065"/> <feGaussianBlur stdDeviation="2.62043"/> <feComposite in2="hardAlpha" operator="arithmetic" k2="-1" k3="1"/> <feColorMatrix type="matrix" values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.4 0"/> <feBlend mode="normal" in2="effect5_innerShadow_45_139" result="effect6_innerShadow_45_139"/> </filter> <linearGradient id="paint0_linear_45_139" x1="76.1071" y1="27.3717" x2="52.9875" y2="65.2146" gradientUnits="userSpaceOnUse"> <stop stop-color="#18AA7E"/> <stop offset="0.45" stop-color="#148F6A"/> <stop offset="0.75" stop-color="#148F6A"/> <stop offset="1" stop-color="#159871"/> </linearGradient> <linearGradient id="paint1_linear_45_139" x1="93.3307" y1="27.3717" x2="45.3307" y2="75.3718" gradientUnits="userSpaceOnUse"> <stop stop-color="#5AE8BD"/> <stop offset="0.5" stop-color="#127D5D"/> <stop offset="1" stop-color="#19B385"/> </linearGradient> <linearGradient id="paint2_linear_45_139" x1="69.3591" y1="37.8241" x2="58.779" y2="60.9714" gradientUnits="userSpaceOnUse"> <stop stop-color="#5DF3C6"/> <stop offset="0.45" stop-color="#29B188"/> <stop offset="0.75" stop-color="#22A67E"/> <stop offset="1" stop-color="#22C191"/> </linearGradient> <linearGradient id="paint3_linear_45_139" x1="41.8168" y1="0.821967" x2="17.2954" y2="37.3243" gradientUnits="userSpaceOnUse"> <stop stop-color="#18AA7E"/> <stop offset="0.45" stop-color="#148F6A"/> <stop offset="0.75" stop-color="#148F6A"/> <stop offset="1" stop-color="#159871"/> </linearGradient> <linearGradient id="paint4_linear_45_139" x1="25.3307" y1="1.37175" x2="18.0622" y2="39.8967" gradientUnits="userSpaceOnUse"> <stop stop-color="#5AE8BD"/> <stop offset="0.5" stop-color="#009367"/> <stop offset="0.9" stop-color="#19B385"/> </linearGradient> </defs> </svg>'
 )
 
 _CURSOR_DATA_URI = "data:image/svg+xml;base64," + base64.b64encode(_CURSOR_SVG.encode()).decode()
+
+# The pointer and badge are split: the pointer ships as an image while the
+# badge is a live DOM element (built in _PERSISTENT_ROOT_JS), so the thought
+# capsule can stretch the badge itself — rim and inner shadows wrap the
+# expanded surface instead of leaving a nested badge square around the y-loop.
+_BADGE_START = _CURSOR_SVG.index('<g id="Badge"')
+_POINTER_START = _CURSOR_SVG.index('<g id="Yutori Cursor"')
+_POINTER_SVG = _CURSOR_SVG[:_BADGE_START] + _CURSOR_SVG[_POINTER_START:]
+_POINTER_DATA_URI = "data:image/svg+xml;base64," + base64.b64encode(_POINTER_SVG.encode()).decode()
+
+# 1x pointer from the Live Cursor mockup (Figma node 78:307 via
+# experimental/mp/api-graphics/live-cursor/preview.html): arrow geometry sized
+# for the 40px badge, drop + inner shadows baked into the SVG filter. Placed at
+# (-16.5, -2.8) in the cursor box so the arrow tip lands at the box origin.
+_POINTER_V2_SVG = '<svg preserveAspectRatio="none" viewBox="0 0 71.0401 98.1868" fill="none" xmlns="http://www.w3.org/2000/svg" ><g id="Yutori Cursor" filter="url(#filter0_ddddii_75_281)"><path d="M17.7686 7.1644C16.8071 4.87975 18.9606 2.51614 21.3246 3.26145L51.2884 12.7081C54.3315 13.6675 54.214 18.0135 51.1235 18.8071C43.5544 20.7507 37.8792 27.0293 36.7077 34.7557L36.5332 35.9063C36.0312 39.2174 31.4966 39.7823 30.1974 36.6956L17.7686 7.1644Z" fill="url(#paint0_linear_75_281)" /><path d="M17.7686 7.1644C16.8071 4.87975 18.9606 2.51614 21.3246 3.26145L51.2884 12.7081C54.3315 13.6675 54.214 18.0135 51.1235 18.8071C43.5544 20.7507 37.8792 27.0293 36.7077 34.7557L36.5332 35.9063C36.0312 39.2174 31.4966 39.7823 30.1974 36.6956L17.7686 7.1644Z" stroke="url(#paint1_linear_75_281)" /></g><defs><filter id="filter0_ddddii_75_281" x="0" y="0" width="71.0401" height="98.1868" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB" ><feFlood flood-opacity="0" result="BackgroundImageFix" /><feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha" /><feOffset dy="2.62043" /><feGaussianBlur stdDeviation="2.62043" /><feColorMatrix type="matrix" values="0 0 0 0 0.0627451 0 0 0 0 0.403922 0 0 0 0 0.435294 0 0 0 0.07 0" /><feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_75_281" /><feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha" /><feOffset dy="10.4817" /><feGaussianBlur stdDeviation="5.24087" /><feColorMatrix type="matrix" values="0 0 0 0 0.0627451 0 0 0 0 0.403922 0 0 0 0 0.435294 0 0 0 0.06 0" /><feBlend mode="normal" in2="effect1_dropShadow_75_281" result="effect2_dropShadow_75_281" /><feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha" /><feOffset dy="23.5839" /><feGaussianBlur stdDeviation="7.20619" /><feColorMatrix type="matrix" values="0 0 0 0 0.0627451 0 0 0 0 0.403922 0 0 0 0 0.435294 0 0 0 0.04 0" /><feBlend mode="normal" in2="effect2_dropShadow_75_281" result="effect3_dropShadow_75_281" /><feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha" /><feOffset dy="41.9269" /><feGaussianBlur stdDeviation="8.51641" /><feColorMatrix type="matrix" values="0 0 0 0 0.0627451 0 0 0 0 0.403922 0 0 0 0 0.435294 0 0 0 0.01 0" /><feBlend mode="normal" in2="effect3_dropShadow_75_281" result="effect4_dropShadow_75_281" /><feBlend mode="normal" in="SourceGraphic" in2="effect4_dropShadow_75_281" result="shape" /><feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha" /><feOffset dx="1.31022" dy="-2.62043" /><feGaussianBlur stdDeviation="2.62043" /><feComposite in2="hardAlpha" operator="arithmetic" k2="-1" k3="1" /><feColorMatrix type="matrix" values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.15 0" /><feBlend mode="normal" in2="shape" result="effect5_innerShadow_75_281" /><feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha" /><feOffset dx="-1.31022" dy="3.93065" /><feGaussianBlur stdDeviation="2.62043" /><feComposite in2="hardAlpha" operator="arithmetic" k2="-1" k3="1" /><feColorMatrix type="matrix" values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.4 0" /><feBlend mode="normal" in2="effect5_innerShadow_75_281" result="effect6_innerShadow_75_281" /></filter><linearGradient id="paint0_linear_75_281" x1="41.8168" y1="0.821961" x2="17.2954" y2="37.3243" gradientUnits="userSpaceOnUse" ><stop stop-color="#18AA7E" /><stop offset="0.45" stop-color="#148F6A" /><stop offset="0.75" stop-color="#148F6A" /><stop offset="1" stop-color="#159871" /></linearGradient><linearGradient id="paint1_linear_75_281" x1="25.3307" y1="1.37174" x2="18.0622" y2="39.8967" gradientUnits="userSpaceOnUse" ><stop stop-color="#5AE8BD" /><stop offset="0.5" stop-color="#009367" /><stop offset="0.9" stop-color="#19B385" /></linearGradient></defs></svg>'
+_POINTER_V2_DATA_URI = "data:image/svg+xml;base64," + base64.b64encode(_POINTER_V2_SVG.encode()).decode()
+
+_YLOOP_START = _CURSOR_SVG.index('<g id="yLoop"')
+_YLOOP_SEG = _CURSOR_SVG[_YLOOP_START:_POINTER_START]
+_YLOOP_GROUP = _YLOOP_SEG[: _YLOOP_SEG.rindex("</g>")]
+_YLOOP_GRAD_START = _CURSOR_SVG.index('<linearGradient id="paint2_linear_45_139"')
+_YLOOP_GRAD = _CURSOR_SVG[_YLOOP_GRAD_START : _CURSOR_SVG.index("</linearGradient>", _YLOOP_GRAD_START) + len("</linearGradient>")]
+_YLOOP_SVG = (
+    '<svg width="48" height="48" viewBox="45.3307 27.3717 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">'
+    + _YLOOP_GROUP
+    + "<defs>"
+    + _YLOOP_GRAD
+    + "</defs></svg>"
+)
+_YLOOP_DATA_URI = "data:image/svg+xml;base64," + base64.b64encode(_YLOOP_SVG.encode()).decode()
+
+def _styled_glyph(paths: str, stroke_width: float) -> str:
+    # Give stroke icons the y-loop's glossy treatment: a light-green gradient
+    # stroke + a white overlay-blend layer + a translucent white layer.
+    grad = (
+        "<defs><linearGradient id='gg' x1='0.72' y1='0.05' x2='0.28' y2='0.95'>"
+        "<stop stop-color='#5DF3C6'/><stop offset='0.45' stop-color='#29B188'/>"
+        "<stop offset='0.75' stop-color='#22A67E'/><stop offset='1' stop-color='#22C191'/>"
+        "</linearGradient></defs>"
+    )
+    layers = (
+        f"<g stroke='url(#gg)'>{paths}</g>"
+        f"<g stroke='#F8FAFC' style='mix-blend-mode:overlay'>{paths}</g>"
+        f"<g stroke='#F8FAFC' stroke-opacity='0.5'>{paths}</g>"
+    )
+    return (
+        "<svg width='100%' height='100%' viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'>"
+        f"<g fill='none' stroke-width='{stroke_width}' stroke-linecap='round' stroke-linejoin='round'>{layers}</g>"
+        f"{grad}</svg>"
+    )
+
+
+_GLYPH_CHEVRON = _styled_glyph("<polyline points='6 10 12 16 18 10'></polyline>", 3)
+_GLYPH_TYPE = _styled_glyph(
+    "<line x1='12' y1='5' x2='12' y2='19'></line>"
+    "<path d='M8 5h8'></path><path d='M8 19h8'></path>",
+    2.5,
+)
+_GLYPH_COPY = _styled_glyph(
+    "<rect width='14' height='14' x='8' y='8' rx='2' ry='2'></rect>"
+    "<path d='M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2'></path>",
+    2,
+)
+_GLYPH_PASTE = _styled_glyph(
+    "<path d='M11 14h10'></path><path d='M16 4h2a2 2 0 0 1 2 2v1.344'></path>"
+    "<path d='m17 18 4-4-4-4'></path>"
+    "<path d='M8 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 1.793-1.113'></path>"
+    "<rect x='8' y='2' width='8' height='4' rx='1'></rect>",
+    2,
+)
 
 _ROOT_STYLE = (
     f"position:fixed;top:0;left:0;right:0;bottom:0;"
@@ -128,6 +162,246 @@ def _inject_style_js(style_id: str, css_js_expr: str, *, guard: bool = False) ->
     )
 
 
+# Animated y-loop draw cycle (retract -> CCW dot hop -> redraw, with the
+# depth-slice weave at the self-intersection), ported from the Live Cursor
+# mockup at experimental/mp/api-graphics/live-cursor/preview.html (yutori
+# PR #10782). Only the animation is ported; geometry is adapted to the badge
+# slot via percentage placement (mark = 60% of the badge box, optically
+# centered, matching the mockup's in-badge placement). Injected into
+# _PERSISTENT_ROOT_JS; the rAF loop stops itself once the logo node is
+# detached (navigation re-injects the root and restarts it).
+_YLOOP_ANIM_JS = r"""
+    function n1BuildLoopLogo(logo) {
+        logo.innerHTML = '<svg style="position:absolute;left:20%;top:21.9%;width:60%;height:58.3%;overflow:visible" viewBox="14 24 232 236" fill="none" xmlns="http://www.w3.org/2000/svg">'
+            + '<defs><linearGradient id="__n1LoopGrad" x1="114" y1="0" x2="198" y2="193" gradientUnits="userSpaceOnUse">'
+            + '<stop stop-color="#C6FAFB"/><stop offset="0.45" stop-color="#A4FBFC"/><stop offset="0.75" stop-color="#9DFBFA"/><stop offset="1" stop-color="#9DFBFC"/>'
+            + '</linearGradient></defs>'
+            + '<g transform="translate(244 25) scale(-1 1)">'
+            + '<path class="__n1lp" fill="none" stroke="url(#__n1LoopGrad)" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"></path>'
+            + '<g class="__n1dl"><rect class="__n1ms" fill="#148f6a"></rect></g>'
+            + '<circle class="__n1th" r="0" fill="#148f6a"></circle>'
+            + '<path class="__n1mt" fill="none" stroke="url(#__n1LoopGrad)" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"></path>'
+            + '</g>'
+            + '<circle class="__n1dot" r="15" fill="url(#__n1LoopGrad)" opacity="0"></circle>'
+            + '</svg>'
+            + '<svg class="__n1off" style="position:absolute;width:0;height:0;overflow:hidden;visibility:hidden" xmlns="http://www.w3.org/2000/svg"></svg>';
+        const svgNS = 'http://www.w3.org/2000/svg';
+        const offscreen = logo.querySelector('.__n1off');
+        const loopPath = logo.querySelector('.__n1lp');
+        const depthLayer = logo.querySelector('.__n1dl');
+        const maskShape = logo.querySelector('.__n1ms');
+        const maskTop = logo.querySelector('.__n1mt');
+        const tipHalo = logo.querySelector('.__n1th');
+        const travelDot = logo.querySelector('.__n1dot');
+        const LOOP_D = 'M213.648 15.1484C213.648 15.1484 69.6484 91.1484 69.6484 164.454C69.6484 199.482 91.2215 219.493 117.833 219.493C144.445 219.493 166.018 199.482 166.018 164.454C166.018 89.6484 15.1484 15.1484 15.1484 15.1484';
+        loopPath.setAttribute('d', LOOP_D);
+        const LOOP_L = loopPath.getTotalLength();
+
+        function findCrossover(d, numSamples = 600) {
+            const path = document.createElementNS(svgNS, 'path');
+            path.setAttribute('d', d);
+            offscreen.appendChild(path);
+            const L = path.getTotalLength();
+            const samples = new Array(numSamples);
+            for (let i = 0; i < numSamples; i++) {
+                const len = (L * i) / (numSamples - 1);
+                const pt = path.getPointAtLength(len);
+                samples[i] = { x: pt.x, y: pt.y, len };
+            }
+            offscreen.removeChild(path);
+            const minSep = Math.floor(numSamples / 6);
+            let best = null;
+            for (let i = 0; i < numSamples; i++) {
+                for (let j = i + minSep; j < numSamples; j++) {
+                    const dx = samples[i].x - samples[j].x;
+                    const dy = samples[i].y - samples[j].y;
+                    const d2 = dx * dx + dy * dy;
+                    if (!best || d2 < best.d2) best = { i, j, d2 };
+                }
+            }
+            return {
+                x: (samples[best.i].x + samples[best.j].x) / 2,
+                y: (samples[best.i].y + samples[best.j].y) / 2,
+                len1: samples[best.i].len,
+                len2: samples[best.j].len,
+            };
+        }
+        function buildSegment(d, centerLen, halfRange, numPts = 40) {
+            const path = document.createElementNS(svgNS, 'path');
+            path.setAttribute('d', d);
+            offscreen.appendChild(path);
+            const L = path.getTotalLength();
+            let out = '';
+            for (let i = 0; i < numPts; i++) {
+                const t = i / (numPts - 1);
+                const len = Math.max(0, Math.min(L, centerLen + (t * 2 - 1) * halfRange));
+                const pt = path.getPointAtLength(len);
+                out += (i === 0 ? 'M' : 'L') + pt.x.toFixed(2) + ' ' + pt.y.toFixed(2);
+            }
+            offscreen.removeChild(path);
+            return out;
+        }
+        function tangentAt(d, len, eps = 2) {
+            const path = document.createElementNS(svgNS, 'path');
+            path.setAttribute('d', d);
+            offscreen.appendChild(path);
+            const L = path.getTotalLength();
+            const p1 = path.getPointAtLength(Math.max(0, len - eps));
+            const p2 = path.getPointAtLength(Math.min(L, len + eps));
+            offscreen.removeChild(path);
+            return (Math.atan2(p2.y - p1.y, p2.x - p1.x) * 180) / Math.PI;
+        }
+
+        const loopCross = findCrossover(LOOP_D);
+        const overAngle = tangentAt(LOOP_D, loopCross.len2);
+        const topSegmentD = buildSegment(LOOP_D, loopCross.len2, 34);
+        const MASK_W = 44, MASK_H = 36;
+        maskShape.setAttribute('x', (loopCross.x - MASK_W / 2).toFixed(2));
+        maskShape.setAttribute('y', (loopCross.y - MASK_H / 2).toFixed(2));
+        maskShape.setAttribute('width', MASK_W);
+        maskShape.setAttribute('height', MASK_H);
+        maskShape.setAttribute('transform', 'rotate(' + (overAngle + 90).toFixed(2) + ' ' + loopCross.x + ' ' + loopCross.y + ')');
+        maskTop.setAttribute('d', topSegmentD);
+
+        const MASK_HALF = 34;
+        const MASK_TOP_L = maskTop.getTotalLength();
+        const MASK_TOP_START_LEN = loopCross.len2 - MASK_HALF;
+        const MASK_TOP_END_LEN = loopCross.len2 + MASK_HALF;
+        const TIP_HALO_R_MAX = 22;
+
+        function smoothstep(e0, e1, x) {
+            const t = Math.max(0, Math.min(1, (x - e0) / (e1 - e0)));
+            return t * t * (3 - 2 * t);
+        }
+        function easeInCubic(t) { return t * t * t; }
+        function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+
+        const PHASE1_END = 0.3, PHASE2_END = 0.42, MIN_DOT = 0.5;
+        const MASK_HOLD_END_FRAME = 200, MASK_EXIT_END_FRAME = 230;
+        function phase1LoopVisibleAtFrame(frame) {
+            const p = frame / 1000;
+            const local = Math.max(0, Math.min(1, p / PHASE1_END));
+            return LOOP_L - (LOOP_L - MIN_DOT) * easeInCubic(local);
+        }
+
+        const LOOP_END_XY = [244 - 15.1484, 25 + 15.1484];
+        const LOOP_START_XY = [244 - 213.648, 25 + 15.1484];
+        const DOT_CP1 = [220, 10], DOT_CP2 = [40, 10];
+        function cubicBezierPt(t, P0, P1, P2, P3) {
+            const mt = 1 - t, mt2 = mt * mt, t2 = t * t;
+            return [
+                mt2 * mt * P0[0] + 3 * mt2 * t * P1[0] + 3 * mt * t2 * P2[0] + t2 * t * P3[0],
+                mt2 * mt * P0[1] + 3 * mt2 * t * P1[1] + 3 * mt * t2 * P2[1] + t2 * t * P3[1],
+            ];
+        }
+        travelDot.setAttribute('cx', LOOP_END_XY[0].toFixed(2));
+        travelDot.setAttribute('cy', LOOP_END_XY[1].toFixed(2));
+
+        function renderAt(p) {
+            let loopVisible = 0, loopDashOffset = 0;
+            let dotOpacity = 0, dotX = LOOP_END_XY[0], dotY = LOOP_END_XY[1];
+            let depthLo = 0, depthHi = 0;
+            if (p <= PHASE1_END) {
+                const local = p / PHASE1_END;
+                loopVisible = LOOP_L - (LOOP_L - MIN_DOT) * easeInCubic(local);
+                loopDashOffset = loopVisible - LOOP_L;
+                depthHi = phase1LoopVisibleAtFrame(MASK_HOLD_END_FRAME);
+                depthLo = phase1LoopVisibleAtFrame(MASK_EXIT_END_FRAME);
+            } else if (p <= PHASE2_END) {
+                const local = (p - PHASE1_END) / (PHASE2_END - PHASE1_END);
+                dotOpacity = 1;
+                const pt = cubicBezierPt(local, LOOP_END_XY, DOT_CP1, DOT_CP2, LOOP_START_XY);
+                dotX = pt[0]; dotY = pt[1];
+            } else {
+                const local = (p - PHASE2_END) / (1 - PHASE2_END);
+                loopVisible = MIN_DOT + (LOOP_L - MIN_DOT) * easeOutCubic(local);
+                loopDashOffset = 0;
+                depthLo = MASK_TOP_START_LEN;
+                depthHi = MASK_TOP_END_LEN;
+            }
+
+            if (loopVisible > 0.01) {
+                loopPath.style.display = '';
+                loopPath.setAttribute('stroke-dasharray', loopVisible.toFixed(2) + ' ' + (LOOP_L * 2).toFixed(2));
+                loopPath.setAttribute('stroke-dashoffset', loopDashOffset.toFixed(2));
+            } else {
+                loopPath.style.display = 'none';
+            }
+
+            if (dotOpacity > 0) {
+                travelDot.style.display = '';
+                travelDot.setAttribute('cx', dotX.toFixed(2));
+                travelDot.setAttribute('cy', dotY.toFixed(2));
+                travelDot.setAttribute('opacity', dotOpacity.toFixed(3));
+            } else {
+                travelDot.style.display = 'none';
+            }
+
+            const depthFactor = depthHi > depthLo ? smoothstep(depthLo, depthHi, loopVisible) : 0;
+            const curH = MASK_H * depthFactor;
+            maskShape.setAttribute('height', curH.toFixed(2));
+            maskShape.setAttribute('y', (loopCross.y + MASK_H / 2 - curH).toFixed(2));
+
+            let maskTopVisible = 0, maskTopOffset = 0;
+            if (p <= PHASE1_END) {
+                const winLeft = LOOP_L - loopVisible;
+                if (winLeft <= MASK_TOP_START_LEN) {
+                    maskTopVisible = MASK_TOP_L;
+                } else if (winLeft < MASK_TOP_END_LEN) {
+                    const eat = (winLeft - MASK_TOP_START_LEN) / (MASK_TOP_END_LEN - MASK_TOP_START_LEN);
+                    maskTopVisible = MASK_TOP_L * (1 - eat);
+                    maskTopOffset = -MASK_TOP_L * eat;
+                }
+            } else if (p > PHASE2_END) {
+                const grow = Math.max(0, Math.min(1, (loopVisible - MASK_TOP_START_LEN) / (MASK_TOP_END_LEN - MASK_TOP_START_LEN)));
+                maskTopVisible = MASK_TOP_L * grow;
+            }
+            if (maskTopVisible > 0.01) {
+                maskTop.style.display = '';
+                maskTop.setAttribute('stroke-dasharray', maskTopVisible.toFixed(2) + ' ' + (MASK_TOP_L * 2).toFixed(2));
+                maskTop.setAttribute('stroke-dashoffset', maskTopOffset.toFixed(2));
+            } else {
+                maskTop.style.display = 'none';
+            }
+
+            let tipHaloR = 0;
+            if (p > PHASE2_END && loopVisible > MASK_TOP_START_LEN && loopVisible < MASK_TOP_END_LEN) {
+                const overlapT = (loopVisible - MASK_TOP_START_LEN) / (MASK_TOP_END_LEN - MASK_TOP_START_LEN);
+                const k = Math.min(smoothstep(0, 0.2, overlapT), 1 - smoothstep(0.8, 1, overlapT));
+                tipHaloR = TIP_HALO_R_MAX * k;
+                const tipPt = loopPath.getPointAtLength(Math.min(loopVisible, LOOP_L));
+                tipHalo.setAttribute('cx', tipPt.x.toFixed(2));
+                tipHalo.setAttribute('cy', tipPt.y.toFixed(2));
+            }
+            if (tipHaloR > 0.5) {
+                tipHalo.style.display = '';
+                tipHalo.setAttribute('r', tipHaloR.toFixed(2));
+            } else {
+                tipHalo.style.display = 'none';
+            }
+            depthLayer.style.display = depthFactor > 0.001 ? '' : 'none';
+        }
+
+        const CYCLE_MS = 1600, PAUSE_MS = 300;
+        let startTime = performance.now();
+        let lingerAt = 0;
+        function frame(now) {
+            if (!logo.isConnected) return;
+            if (lingerAt) {
+                if (now - lingerAt > PAUSE_MS) { lingerAt = 0; startTime = now; }
+                requestAnimationFrame(frame);
+                return;
+            }
+            const t = Math.min(1, (now - startTime) / CYCLE_MS);
+            renderAt(t);
+            if (t >= 1) lingerAt = now;
+            requestAnimationFrame(frame);
+        }
+        renderAt(0);
+        requestAnimationFrame(frame);
+    }
+"""
+
 _PERSISTENT_ROOT_JS = f"""() => {{
     if (document.getElementById('{PERSISTENT_ROOT_ID}')) return;
     const root = document.createElement('div');
@@ -167,11 +441,10 @@ _PERSISTENT_ROOT_JS = f"""() => {{
         'animation:n1border {BORDER_CYCLE_MS // 2}ms ease-in-out infinite alternate;';
     root.appendChild(border);
 
-    const chip = document.createElement('div');
-    chip.id = '{STATUS_CHIP_ID}';
-    chip.style.cssText = 'position:fixed;top:12px;right:12px;background:{YUTORI_GREEN};color:#000;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-size:10px;font-weight:700;letter-spacing:0.6px;text-transform:uppercase;padding:6px 12px;border-radius:999px;box-shadow:0 2px 10px rgba(29,205,152,0.45);z-index:{Z_INDEX + 1};';
-    chip.textContent = 'Analyzing';
-    root.appendChild(chip);
+    // Status chip intentionally not rendered — the thought card already
+    // conveys what the agent is doing, so the "Analyzing" pill was redundant.
+    // set_status / _current_status are retained (they gate thought-card
+    // persistence); _set_chip_text no-ops since no chip element exists.
 
     // Cursor lives in the persistent root so it survives navigation
     // (the persistent root is re-mounted on every domcontentloaded) and
@@ -180,15 +453,40 @@ _PERSISTENT_ROOT_JS = f"""() => {{
     // _restore_cursor_position right after _inject_persistent_root to
     // teleport the cursor back to its last known viewport coordinates,
     // so the user always sees it where it was, never off-screen.
+{_YLOOP_ANIM_JS}
     if (!document.getElementById('{CURSOR_ID}')) {{
-        const cursor = document.createElement('img');
+        const cursor = document.createElement('div');
         cursor.id = '{CURSOR_ID}';
-        cursor.src = '{_CURSOR_DATA_URI}';
-        // The opacity transition lets _show_scroll_effect fade the cursor
-        // out for the duration of the scroll animation and back in on
-        // animationend without a hard pop. 200ms is short enough not to
-        // delay subsequent moves and long enough to read as a fade.
-        cursor.style.cssText = 'position:fixed;left:-200px;top:-200px;width:75px;height:101px;pointer-events:none;z-index:{Z_INDEX + 2};transition:left {CURSOR_TRANSITION_MS}ms ease-in-out,top {CURSOR_TRANSITION_MS}ms ease-in-out,opacity 200ms ease-in-out;transform:translate(-17px,-4px);filter:drop-shadow(0 2px 5px rgba(0,0,0,0.18));';
+        cursor.style.cssText = 'position:fixed;left:-200px;top:-200px;width:96px;height:113px;pointer-events:none;z-index:{Z_INDEX + 2};transition:left {CURSOR_TRANSITION_MS}ms ease-in-out,top {CURSOR_TRANSITION_MS}ms ease-in-out,opacity 200ms ease-in-out;transform:translate(-16px,-3px);';
+        // The badge is a live element carrying the full Figma treatment (fill
+        // gradient, gradient rim, two white inner shadows, teal drop shadows).
+        // The thought capsule stretches THIS element, so expanded and idle
+        // states are one continuous surface.
+        const badge = document.createElement('div');
+        badge.id = '{BADGE_ID}';
+        badge.style.cssText = 'position:absolute;left:39.6px;top:23.9px;width:33.5px;height:33.5px;border-radius:9.2px;background:linear-gradient(211.4deg,#18AA7E 13.6%,#148F6A 43.9%,#148F6A 64%,#159871 80.8%);box-shadow:inset 0.8px -1.7px 3.3px rgba(255,255,255,0.15),inset -0.8px 2.5px 3.3px rgba(255,255,255,0.4),0 1.7px 1.7px rgba(16,103,111,0.07),0 6.7px 3.3px rgba(16,103,111,0.06),0 15px 4.6px rgba(16,103,111,0.04),0 26.8px 5.4px rgba(16,103,111,0.01);overflow:hidden;pointer-events:none;transition:width 340ms cubic-bezier(0.22,1,0.36,1);';
+        // Slot pins the y-loop (and morphing action glyph) to the badge end.
+        const slot = document.createElement('div');
+        slot.id = '{BADGE_SLOT_ID}';
+        slot.style.cssText = 'position:absolute;top:0;left:0;width:33.5px;height:33.5px;pointer-events:none;';
+        const logo = document.createElement('div');
+        logo.id = '{BADGE_LOGO_ID}';
+        logo.style.cssText = 'position:absolute;left:0;top:0;width:100%;height:100%;transition:opacity 180ms ease;';
+        n1BuildLoopLogo(logo);
+        slot.appendChild(logo);
+        const badgeGlyph = document.createElement('div');
+        badgeGlyph.id = '{BADGE_GLYPH_ID}';
+        badgeGlyph.style.cssText = 'position:absolute;left:0;top:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;opacity:0;';
+        slot.appendChild(badgeGlyph);
+        badge.appendChild(slot);
+        const rim = document.createElement('div');
+        rim.style.cssText = 'position:absolute;inset:0;border-radius:9.2px;padding:0.7px;background:linear-gradient(to bottom left,#5AE8BD,#127D5D 50%,#19B385);-webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none;';
+        badge.appendChild(rim);
+        cursor.appendChild(badge);
+        const cursorImg = document.createElement('img');
+        cursorImg.src = '{_POINTER_DATA_URI}';
+        cursorImg.style.cssText = 'position:absolute;left:0;top:0;width:96px;height:113px;filter:drop-shadow(0 2px 5px rgba(0,0,0,0.18));';
+        cursor.appendChild(cursorImg);
         root.appendChild(cursor);
     }}
 
@@ -281,12 +579,10 @@ function n1renderMarkdown(text) {
 # dark thought-card background. Single-quoted Python string with only
 # double quotes inside makes Python's repr() emit a JS-valid string literal
 # at f-string-substitution time.
-_YUTORI_LOGOTYPE_SVG = '<svg width="248" height="63" viewBox="0 0 248 63" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M234.52 13.9307C232.514 13.9307 230.851 13.2714 229.533 11.9529C228.214 10.6343 227.555 8.97182 227.555 6.96534C227.555 4.95887 228.214 3.29636 229.533 1.97781C230.851 0.659272 232.514 0 234.52 0C236.527 0 238.189 0.659272 239.508 1.97781C240.826 3.29636 241.485 4.95887 241.485 6.96534C241.485 8.97182 240.826 10.6343 239.508 11.9529C238.189 13.2714 236.527 13.9307 234.52 13.9307ZM221.019 61.5702V60.1943L226.953 57.4426V30.9571L221.277 27.2594V25.8836L241.055 21.154H242.431V57.4426L247.333 60.1943V61.5702H221.019Z" fill="currentColor"/><path d="M182.034 61.5702V60.1943L187.968 57.4426V31.817L182.292 28.1194V26.7435L201.21 21.154H202.586L203.36 29.1513H203.79C205.281 26.9155 206.57 25.2243 207.66 24.0777C208.749 22.9312 209.752 22.1573 210.669 21.756C211.644 21.3547 212.733 21.154 213.937 21.154C214.453 21.154 214.998 21.2113 215.571 21.326C216.144 21.4407 216.689 21.584 217.205 21.756C218.179 22.0426 218.839 22.4152 219.183 22.8739C219.584 23.2751 219.785 23.7338 219.785 24.2497C219.785 24.651 219.699 25.1096 219.527 25.6256L217.205 32.161H216.603L215.055 31.645C214.08 31.3011 213.221 31.0718 212.475 30.9571C211.787 30.7851 210.899 30.6991 209.81 30.6991C208.548 30.6991 207.373 31.0144 206.284 31.645C205.195 32.2183 204.249 32.9636 203.446 33.8808V57.4426L210.927 60.1943V61.5702H182.034Z" fill="currentColor"/><path d="M158.321 62.4301C154.079 62.4301 150.324 61.4842 147.056 59.5924C143.789 57.6432 141.237 55.1208 139.403 52.0251C137.626 48.8721 136.737 45.4611 136.737 41.7921C136.737 38.1231 137.626 34.7121 139.403 31.559C141.237 28.406 143.789 25.8836 147.056 23.9917C150.324 22.0999 154.079 21.154 158.321 21.154C162.563 21.154 166.318 22.0999 169.586 23.9917C172.854 25.8836 175.376 28.406 177.153 31.559C178.988 34.7121 179.905 38.1231 179.905 41.7921C179.905 45.4611 178.988 48.8721 177.153 52.0251C175.376 55.1208 172.854 57.6432 169.586 59.5924C166.318 61.4842 162.563 62.4301 158.321 62.4301ZM159.095 57.8726C160.299 57.8726 161.302 57.2133 162.105 55.8948C162.907 54.5762 163.481 52.8564 163.825 50.7352C164.226 48.5568 164.427 46.149 164.427 43.5119C164.427 40.3015 164.197 37.3492 163.739 34.6547C163.28 31.9603 162.535 29.7819 161.503 28.1194C160.528 26.4569 159.267 25.6256 157.719 25.6256C156.401 25.6256 155.34 26.2849 154.538 27.6034C153.735 28.8646 153.133 30.5845 152.732 32.7629C152.388 34.8841 152.216 37.2918 152.216 39.9862C152.216 43.1393 152.445 46.0917 152.904 48.8434C153.42 51.5378 154.165 53.7163 155.139 55.3788C156.171 57.0413 157.49 57.8726 159.095 57.8726Z" fill="currentColor"/><path d="M123.627 62.4301C119.499 62.4301 116.174 61.6849 113.652 60.1943C111.129 58.7038 109.868 56.6113 109.868 53.9169V25.7976H104.279V24.1637L112.62 22.0139L122.853 12.5548H125.347V22.0139H137.557V25.7976H125.347V51.2512C125.347 52.7417 125.949 53.8309 127.152 54.5189C128.414 55.2068 129.876 55.5508 131.538 55.5508C132.57 55.5508 133.459 55.4934 134.204 55.3788C135.006 55.2641 135.838 55.1208 136.698 54.9488L136.956 55.1208V57.0126C135.809 58.4458 133.946 59.7071 131.366 60.7963C128.844 61.8855 126.264 62.4301 123.627 62.4301Z" fill="currentColor"/><path d="M71.4835 62.4301C67.9865 62.4301 65.1201 61.5129 62.8843 59.6784C60.7058 57.8439 59.6166 55.1208 59.6166 51.5092V26.1415L53.6831 23.3898V22.0139H75.0951V48.3275C75.0951 49.99 75.5251 51.2798 76.385 52.1971C77.2449 53.057 78.3342 53.487 79.6527 53.487C80.398 53.487 81.1719 53.315 81.9745 52.971C82.8344 52.6271 83.6083 52.2258 84.2963 51.7671V26.1415L79.6527 23.3898V22.0139H99.7748V57.4426L104.676 60.1943V61.5702H84.2963V56.0667H83.9523C82.0605 57.9585 80.1973 59.5064 78.3628 60.7103C76.5283 61.8569 74.2352 62.4301 71.4835 62.4301Z" fill="currentColor"/><path d="M17.1124 61.5702V60.1943L24.7657 56.5827V35.0847L6.19142 9.80308L0 6.19142V4.81555H30.3551V6.19142L23.7338 9.5451V9.88907L38.4384 29.6672L51.5951 10.0611V9.71709L44.7158 6.19142V4.81555H65.1819V6.19142L59.2484 9.02915L41.1041 35.0847V56.5827L48.7574 60.1943V61.5702H17.1124Z" fill="currentColor"/></svg>'
 
 # Markdown styles scoped to the thought card. The shimmer keyframe stays here
 # so the existing single-style-element teardown still cleans everything up.
 _THOUGHT_STYLE_CSS = (
-    "@keyframes n1thoughtShimmer{0%{background-position:200% 50%}100%{background-position:0% 50%}}"
     f"#{THOUGHT_CARD_ID} strong{{font-weight:700}}"
     f"#{THOUGHT_CARD_ID} em{{font-style:italic}}"
     f"#{THOUGHT_CARD_ID} a{{color:{YUTORI_GREEN};text-decoration:underline;text-underline-offset:2px}}"
@@ -304,63 +600,83 @@ _THOUGHT_STYLE_CSS = (
     f"#{THOUGHT_CARD_ID} h4{{font-size:1em;opacity:0.9}}"
 )
 
+
+
 _THOUGHT_CARD_JS = f"""(args) => {{
-    {_RENDER_MARKDOWN_JS}
-    const text = args.text;
+    const text = args.text || '';
     const timeoutMs = args.timeout_ms;
+    const cx = args.cx;
     const root = document.getElementById('{PERSISTENT_ROOT_ID}');
     if (!root) return;
+    const badge = document.getElementById('{BADGE_ID}');
+    const slot = document.getElementById('{BADGE_SLOT_ID}');
+    if (!badge || !slot) return;
     const existing = document.getElementById('{THOUGHT_CARD_ID}');
     if (existing) existing.remove();
+    if (root.__n1ThoughtTimer) {{ clearTimeout(root.__n1ThoughtTimer); root.__n1ThoughtTimer = null; }}
+    if (root.__n1StreamTimer) {{ clearTimeout(root.__n1StreamTimer); root.__n1StreamTimer = null; }}
 
-    const style = document.getElementById('{THOUGHT_STYLE_ID}') || document.createElement('style');
-    style.id = '{THOUGHT_STYLE_ID}';
-    style.textContent = {_THOUGHT_STYLE_CSS!r};
-    if (!style.isConnected) root.appendChild(style);
+    // The thought stretches the badge element itself into a capsule — one
+    // continuous surface whose rim + inner shadows wrap whatever width it has.
+    const B = 33.5, MAXW = 340, GAP = 7, END = 11, SPEED = 70;
+    const goLeft = (cx != null && cx >= 0) && ((cx - 16 + 39.6 + MAXW + 14) > window.innerWidth);
+    if (goLeft) {{
+        badge.style.left = 'auto'; badge.style.right = '22.9px';
+        slot.style.left = 'auto'; slot.style.right = '0';
+    }} else {{
+        badge.style.right = 'auto'; badge.style.left = '39.6px';
+        slot.style.right = 'auto'; slot.style.left = '0';
+    }}
 
-    const card = document.createElement('div');
-    card.id = '{THOUGHT_CARD_ID}';
-    card.style.cssText = 'position:fixed;top:76px;left:50%;transform:translateX(-50%);width:min(720px,calc(100vw - 48px));pointer-events:none;z-index:{Z_INDEX + 1};padding:22px 24px;border-radius:22px;background:linear-gradient(180deg,rgba(8,16,20,0.96),rgba(6,12,16,0.92));border:1px solid rgba(29,205,152,0.28);box-shadow:0 18px 50px rgba(0,0,0,0.28),0 0 0 1px rgba(29,205,152,0.08) inset;backdrop-filter:blur(12px);color:#eef6f3;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;';
-    const header = document.createElement('div');
-    header.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:12px;';
-    const badge = document.createElement('span');
-    badge.style.cssText = 'display:inline-block;padding:5px 10px;border-radius:999px;background:linear-gradient(90deg,rgba(29,205,152,0.22),rgba(90,232,189,0.45),rgba(29,205,152,0.22));background-size:200% 200%;animation:n1thoughtShimmer 1.6s linear infinite;color:#d9fff1;font-size:11px;font-weight:800;letter-spacing:0.9px;text-transform:uppercase;';
-    badge.textContent = 'Thinking';
+    const vp = document.createElement('div');
+    vp.id = '{THOUGHT_CARD_ID}';
+    vp.style.cssText = 'position:absolute;top:0;bottom:0;overflow:hidden;display:flex;align-items:center;opacity:0;transition:opacity 140ms ease;pointer-events:none;'
+        + (goLeft ? ('left:' + END + 'px;right:' + (B + GAP) + 'px;') : ('left:' + (B + GAP) + 'px;right:' + END + 'px;'));
+    const inner = document.createElement('span');
+    inner.style.cssText = 'display:inline-block;white-space:nowrap;background:linear-gradient(180deg,#C6FAFB 0%,#A4FBFC 55%,#9DFBFC 100%);-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent;font-size:12px;line-height:1;font-weight:500;letter-spacing:0.1px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;will-change:transform;';
+    inner.textContent = text;
+    vp.appendChild(inner);
+    badge.appendChild(vp);
 
-    // Yutori wordmark, placed to the LEFT of the "Thinking" pill (appended
-    // before the badge). Inline SVG so currentColor takes effect — the asset
-    // uses #334155 by default which would be invisible on the dark card.
-    // setAttribute('style', ...) on the parsed <svg> node is the only way to
-    // size it after innerHTML insertion (the SVG came with explicit
-    // width/height attributes that we override here).
-    const brand = document.createElement('span');
-    brand.setAttribute('aria-label', 'Yutori');
-    brand.style.cssText = 'display:inline-flex;align-items:center;color:rgba(238,246,243,0.55);';
-    brand.innerHTML = {_YUTORI_LOGOTYPE_SVG!r};
-    const brandSvg = brand.querySelector('svg');
-    if (brandSvg) brandSvg.setAttribute('style', 'height:14px;width:auto;display:block');
-    header.appendChild(brand);
-    header.appendChild(badge);
+    requestAnimationFrame(() => {{
+        if (!document.getElementById('{THOUGHT_CARD_ID}')) return;
+        const textW = inner.scrollWidth;
+        const target = Math.min(MAXW, B + GAP + textW + END);
+        badge.style.width = target + 'px';
+        vp.style.opacity = '1';
+        const vpW = target - B - GAP - END;
+        const overflow = Math.max(0, textW - vpW);
+        if (overflow > 0) {{
+            // Fade the trailing edge to signal more text, then slide the text
+            // left to play the overflow through; fade follows the hidden side.
+            const rightFade = 'linear-gradient(to right,#000 0,#000 calc(100% - 16px),transparent 100%)';
+            const bothFade = 'linear-gradient(to right,transparent 0,#000 16px,#000 calc(100% - 16px),transparent 100%)';
+            const leftFade = 'linear-gradient(to right,transparent 0,#000 16px,#000 100%)';
+            const setMask = (m) => {{ vp.style.webkitMaskImage = m; vp.style.maskImage = m; }};
+            setMask(rightFade);
+            root.__n1StreamTimer = setTimeout(() => {{
+                if (!document.getElementById('{THOUGHT_CARD_ID}')) return;
+                setMask(bothFade);
+                const dur = Math.max(900, overflow / SPEED * 1000);
+                inner.style.transition = 'transform ' + dur + 'ms linear';
+                inner.style.transform = 'translateX(-' + overflow + 'px)';
+                inner.addEventListener('transitionend', () => setMask(leftFade), {{ once: true }});
+            }}, 700);
+        }}
+    }});
 
-    // Body uses innerHTML (filled by renderMarkdown). The line-clamp the
-    // previous textContent version used would render unpredictably for rich
-    // content (lists, headers); upstream show_thought already clips text to
-    // 520 chars, so we cap with max-height + overflow:hidden as a safety net.
-    const body = document.createElement('div');
-    body.style.cssText = 'font-size:17px;line-height:1.55;color:rgba(238,246,243,0.95);max-height:60vh;overflow:hidden;word-break:break-word;';
-    body.innerHTML = n1renderMarkdown(text);
-
-    card.appendChild(header);
-    card.appendChild(body);
-    root.appendChild(card);
-
-    const previousTimer = root.__n1ThoughtTimer;
-    if (previousTimer) clearTimeout(previousTimer);
-    root.__n1ThoughtTimer = null;
     if (timeoutMs > 0) {{
         root.__n1ThoughtTimer = setTimeout(() => {{
+            if (root.__n1StreamTimer) {{ clearTimeout(root.__n1StreamTimer); root.__n1StreamTimer = null; }}
             const current = document.getElementById('{THOUGHT_CARD_ID}');
-            if (current) current.remove();
+            if (!current) return;
+            current.style.opacity = '0';
+            badge.style.width = B + 'px';
+            setTimeout(() => {{
+                current.remove();
+                badge.style.left = '39.6px'; badge.style.right = 'auto';
+                slot.style.left = '0'; slot.style.right = 'auto';
+            }}, 360);
         }}, timeoutMs);
     }}
 }}"""
@@ -386,6 +702,7 @@ _REMOVE_ALL_JS = f"""() => {{
     const persistent = document.getElementById('{PERSISTENT_ROOT_ID}');
     if (persistent) {{
         if (persistent.__n1ThoughtTimer) clearTimeout(persistent.__n1ThoughtTimer);
+        if (persistent.__n1StreamTimer) clearTimeout(persistent.__n1StreamTimer);
         persistent.remove();
     }}
     const transient = document.getElementById('{TRANSIENT_ROOT_ID}');
@@ -402,8 +719,20 @@ _CLEAR_THOUGHT_JS = f"""() => {{
         clearTimeout(persistent.__n1ThoughtTimer);
         persistent.__n1ThoughtTimer = null;
     }}
-    const current = document.getElementById('{THOUGHT_CARD_ID}');
-    if (current) current.remove();
+    if (persistent && persistent.__n1StreamTimer) {{
+        clearTimeout(persistent.__n1StreamTimer);
+        persistent.__n1StreamTimer = null;
+    }}
+    const vp = document.getElementById('{THOUGHT_CARD_ID}');
+    const badge = document.getElementById('{BADGE_ID}');
+    const slot = document.getElementById('{BADGE_SLOT_ID}');
+    if (vp) vp.style.opacity = '0';
+    if (badge) badge.style.width = '33.5px';
+    setTimeout(() => {{
+        if (vp) vp.remove();
+        if (badge) {{ badge.style.left = '39.6px'; badge.style.right = 'auto'; }}
+        if (slot) {{ slot.style.left = '0'; slot.style.right = 'auto'; }}
+    }}, 360);
 }}"""
 
 def _toggle_both_roots_js(*, visibility: str, opacity: str) -> str:
@@ -554,7 +883,7 @@ class OverlayController:
         center: dict[str, int] | None = None
         moved = False
         teleported = False
-        if action_type == "type":
+        if action_type in {"type", "copy", "paste"}:
             center = await self._get_focused_element_center()
             if center:
                 teleported = await self._move_cursor(center["x"], center["y"])
@@ -575,9 +904,16 @@ class OverlayController:
         if action_type in {"left_click", "double_click", "triple_click", "middle_click", "right_click"}:
             await self._show_click_effect(x, y, num_clicks)
         elif action_type == "scroll":
-            await self._show_scroll_effect(x, y, direction, amount=amount)
+            _rot = {"down": 0, "up": 180, "right": -90, "left": 90}.get(direction, 0)
+            await self._morph_badge(_GLYPH_CHEVRON, rotate=_rot)
         elif action_type == "type":
-            await self._show_type_effect(center)
+            await self._morph_badge(_GLYPH_TYPE)
+        elif action_type == "set_element_value":
+            await self._morph_badge(_GLYPH_PASTE)
+        elif action_type == "copy":
+            await self._morph_badge(_GLYPH_COPY)
+        elif action_type == "paste":
+            await self._morph_badge(_GLYPH_PASTE)
         elif action_type == "drag":
             await self._show_drag_effect(start_x, start_y, x, y)
 
@@ -594,11 +930,18 @@ class OverlayController:
             return
         await self._inject_persistent_root()
         clipped = self._clip_text(text, 520)
-        # During "Analyzing" the card stays until clear_thought() is called
-        # (by preview_action or a non-Analyzing status transition).
-        # Otherwise use the fallback timeout as a safety net.
+        # During "Analyzing" the card stays until clear_thought() is called;
+        # otherwise the fallback timeout removes it.
         timeout_ms = 0 if self._current_status == "Analyzing" else THOUGHT_DURATION_MS
-        await self._eval(_THOUGHT_CARD_JS, {"text": clipped, "timeout_ms": timeout_ms})
+        await self._eval(
+            _THOUGHT_CARD_JS,
+            {
+                "text": clipped,
+                "timeout_ms": timeout_ms,
+                "cx": self._cursor_x if self._cursor_x is not None else -1,
+                "cy": self._cursor_y if self._cursor_y is not None else -1,
+            },
+        )
 
     async def clear_thought(self) -> None:
         if not self._active:
@@ -667,10 +1010,18 @@ class OverlayController:
         return teleported
 
     async def _show_click_effect(self, x: int, y: int, num_clicks: int) -> None:
+        # Ripple ring + glowing center dot, matching the Navigator browser
+        # extension's click effect (visual_effects.js showClickEffect): an
+        # expanding ring fades out while a center dot shrinks and fades.
         gap = int(CLICK_DURATION_MS * 0.5)
         click_style = _inject_style_js(
             CLICK_STYLE_ID,
-            "'@keyframes n1click{0%{width:5px;height:5px;opacity:0.6}100%{width:30px;height:30px;opacity:0}}'",
+            (
+                "'@keyframes n1clickring{0%{transform:translate(-50%,-50%) scale(0.4);opacity:1}"
+                "50%{opacity:0.9}100%{transform:translate(-50%,-50%) scale(2.5);opacity:0}}"
+                "@keyframes n1clickdot{0%{transform:translate(-50%,-50%) scale(1);opacity:1}"
+                "50%{opacity:1}100%{transform:translate(-50%,-50%) scale(0.4);opacity:0}}'"
+            ),
             guard=True,
         )
         await self._eval(
@@ -680,90 +1031,66 @@ class OverlayController:
                 {click_style}
                 for (let i = 0; i < {num_clicks}; i++) {{
                     const delay = i * {gap};
-                    const el = document.createElement('div');
-                    el.style.cssText = 'position:fixed;left:{x}px;top:{y}px;width:5px;height:5px;background:{YUTORI_GREEN};border-radius:50%;pointer-events:none;z-index:{Z_INDEX};transform:translate(-50%,-50%);animation:n1click {CLICK_DURATION_MS}ms ease-out forwards;animation-delay:' + delay + 'ms;opacity:0;';
-                    el.addEventListener('animationend', () => el.remove(), {{once: true}});
-                    root.appendChild(el);
+                    const ring = document.createElement('div');
+                    ring.style.cssText = 'position:fixed;left:{x}px;top:{y}px;width:50px;height:50px;border:3px solid {YUTORI_GREEN};border-radius:50%;box-shadow:0 0 20px rgba(29,205,152,0.6),inset 0 0 12px rgba(29,205,152,0.2);pointer-events:none;z-index:{Z_INDEX};transform:translate(-50%,-50%);opacity:0;animation:n1clickring {CLICK_DURATION_MS}ms ease-out forwards;animation-delay:' + delay + 'ms;';
+                    const dot = document.createElement('div');
+                    dot.style.cssText = 'position:fixed;left:{x}px;top:{y}px;width:14px;height:14px;background:{YUTORI_GREEN};border-radius:50%;box-shadow:0 0 16px {YUTORI_GREEN},0 0 32px rgba(29,205,152,0.5);pointer-events:none;z-index:{Z_INDEX};transform:translate(-50%,-50%);opacity:0;animation:n1clickdot {CLICK_DURATION_MS}ms ease-out forwards;animation-delay:' + delay + 'ms;';
+                    ring.addEventListener('animationend', () => {{ ring.remove(); dot.remove(); }}, {{once: true}});
+                    root.appendChild(ring);
+                    root.appendChild(dot);
                 }}
             }}"""
         )
 
     async def _show_scroll_effect(self, x: int, y: int, direction: str = "down", *, amount: int = 1) -> None:
-        # Two animations compose the visual:
-        #   1. Container drift+fade — translates in the scroll direction
-        #      while opacity goes 0.85→0. The drift carries the directional
-        #      meaning (down vs up vs left vs right).
-        #   2. Inner SVG rotation — spins clockwise for down/right and
-        #      counterclockwise for up/left. The rotation carries the
-        #      "scrolling motion" feel; the direction of spin reinforces the
-        #      drift direction.
-        # Splitting them across two elements avoids the CSS one-transform-per-
-        # element conflict (the container animates `transform: translate(...)`
-        # while the SVG animates `transform: rotate(...)`).
-        #
-        # Magnitude scaling: ``amount`` is the wheel-tick multiplier passed
-        # through from the action layer. We map it to a scale factor with a
-        # gentle ramp and a hard cap so a runaway "scroll 50 ticks" doesn't
-        # produce a 30-second animation. Both duration and spin amount scale
-        # together so the spin RATE stays constant (a bigger scroll = more
-        # rotations over more time, not slower spinning).
-        amount = max(1, amount)
-        scale = min(0.5 + 0.5 * amount, 2.5)
-        duration_ms = int(SCROLL_DURATION_MS * scale)
-        spin_magnitude = int(360 * scale)
-        spin_sign = 1 if direction in {"down", "right"} else -1
-        spin_deg = spin_magnitude * spin_sign
-        # ↻ U+21BB CLOCKWISE OPEN CIRCLE ARROW for down/right
-        # ↺ U+21BA ANTICLOCKWISE OPEN CIRCLE ARROW for up/left
-        # The character itself is directional, and the CSS spin animation
-        # adds motion on top — bigger scrolls produce more rotations
-        # because spin_magnitude scales with `amount`.
-        arrow_char = "↻" if spin_sign == 1 else "↺"
-        # Drift grows mildly with magnitude — capped so the icon doesn't
-        # fling off-screen on huge scrolls. Keeps directionality readable
-        # at any amount.
-        drift_scale = min(1.0 + (amount - 1) * 0.25, 1.75)
-        tx = int({"right": 26, "left": -26}.get(direction, 0) * drift_scale)
-        ty = int({"down": 26, "up": -26}.get(direction, 0) * drift_scale)
-        scroll_css_js = (
-            f"'@keyframes n1scroll{{0%{{opacity:0.85;transform:translate(-50%,-50%)}}100%{{opacity:0;transform:translate(calc(-50% + {tx}px),calc(-50% + {ty}px))}}}}"
-            f"@keyframes n1scrollSpin{{from{{transform:rotate(0deg)}}to{{transform:rotate({spin_deg}deg)}}}}'"  # noqa: E501
+        # Directional chevrons, matching the Navigator browser extension's
+        # scroll effect (navigator-browser-extension/modules/visual_effects.js):
+        # three chevrons cascade top->bottom inside a rounded box, and the whole
+        # box is rotated to point in the scroll direction. Reads unambiguously as
+        # scrolling (a circular arrow reads as "refresh"). ``amount`` is accepted
+        # for signature compatibility but not used for scaling.
+        rotation = {"down": 0, "up": 180, "right": -90, "left": 90}.get(direction, 0)
+        scroll_style = _inject_style_js(
+            SCROLL_STYLE_ID,
+            (
+                "'@keyframes n1scrollfade{0%{opacity:0;transform:translate(-50%,-50%) scale(0.9)}"
+                "15%{opacity:1;transform:translate(-50%,-50%) scale(1)}"
+                "85%{opacity:1;transform:translate(-50%,-50%) scale(1)}"
+                "100%{opacity:0;transform:translate(-50%,-50%) scale(0.95)}}"
+                "@keyframes n1scrollchevron{0%{opacity:0;transform:translateY(-6px) scale(0.7)}"
+                "35%{opacity:1;transform:translateY(0) scale(1)}"
+                "65%{opacity:1;transform:translateY(0) scale(1)}"
+                "100%{opacity:0;transform:translateY(8px) scale(0.95)}}'"
+            ),
+            guard=True,
         )
-        scroll_style = _inject_style_js(SCROLL_STYLE_ID, scroll_css_js)
         await self._eval(
             f"""() => {{
                 const root = document.getElementById('{TRANSIENT_ROOT_ID}');
                 if (!root) return;
                 {scroll_style}
-                // Hide the cursor for the duration of the scroll animation —
-                // the rotating arrow IS the visual focus, the cursor would
-                // just sit there idle while the page scrolls. Restored on
-                // animationend so it reappears smoothly via the 200ms
-                // opacity transition wired into the cursor's cssText.
-                const cursor = document.getElementById('{CURSOR_ID}');
-                if (cursor) cursor.style.opacity = '0';
 
                 const container = document.createElement('div');
-                container.style.cssText = 'position:fixed;left:{x}px;top:{y}px;width:36px;height:36px;color:{YUTORI_GREEN};pointer-events:none;z-index:{Z_INDEX};animation:n1scroll {duration_ms}ms ease-out forwards;';
+                container.style.cssText = 'position:fixed;left:{x}px;top:{y}px;pointer-events:none;z-index:{Z_INDEX};animation:n1scrollfade {SCROLL_DURATION_MS}ms ease-out forwards;';
 
-                // Unicode arrow character (↻ or ↺) centered via flex.
-                // Inherits `color` from the container (Yutori green). The
-                // spin animation rotates the whole flex container around
-                // its own center (transform-origin defaults to 50% 50%),
-                // so the character appears to spin in place.
-                const icon = document.createElement('div');
-                icon.style.cssText = 'width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:32px;line-height:1;font-weight:600;animation:n1scrollSpin {duration_ms}ms linear forwards;';
-                icon.textContent = '{arrow_char}';
-                container.appendChild(icon);
+                // Unrotated chevrons point down; rotating the box reorients them
+                // to the scroll direction.
+                const box = document.createElement('div');
+                box.style.cssText = 'width:56px;height:56px;border:2.5px solid {YUTORI_GREEN};border-radius:12px;box-shadow:0 0 20px rgba(29,205,152,0.4);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;box-sizing:border-box;transform:rotate({rotation}deg);';
 
-                // animationend bubbles from the inner icon too, but {{once:true}}
-                // means the listener fires exactly once and self-detaches —
-                // whichever animation ends first triggers cleanup, the second
-                // bubble has no listener to hit.
+                const chevronSvg = "<svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='{YUTORI_GREEN}' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'></polyline></svg>";
+                for (let i = 0; i < 3; i++) {{
+                    const chev = document.createElement('div');
+                    chev.style.cssText = 'display:flex;opacity:0;animation:n1scrollchevron 400ms ease-out infinite;animation-delay:' + (i * 100) + 'ms;';
+                    chev.innerHTML = chevronSvg;
+                    box.appendChild(chev);
+                }}
+                container.appendChild(box);
+
+                // Only n1scrollfade is finite, so animationend fires once when the
+                // fade completes; the chevron cascade is infinite.
                 container.addEventListener('animationend', () => {{
                     container.remove();
-                    style.remove();
-                    if (cursor) cursor.style.opacity = '1';
                 }}, {{once: true}});
                 root.appendChild(container);
             }}"""
@@ -776,37 +1103,54 @@ class OverlayController:
         cx = center["x"]
         cy_raw = center["y"]
         show_below = cy_raw < 50
-        cy = cy_raw + 30 if show_below else cy_raw - 7
+        cy = cy_raw + 30 if show_below else cy_raw - 36
+        bob = "6px" if show_below else "-6px"
+        dot_bob = "5px" if show_below else "-5px"
+        fade_from = "-10px" if show_below else "10px"
+        fade_to = "10px" if show_below else "-10px"
 
-        type_style = _inject_style_js(
-            TYPE_STYLE_ID,
-            "'@keyframes n1tcaret{0%,100%{opacity:1}50%{opacity:0}}@keyframes n1tdot{0%,100%{transform:scale(1);opacity:0.5}50%{transform:scale(1.4);opacity:1}}@keyframes n1tfade{0%{opacity:0}15%{opacity:1}85%{opacity:1}100%{opacity:0}}'",
+        # Labeled "typing" pill, matching the extension's showTypeEffect:
+        # green pill with the word "typing" + bobbing dots + a blinking caret.
+        type_css = (
+            "'@keyframes n1tbob{0%,100%{transform:translateX(-50%) translateY(0)}"
+            "50%{transform:translateX(-50%) translateY(" + bob + ")}}"
+            "@keyframes n1tglow{0%,100%{box-shadow:0 4px 16px rgba(29,205,152,0.5)}"
+            "50%{box-shadow:0 4px 28px rgba(29,205,152,0.9),0 0 12px rgba(29,205,152,0.5)}}"
+            "@keyframes n1tdot{0%,100%{opacity:0.2;transform:translateY(0) scale(0.8)}"
+            "50%{opacity:1;transform:translateY(" + dot_bob + ") scale(1.1)}}"
+            "@keyframes n1tcaret{0%,100%{opacity:1}50%{opacity:0}}"
+            "@keyframes n1tfade{0%{opacity:0;transform:translateX(-50%) translateY(" + fade_from + ")}"
+            "15%{opacity:1;transform:translateX(-50%) translateY(0)}85%{opacity:1}"
+            "100%{opacity:0;transform:translateX(-50%) translateY(" + fade_to + ")}}'"
         )
+        type_style = _inject_style_js(TYPE_STYLE_ID, type_css)
         await self._eval(
             f"""() => {{
                 const root = document.getElementById('{TRANSIENT_ROOT_ID}');
                 if (!root) return;
                 {type_style}
-                const container = document.createElement('div');
-                container.style.cssText = 'position:fixed;left:{cx + 14}px;top:{cy}px;pointer-events:none;z-index:{Z_INDEX};animation:n1tfade {EFFECT_DURATION_MS}ms ease-out forwards;display:flex;align-items:flex-end;gap:3px;';
+                const indicator = document.createElement('div');
+                indicator.style.cssText = 'position:fixed;left:{cx}px;top:{cy}px;background:{YUTORI_GREEN};color:#000;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;padding:6px 12px;border-radius:5px;pointer-events:none;z-index:{Z_INDEX};transform:translateX(-50%);animation:n1tfade {EFFECT_DURATION_MS}ms ease-out forwards,n1tbob 0.6s ease-in-out infinite,n1tglow 0.8s ease-in-out infinite;display:flex;align-items:center;gap:3px;';
 
-                const caret = document.createElement('div');
-                caret.style.cssText = 'width:2px;height:14px;background:{YUTORI_GREEN};border-radius:1px;animation:n1tcaret 0.53s step-end infinite;';
-                container.appendChild(caret);
+                const label = document.createElement('span');
+                label.textContent = 'typing';
+                indicator.appendChild(label);
 
-                const dots = document.createElement('div');
-                dots.style.cssText = 'display:flex;gap:2px;margin-left:2px;margin-bottom:1px;';
                 for (let i = 0; i < 3; i++) {{
-                    const dot = document.createElement('div');
-                    dot.style.cssText = 'width:3px;height:3px;background:{YUTORI_GREEN};border-radius:50%;animation:n1tdot 0.6s ease-in-out infinite;animation-delay:' + (i * 0.12) + 's;';
-                    dots.appendChild(dot);
+                    const dot = document.createElement('span');
+                    dot.textContent = '\u00b7';
+                    dot.style.cssText = 'display:inline-block;font-size:14px;font-weight:700;line-height:1;animation:n1tdot 0.5s ease-in-out infinite;animation-delay:' + (i * 0.1) + 's;';
+                    indicator.appendChild(dot);
                 }}
-                container.appendChild(dots);
 
-                // Caret/dots run on infinite animations (never fire animationend),
-                // so this listener triggers exactly once when n1tfade completes.
-                container.addEventListener('animationend', () => {{ container.remove(); style.remove(); }}, {{once: true}});
-                root.appendChild(container);
+                const caret = document.createElement('span');
+                caret.style.cssText = 'width:2px;height:12px;background:#000;margin-left:4px;border-radius:1px;animation:n1tcaret 0.53s step-end infinite;';
+                indicator.appendChild(caret);
+
+                // Only n1tfade is finite; bob/glow/dot/caret are infinite and
+                // never fire animationend, so this fires once on fade-out.
+                indicator.addEventListener('animationend', () => {{ indicator.remove(); style.remove(); }}, {{once: true}});
+                root.appendChild(indicator);
             }}"""
         )
 
@@ -837,6 +1181,96 @@ class OverlayController:
                 trail.addEventListener('animationend', () => {{ pressed.remove(); trail.remove(); style.remove(); }}, {{once: true}});
             }}"""
         )
+
+    async def _show_paste_effect(self, x: int, y: int) -> None:
+        # DOM value-set ("set_element_value") pastes a value straight into a
+        # field rather than keystroking it — so it gets a clipboard-paste glyph
+        # (Lucide clipboard-paste), not the "typing" pill. Mirrors the extension's
+        # visual language; keeps the overlay honest about which mechanism ran.
+        show_below = y < 50
+        py = y + 30 if show_below else y - 36
+        fade_from = "-10px" if show_below else "10px"
+        fade_to = "10px" if show_below else "-10px"
+        paste_css = (
+            "'@keyframes n1pglow{0%,100%{box-shadow:0 4px 16px rgba(29,205,152,0.5)}"
+            "50%{box-shadow:0 4px 28px rgba(29,205,152,0.9),0 0 12px rgba(29,205,152,0.5)}}"
+            "@keyframes n1pfade{0%{opacity:0;transform:translateX(-50%) translateY(" + fade_from + ")}"
+            "15%{opacity:1;transform:translateX(-50%) translateY(0)}85%{opacity:1}"
+            "100%{opacity:0;transform:translateX(-50%) translateY(" + fade_to + ")}}'"
+        )
+        paste_style = _inject_style_js(PASTE_STYLE_ID, paste_css)
+        await self._eval(
+            f"""() => {{
+                const root = document.getElementById('{TRANSIENT_ROOT_ID}');
+                if (!root) return;
+                {paste_style}
+                const pill = document.createElement('div');
+                pill.style.cssText = 'position:fixed;left:{x}px;top:{py}px;background:{YUTORI_GREEN};color:#000;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;padding:6px 10px;border-radius:5px;pointer-events:none;z-index:{Z_INDEX};transform:translateX(-50%);animation:n1pfade {EFFECT_DURATION_MS}ms ease-out forwards,n1pglow 0.8s ease-in-out infinite;display:flex;align-items:center;gap:5px;';
+                pill.innerHTML = "<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='#000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M11 14h10'></path><path d='M16 4h2a2 2 0 0 1 2 2v1.344'></path><path d='m17 18 4-4-4-4'></path><path d='M8 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 1.793-1.113'></path><rect x='8' y='2' width='8' height='4' rx='1'></rect></svg><span>pasting</span>";
+
+                // Only n1pfade is finite; n1pglow is infinite, so animationend
+                // fires once on fade-out.
+                pill.addEventListener('animationend', () => {{ pill.remove(); style.remove(); }}, {{once: true}});
+                root.appendChild(pill);
+            }}"""
+        )
+
+    async def _show_copy_effect(self, x: int, y: int) -> None:
+        # Copy (Control/Cmd+C) — a clipboard "copy" glyph (Lucide copy) at the
+        # selected/focused element. Paired with the paste glyph on Control/Cmd+V.
+        show_below = y < 50
+        py = y + 30 if show_below else y - 36
+        fade_from = "-10px" if show_below else "10px"
+        fade_to = "10px" if show_below else "-10px"
+        copy_css = (
+            "'@keyframes n1cglow{0%,100%{box-shadow:0 4px 16px rgba(29,205,152,0.5)}"
+            "50%{box-shadow:0 4px 28px rgba(29,205,152,0.9),0 0 12px rgba(29,205,152,0.5)}}"
+            "@keyframes n1cfade{0%{opacity:0;transform:translateX(-50%) translateY(" + fade_from + ")}"
+            "15%{opacity:1;transform:translateX(-50%) translateY(0)}85%{opacity:1}"
+            "100%{opacity:0;transform:translateX(-50%) translateY(" + fade_to + ")}}'"
+        )
+        copy_style = _inject_style_js(COPY_STYLE_ID, copy_css)
+        await self._eval(
+            f"""() => {{
+                const root = document.getElementById('{TRANSIENT_ROOT_ID}');
+                if (!root) return;
+                {copy_style}
+                const pill = document.createElement('div');
+                pill.style.cssText = 'position:fixed;left:{x}px;top:{py}px;background:{YUTORI_GREEN};color:#000;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;padding:6px 10px;border-radius:5px;pointer-events:none;z-index:{Z_INDEX};transform:translateX(-50%);animation:n1cfade {EFFECT_DURATION_MS}ms ease-out forwards,n1cglow 0.8s ease-in-out infinite;display:flex;align-items:center;gap:5px;';
+                pill.innerHTML = "<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='#000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect width='14' height='14' x='8' y='8' rx='2' ry='2'></rect><path d='M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2'></path></svg><span>copying</span>";
+
+                pill.addEventListener('animationend', () => {{ pill.remove(); style.remove(); }}, {{once: true}});
+                root.appendChild(pill);
+            }}"""
+        )
+
+    async def _morph_badge(self, glyph_svg: str, *, rotate: int = 0, revert_ms: int = 900) -> None:
+        # Make the cursor badge the locus of interaction: the action glyph blooms
+        # in over the badge (scale+blur+opacity spring, AnimatePresence-style),
+        # then blooms back out to reveal the default y-loop after revert_ms.
+        rot = f"transform:rotate({rotate}deg);" if rotate else ""
+        inner = f"<div style='width:62%;height:62%;display:flex;align-items:center;justify-content:center;{rot}'>{glyph_svg}</div>"
+        js = (
+            "() => {"
+            f" const b = document.getElementById('{BADGE_GLYPH_ID}');"
+            " if (!b) return;"
+            f" const logo = document.getElementById('{BADGE_LOGO_ID}');"
+            " if (logo) logo.style.opacity = '0';"
+            " if (!document.getElementById('__n1BadgeKf')) {"
+            "   const st = document.createElement('style'); st.id = '__n1BadgeKf';"
+            "   st.textContent = '@keyframes n1badgeIn{0%{opacity:0;transform:scale(0.25);filter:blur(4px)}100%{opacity:1;transform:scale(1);filter:blur(0)}}"
+            "@keyframes n1badgeOut{0%{opacity:1;transform:scale(1);filter:blur(0)}100%{opacity:0;transform:scale(0.25);filter:blur(4px)}}';"
+            "   document.head.appendChild(st);"
+            " }"
+            f" b.innerHTML = {json.dumps(inner)};"
+            " b.style.animation = 'none'; void b.offsetWidth;"
+            " b.style.animation = 'n1badgeIn 300ms cubic-bezier(0.22,1,0.36,1) forwards';"
+            " if (b.__n1RevertTimer) clearTimeout(b.__n1RevertTimer);"
+            f" b.__n1RevertTimer = setTimeout(() => {{ b.style.animation = 'n1badgeOut 260ms cubic-bezier(0.4,0,1,1) forwards'; if (logo) logo.style.opacity = '1'; }}, {revert_ms});"
+            " }"
+        )
+        await self._eval(js)
+
 
     async def _get_focused_element_center(self) -> dict[str, int] | None:
         return await self._safe_evaluate(
