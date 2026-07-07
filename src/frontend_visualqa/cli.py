@@ -318,13 +318,18 @@ def _handle_serve(args: argparse.Namespace) -> int:
     return 0
 
 
+def _fail(message: str) -> int:
+    """Print *message* to stderr and return the CLI's standard failure exit code."""
+    print(message, file=sys.stderr)
+    return 1
+
+
 def _handle_verify(args: argparse.Namespace) -> int:
     _configure_verify_logging(getattr(args, "verbose", 0))
     try:
         result = asyncio.run(_run_verify(args))
     except ConfigurationError as exc:
-        print(str(exc), file=sys.stderr)
-        return 1
+        return _fail(str(exc))
     _emit_json(result)
     exit_code = _verify_exit_code(result)
     _print_run_summary(result, all_passed=exit_code == 0)
@@ -335,21 +340,18 @@ def _handle_screenshot(args: argparse.Namespace) -> int:
     try:
         result = asyncio.run(_run_screenshot(args))
     except ConfigurationError as exc:
-        print(str(exc), file=sys.stderr)
-        return 1
+        return _fail(str(exc))
     _emit_json(result)
     return 0 if result.get("status") == "completed" else 1
 
 
 def _handle_login(args: argparse.Namespace) -> int:
     if not sys.stdin.isatty():
-        print("login requires an interactive terminal (stdin must be a TTY).", file=sys.stderr)
-        return 1
+        return _fail("login requires an interactive terminal (stdin must be a TTY).")
     try:
         validate_url(args.url)
     except ValueError as exc:
-        print(str(exc), file=sys.stderr)
-        return 1
+        return _fail(str(exc))
     return asyncio.run(_run_login(args))
 
 
