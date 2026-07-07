@@ -139,13 +139,17 @@ class BrowserConfig(FrontendVisualQABaseModel):
 
     @model_validator(mode="after")
     def apply_persistent_defaults(self) -> "BrowserConfig":
-        if self.mode == BrowserMode.persistent and self.user_data_dir is None:
+        if self.is_persistent and self.user_data_dir is None:
             self.user_data_dir = str(DEFAULT_PERSISTENT_USER_DATA_DIR)
         return self
 
     @property
+    def is_persistent(self) -> bool:
+        return self.mode == BrowserMode.persistent
+
+    @property
     def resolved_user_data_dir(self) -> str | None:
-        if self.mode != BrowserMode.persistent:
+        if not self.is_persistent:
             return self.user_data_dir
         return self.user_data_dir or str(DEFAULT_PERSISTENT_USER_DATA_DIR)
 

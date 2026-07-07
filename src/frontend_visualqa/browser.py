@@ -158,7 +158,7 @@ class BrowserManager:
     @property
     def _persistent_session_key(self) -> str | None:
         """Derive the active persistent session key from ``_sessions``."""
-        if self.config.mode != BrowserMode.persistent or not self._sessions:
+        if not self.config.is_persistent or not self._sessions:
             return None
         return next(iter(self._sessions))
 
@@ -175,7 +175,7 @@ class BrowserManager:
         Ephemeral mode honors it at ``_create_session`` time instead.
         """
 
-        if self.config.mode == BrowserMode.persistent:
+        if self.config.is_persistent:
             if self._persistent_context is not None:
                 return self._persistent_context
 
@@ -434,7 +434,7 @@ class BrowserManager:
         """Close a single session if it exists."""
 
         self._validate_session_key(session_key)
-        if self.config.mode == BrowserMode.persistent:
+        if self.config.is_persistent:
             self._sessions.pop(session_key, None)
             if self._persistent_context is None:
                 return
@@ -451,7 +451,7 @@ class BrowserManager:
     async def close(self) -> None:
         """Close all sessions and browser resources."""
 
-        if self.config.mode == BrowserMode.persistent:
+        if self.config.is_persistent:
             self._sessions.clear()
             if self._persistent_context is not None:
                 await self._persistent_context.close()
@@ -481,7 +481,7 @@ class BrowserManager:
         return BrowserStatusResult(
             browser_running=browser_running,
             browser_mode=self.config.mode,
-            user_data_dir=self.config.resolved_user_data_dir if self.config.mode == BrowserMode.persistent else None,
+            user_data_dir=self.config.resolved_user_data_dir if self.config.is_persistent else None,
             sessions=sessions,
         )
 
@@ -492,7 +492,7 @@ class BrowserManager:
         *,
         record_video_dir: str | None = None,
     ) -> BrowserSession:
-        if self.config.mode == BrowserMode.persistent:
+        if self.config.is_persistent:
             # Persistent mode receives video config at launch time via
             # ensure_browser; nothing to do per-session. The fallback forwards
             # record_video_dir so a context launched here still records
@@ -559,7 +559,7 @@ class BrowserManager:
 
     def _evict_dead_persistent_session(self) -> None:
         """Remove a dead persistent session so it does not hold the name lock."""
-        if self.config.mode != BrowserMode.persistent:
+        if not self.config.is_persistent:
             return
         for key in list(self._sessions):
             if not self._session_is_open(self._sessions[key]):
@@ -567,7 +567,7 @@ class BrowserManager:
                 self._sessions.pop(key, None)
 
     def _validate_session_key(self, session_key: str) -> None:
-        if self.config.mode != BrowserMode.persistent:
+        if not self.config.is_persistent:
             return
         self._evict_dead_persistent_session()
         if self._persistent_session_key is None or session_key == self._persistent_session_key:
