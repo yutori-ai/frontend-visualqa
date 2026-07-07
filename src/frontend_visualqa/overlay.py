@@ -615,6 +615,7 @@ _THOUGHT_CARD_JS = f"""(args) => {{
     if (existing) existing.remove();
     if (root.__n1ThoughtTimer) {{ clearTimeout(root.__n1ThoughtTimer); root.__n1ThoughtTimer = null; }}
     if (root.__n1StreamTimer) {{ clearTimeout(root.__n1StreamTimer); root.__n1StreamTimer = null; }}
+    if (root.__n1CollapseTimer) {{ clearTimeout(root.__n1CollapseTimer); root.__n1CollapseTimer = null; }}
 
     // The thought stretches the badge element itself into a capsule — one
     // continuous surface whose rim + inner shadows wrap whatever width it has.
@@ -672,7 +673,8 @@ _THOUGHT_CARD_JS = f"""(args) => {{
             if (!current) return;
             current.style.opacity = '0';
             badge.style.width = B + 'px';
-            setTimeout(() => {{
+            root.__n1CollapseTimer = setTimeout(() => {{
+                root.__n1CollapseTimer = null;
                 current.remove();
                 badge.style.left = '39.6px'; badge.style.right = 'auto';
                 slot.style.left = '0'; slot.style.right = 'auto';
@@ -703,6 +705,7 @@ _REMOVE_ALL_JS = f"""() => {{
     if (persistent) {{
         if (persistent.__n1ThoughtTimer) clearTimeout(persistent.__n1ThoughtTimer);
         if (persistent.__n1StreamTimer) clearTimeout(persistent.__n1StreamTimer);
+        if (persistent.__n1CollapseTimer) clearTimeout(persistent.__n1CollapseTimer);
         persistent.remove();
     }}
     const transient = document.getElementById('{TRANSIENT_ROOT_ID}');
@@ -723,16 +726,22 @@ _CLEAR_THOUGHT_JS = f"""() => {{
         clearTimeout(persistent.__n1StreamTimer);
         persistent.__n1StreamTimer = null;
     }}
+    if (persistent && persistent.__n1CollapseTimer) {{
+        clearTimeout(persistent.__n1CollapseTimer);
+        persistent.__n1CollapseTimer = null;
+    }}
     const vp = document.getElementById('{THOUGHT_CARD_ID}');
     const badge = document.getElementById('{BADGE_ID}');
     const slot = document.getElementById('{BADGE_SLOT_ID}');
     if (vp) vp.style.opacity = '0';
     if (badge) badge.style.width = '33.5px';
-    setTimeout(() => {{
+    const collapseTimer = setTimeout(() => {{
+        if (persistent && persistent.__n1CollapseTimer === collapseTimer) persistent.__n1CollapseTimer = null;
         if (vp) vp.remove();
         if (badge) {{ badge.style.left = '39.6px'; badge.style.right = 'auto'; }}
         if (slot) {{ slot.style.left = '0'; slot.style.right = 'auto'; }}
     }}, 360);
+    if (persistent) persistent.__n1CollapseTimer = collapseTimer;
 }}"""
 
 def _toggle_both_roots_js(*, visibility: str, opacity: str) -> str:
