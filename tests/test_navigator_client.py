@@ -96,7 +96,6 @@ async def test_navigator_client_calls_sdk_with_provided_messages() -> None:
     result = await navigator_client.create(messages=messages)
 
     assert result is response
-    assert result.choices[0].message is response.choices[0].message
     assert client.completions.calls == [
         {
             "messages": messages,
@@ -116,7 +115,6 @@ async def test_navigator_client_calls_sdk_once_and_returns_message() -> None:
     result = await navigator_client.create(messages=[{"role": "user", "content": [{"type": "text", "text": "Check"}]}])
 
     assert result is response
-    assert result.choices[0].message is response.choices[0].message
     assert len(client.completions.calls) == 1
     assert client.completions.calls[0]["tool_set"] == navigator_client.tool_set
 
@@ -144,7 +142,6 @@ async def test_navigator_client_retries_transient_errors() -> None:
     result = await navigator_client.create(messages=[{"role": "user", "content": [{"type": "text", "text": "Check"}]}])
 
     assert result is response
-    assert result.choices[0].message is response.choices[0].message
     assert len(client.completions.calls) == 2
 
 
@@ -194,7 +191,6 @@ async def test_navigator_client_omits_tool_set_for_legacy_n1_models() -> None:
     result = await navigator_client.create(messages=[{"role": "user", "content": [{"type": "text", "text": "Check"}]}])
 
     assert result is response
-    assert result.choices[0].message is response.choices[0].message
     assert "tool_set" not in client.completions.calls[0]
 
 
