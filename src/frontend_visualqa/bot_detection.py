@@ -59,16 +59,20 @@ CHALLENGE_MARKERS: tuple[str, ...] = (
     "enable javascript and cookies to continue",
     "additional security check is required",
     "ddos protection by",
-    "please enable cookies",
+    # NOTE: deliberately no bare "please enable cookies" — ordinary GDPR/consent
+    # banners use that exact wording on healthy 200 pages. Cloudflare's real
+    # challenge is already covered by the more specific
+    # "enable javascript and cookies to continue" marker above.
 )
 
-# Substrings that only appear in challenge/interstitial URLs.
+# Substrings that only appear in challenge/interstitial URLs. Kept precise —
+# bare vendor names (e.g. "distil") match unrelated paths like "distillery".
 URL_MARKERS: tuple[str, ...] = (
     "geo.captcha-delivery.com",
     "/_incapsula_",
     "__cf_chl",
     "/cdn-cgi/challenge",
-    "distil",
+    "distil_r_captcha",
 )
 
 _MAX_RECORDS = 50

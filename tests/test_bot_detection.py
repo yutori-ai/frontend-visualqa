@@ -83,6 +83,20 @@ def test_failed_main_navigation_blocks():
     assert reason and "did not load" in reason
 
 
+def test_gdpr_cookie_banner_does_not_trigger_block():
+    """"please enable cookies" wording on a normal 200 page must not stop the run."""
+    banner = "We value your privacy. Please enable cookies to continue using our site."
+    assert classify_block(BrowserActivityMonitor(), page_title="Acme Store", page_text=banner) is None
+
+
+def test_distil_substring_in_unrelated_url_does_not_block():
+    """Bare 'distil' would match 'distillery'; the marker must be precise."""
+    assert classify_block(BrowserActivityMonitor(), page_url="https://distillery.example/whiskey") is None
+    # ...but a genuine Distil challenge path still trips.
+    reason = classify_block(BrowserActivityMonitor(), page_url="https://x.example/distil_r_captcha/")
+    assert reason and "distil_r_captcha" in reason
+
+
 def test_console_errors_alone_do_not_block():
     """Conservative policy: sub-resource/console noise must not stop a run."""
     m = BrowserActivityMonitor()
