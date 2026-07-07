@@ -507,10 +507,7 @@ class ActionExecutor:
                         await self.execute_action(session, semantic_action, {})
                         return trace
                 await self._best_effort_overlay_set_status("Pressing keys")
-                for key_name in key_sequence:
-                    if is_disallowed_zoom_shortcut(key_name):
-                        continue
-                    await page.keyboard.press(key_name)
+                await self._press_keys_skipping_zoom_shortcuts(page, key_sequence)
 
             elif canonical_name == "hold_key":
                 key_text = _get_key_text(raw_arguments)
@@ -529,10 +526,7 @@ class ActionExecutor:
                         async with self._held_modifier_keys(page, key_text):
                             await asyncio.sleep(min(float(hold_duration), 100.0))
                 else:
-                    for key_name in _mapped_key_presses(key_text):
-                        if is_disallowed_zoom_shortcut(key_name):
-                            continue
-                        await page.keyboard.press(key_name)
+                    await self._press_keys_skipping_zoom_shortcuts(page, _mapped_key_presses(key_text))
 
             elif canonical_name == "goto_url":
                 url = raw_arguments.get("url") or raw_arguments.get("href")
@@ -718,6 +712,19 @@ class ActionExecutor:
         )
         await self._best_effort_overlay_preview_action(action_type=canonical_name, x=x, y=y)
         await page.mouse.move(x, y)
+
+    @staticmethod
+    async def _press_keys_skipping_zoom_shortcuts(page: Any, key_sequence: list[str]) -> None:
+        """Press each key in *key_sequence* in order, skipping disallowed zoom shortcuts.
+
+        Shared by the ``key_press`` action and ``hold_key``'s untimed
+        (duration<=0) fallback, both of which press a resolved key sequence
+        one key at a time while blocking browser zoom chords (e.g. Ctrl+/Ctrl-).
+        """
+        for key_name in key_sequence:
+            if is_disallowed_zoom_shortcut(key_name):
+                continue
+            await page.keyboard.press(key_name)
 
     @staticmethod
     async def _press_modifier_keys(page: Any, modifier: Any) -> list[str]:
