@@ -156,6 +156,10 @@ class ClaimVerifier:
         self._overlay: Any | None = None
         self._hook: VisualQAHookAdapter | None = None
         self._partial_progress: _VerificationProgress | None = None
+        # The already-finalized result, stashed before the cosmetic end-of-run
+        # hold so a claim-timeout cancellation during that hold surfaces the real
+        # verdict (via consume_partial_result) instead of a generic timeout.
+        self._final_result: ClaimResult | None = None
 
     def set_browser_manager(self, browser_manager: BrowserManager, *, visualize: bool | None = None) -> None:
         """Rebind long-lived browser dependencies after the runner reconfigures the browser.
@@ -171,6 +175,7 @@ class ClaimVerifier:
         self._overlay = None
         self._hook = None
         self._partial_progress = None
+        self._final_result = None
         if visualize is not None:
             self._visualize = visualize
 
@@ -204,6 +209,7 @@ class ClaimVerifier:
             url_history=[session.page.url or url],
         )
         self._partial_progress = progress
+        self._final_result = None
         preserve_partial_progress = False
 
         try:
@@ -565,7 +571,7 @@ class ClaimVerifier:
         try:
             url = session.page.url
         except Exception:
-            pass
+            logger.debug("Reading page.url for block probe failed (best-effort)", exc_info=True)
         try:
             data = await session.page.evaluate(
                 "() => ({title: document.title || '',"
@@ -590,6 +596,11 @@ class ClaimVerifier:
         """
         if self._overlay is None:
             return
+        # Stash the finalized verdict first: this hold runs inside the runner's
+        # per-claim asyncio.timeout, so a deadline that lands mid-hold cancels
+        # verify() and the return value is lost. consume_partial_result then
+        # surfaces this stashed result instead of a generic "timed out" finding.
+        self._final_result = result
         await self._best_effort_overlay_call(
             "show_result", result.status, result.finding, claim=result.claim
         )
@@ -641,6 +652,15 @@ class ClaimVerifier:
         )
 
     def consume_partial_result(self, *, status: ClaimStatus, finding: str) -> ClaimResult | None:
+        # If the verdict was already finalized and only the cosmetic end-of-run
+        # hold got cancelled (e.g. the claim deadline landed during it), return
+        # the real result rather than overwriting it with a timeout finding.
+        if self._final_result is not None:
+            result = self._final_result
+            self._final_result = None
+            self._partial_progress = None
+            self._hook = None
+            return result
         progress = self._partial_progress
         self._partial_progress = None
         if progress is None:

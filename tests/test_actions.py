@@ -278,6 +278,32 @@ async def test_execute_tool_call_bounds_a_wedged_action() -> None:
     assert "did not complete" in str(excinfo.value)
 
 
+def test_action_timeout_ms_clears_longest_legit_action_and_tracks_rebind() -> None:
+    module = _import_actions_module()
+
+    # Default floor must exceed hold_key's max dwell (100s) plus settle, so a
+    # legitimate long hold_key isn't aborted as a false timeout.
+    executor = instantiate_with_supported_kwargs(module.ActionExecutor, navigation_timeout_ms=20_000)
+    assert executor.action_timeout_ms >= int(module.MAX_HOLD_KEY_SECONDS * 1000)
+    assert executor.action_timeout_ms >= module.DEFAULT_ACTION_TIMEOUT_MS
+
+    # Property tracks a later navigation_timeout_ms change (rebind path) instead
+    # of staying frozen at its constructor value.
+    executor.navigation_timeout_ms = 120_000
+    assert executor.action_timeout_ms == max(
+        module.DEFAULT_ACTION_TIMEOUT_MS,
+        120_000 * 3 + int(max(module.MAX_WAIT_ACTION_SECONDS, module.MAX_HOLD_KEY_SECONDS) * 1000),
+    )
+
+    # An explicit override wins and is not overridden by navigation changes.
+    overridden = instantiate_with_supported_kwargs(
+        module.ActionExecutor, navigation_timeout_ms=20_000, action_timeout_ms=5_000
+    )
+    assert overridden.action_timeout_ms == 5_000
+    overridden.navigation_timeout_ms = 999_000
+    assert overridden.action_timeout_ms == 5_000
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("action_name", "arguments", "expected_url_attr"),

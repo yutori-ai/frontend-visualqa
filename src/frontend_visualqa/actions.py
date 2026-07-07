@@ -48,14 +48,21 @@ DEFAULT_WAIT_SECONDS = 1.0
 # Bounding the whole dispatch converts that hang into a BrowserActionError, which
 # the verifier feeds back to the model and, after repeated failures, force-stops
 # gracefully (rendering the final verdict + finalizing the video) instead of
-# hanging forever. Must sit comfortably above the sum of a legitimate action's
-# internal waits: domcontentloaded (navigation_timeout_ms, default 20s) +
-# page_ready (~8s) + the ``wait`` action's own sleep (MAX_WAIT_ACTION_SECONDS).
-DEFAULT_ACTION_TIMEOUT_MS = 90_000
+# hanging forever. Must sit comfortably above the longest legitimate single
+# action: settle waits (domcontentloaded ~navigation_timeout_ms + page_ready ~8s)
+# plus the longest intentional in-action sleep, which is ``hold_key``'s 100s cap
+# (MAX_HOLD_KEY_SECONDS) — larger than the ``wait`` action's MAX_WAIT_ACTION_SECONDS.
+DEFAULT_ACTION_TIMEOUT_MS = 150_000
 # Hard cap on a single model-requested wait. Claim timeouts usually bound this
 # anyway, but library/MCP callers can pass claim_timeout_seconds=None, and a
 # runaway wait(600) must not stall the loop indefinitely.
 MAX_WAIT_ACTION_SECONDS = 30.0
+# Hard cap on ``hold_key``'s dwell. This is the longest a single non-wedged
+# action can legitimately block, so the per-action hang guard must exceed it.
+MAX_HOLD_KEY_SECONDS = 100.0
+# Upper bound on releasing held modifier keys during cleanup, so a wedged page
+# can't stall the per-action hang guard from inside a finally block.
+MODIFIER_RELEASE_TIMEOUT_SECONDS = 5.0
 REDACTED_TYPE_TEXT = "[redacted]"
 EXPANDED_TOOL_NAMES = {"extract_elements", "find", "set_element_value", "execute_js"}
 READ_ONLY_EXPANDED_TOOL_NAMES = {"extract_elements", "find"}
@@ -341,21 +348,30 @@ class ActionExecutor:
         action_timeout_ms: int | None = None,
     ) -> None:
         self.navigation_timeout_ms = navigation_timeout_ms
-        # Per-action hard ceiling. Derived from navigation_timeout_ms so callers
-        # that raise the navigation budget also raise the hang guard, and floored
-        # at DEFAULT_ACTION_TIMEOUT_MS so it always clears a legit action's
-        # internal waits (domcontentloaded + page_ready + a full ``wait`` sleep).
-        self.action_timeout_ms = (
-            action_timeout_ms
-            if action_timeout_ms is not None
-            else max(
-                DEFAULT_ACTION_TIMEOUT_MS,
-                navigation_timeout_ms * 3 + int(MAX_WAIT_ACTION_SECONDS * 1000),
-            )
-        )
+        # Explicit override (if any); otherwise action_timeout_ms is derived
+        # lazily from the *current* navigation_timeout_ms via the property below,
+        # so a later rebind (set_browser_manager) that changes the navigation
+        # budget also moves the hang guard instead of leaving it stale.
+        self._action_timeout_override = action_timeout_ms
         self.settle_delay_seconds = settle_delay_seconds
         self.page_ready_checker = page_ready_checker or build_page_ready_checker(navigation_timeout_ms)
         self._overlay: OverlayController | None = None
+
+    @property
+    def action_timeout_ms(self) -> int:
+        """Per-action hard ceiling (ms).
+
+        Honors an explicit constructor override; otherwise derived from the
+        *current* navigation_timeout_ms and floored at DEFAULT_ACTION_TIMEOUT_MS
+        so it always clears the longest legitimate single action (settle waits +
+        the longest in-action sleep, hold_key's MAX_HOLD_KEY_SECONDS). Computed
+        as a property so a rebind that changes navigation_timeout_ms tracks
+        automatically.
+        """
+        if self._action_timeout_override is not None:
+            return self._action_timeout_override
+        longest_action_sleep_ms = int(max(MAX_WAIT_ACTION_SECONDS, MAX_HOLD_KEY_SECONDS) * 1000)
+        return max(DEFAULT_ACTION_TIMEOUT_MS, self.navigation_timeout_ms * 3 + longest_action_sleep_ms)
 
     @property
     def overlay(self) -> OverlayController | None:
@@ -582,7 +598,7 @@ class ActionExecutor:
                     else:
                         await self._best_effort_overlay_set_status("Holding key")
                         async with self._held_modifier_keys(page, key_text):
-                            await asyncio.sleep(min(float(hold_duration), 100.0))
+                            await asyncio.sleep(min(float(hold_duration), MAX_HOLD_KEY_SECONDS))
                 else:
                     await self._press_keys_skipping_zoom_shortcuts(page, _mapped_key_presses(key_text))
 
@@ -824,7 +840,19 @@ class ActionExecutor:
         try:
             yield
         finally:
-            await self._release_modifier_keys(page, modifier_keys)
+            # Bound + best-effort: this finally runs during cancellation when the
+            # per-action hang guard fires. If the page is wedged, keyboard.up can
+            # hang too — asyncio.wait_for waits for finally-block cleanup, so an
+            # unbounded release here would defeat the guard. Cap it and swallow
+            # failures; a stuck modifier on an already-wedged page is moot.
+            if modifier_keys:
+                try:
+                    await asyncio.wait_for(
+                        self._release_modifier_keys(page, modifier_keys),
+                        timeout=MODIFIER_RELEASE_TIMEOUT_SECONDS,
+                    )
+                except Exception:
+                    logger.debug("Modifier release timed out or failed (best-effort)", exc_info=True)
 
     async def _best_effort_overlay_preview_action(self, **kwargs: Any) -> None:
         """Preview an action on the overlay without breaking the main flow."""

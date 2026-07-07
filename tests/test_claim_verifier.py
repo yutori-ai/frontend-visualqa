@@ -2026,7 +2026,7 @@ async def test_claim_verifier_bot_block_detection_can_be_disabled(tmp_path: Path
     monitor = BrowserActivityMonitor()
     monitor.last_main_status = 403
 
-    verifier, navigator_client, action_executor = _build_claim_verifier(
+    verifier, _navigator_client, _action_executor = _build_claim_verifier(
         module,
         tmp_path,
         responses=[_verdict_response(status="passed", finding="Looks fine despite the status.")],
@@ -2054,3 +2054,58 @@ async def test_claim_verifier_bot_block_detection_can_be_disabled(tmp_path: Path
 
     # Detection disabled → the model's verdict stands, not an early not_testable.
     assert _field(result, "status") == "passed"
+
+
+@pytest.mark.asyncio
+async def test_verdict_preserved_when_final_hold_is_cancelled(tmp_path: Path) -> None:
+    """If the end-of-run hold is cancelled, the finalized verdict is still recoverable.
+
+    The cosmetic full-screen hold runs inside the runner's per-claim timeout, so a
+    deadline landing mid-hold cancels verify() and discards its return value. The
+    finalized result must be stashed so consume_partial_result surfaces it instead
+    of a generic timeout finding.
+    """
+    module = _import_claim_verifier_module()
+    verifier, _navigator_client, _action_executor = _build_claim_verifier(
+        module,
+        tmp_path,
+        responses=[_verdict_response(status="passed", finding="The banner is visible.")],
+    )
+
+    # Stand in for the real hold: stash the finalized result (as production does)
+    # then block forever, so we can cancel deterministically mid-hold.
+    async def _slow_show(result: Any) -> None:
+        verifier._final_result = result
+        await asyncio.Event().wait()
+
+    verifier._show_final_result = _slow_show  # type: ignore[assignment]
+
+    async def _run() -> Any:
+        page = EvaluatingPage(url="http://fixture.local/page", visual_state={"title": "", "text": ""})
+        session = SimpleNamespace(page=page, viewport=ViewportConfig(), activity=None)
+        run = RunArtifacts(run_id="run-test", run_dir=tmp_path)
+        return await verifier.verify(
+            session=session,
+            claim="The banner is visible",
+            url="http://fixture.local/page",
+            claim_index=1,
+            run_artifacts=run,
+            max_steps=3,
+            navigation_hint=None,
+        )
+
+    task = asyncio.create_task(_run())
+    for _ in range(200):  # let verify() reach the (blocking) hold
+        await asyncio.sleep(0)
+        if verifier._final_result is not None:
+            break
+    assert verifier._final_result is not None
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    # The runner's fallback path now recovers the real verdict, not a timeout.
+    recovered = verifier.consume_partial_result(status="inconclusive", finding="timed out")
+    assert recovered is not None
+    assert _field(recovered, "status") == "passed"
+    assert "banner is visible" in _field(recovered, "finding").lower()
