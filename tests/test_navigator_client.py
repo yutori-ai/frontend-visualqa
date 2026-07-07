@@ -88,13 +88,7 @@ def test_navigator_client_imports_async_yutori_client_from_sdk() -> None:
 
 @pytest.mark.asyncio
 async def test_navigator_client_calls_sdk_with_provided_messages() -> None:
-    message = SimpleNamespace(
-        content="done", tool_calls=None, model_dump=lambda exclude_none=True: {"role": "assistant"}
-    )
-    response = SimpleNamespace(
-        choices=[SimpleNamespace(message=message)],
-        usage=SimpleNamespace(prompt_tokens=1, completion_tokens=1, total_tokens=2),
-    )
+    response = _make_response()
     client = FakeClient([response])
     navigator_client = NavigatorClient(client=client)
     messages = [{"role": "user", "content": [{"type": "text", "text": "Check"}]}]
@@ -102,7 +96,7 @@ async def test_navigator_client_calls_sdk_with_provided_messages() -> None:
     result = await navigator_client.create(messages=messages)
 
     assert result is response
-    assert result.choices[0].message is message
+    assert result.choices[0].message is response.choices[0].message
     assert client.completions.calls == [
         {
             "messages": messages,
@@ -115,20 +109,14 @@ async def test_navigator_client_calls_sdk_with_provided_messages() -> None:
 
 @pytest.mark.asyncio
 async def test_navigator_client_calls_sdk_once_and_returns_message() -> None:
-    message = SimpleNamespace(
-        content="done", tool_calls=None, model_dump=lambda exclude_none=True: {"role": "assistant"}
-    )
-    response = SimpleNamespace(
-        choices=[SimpleNamespace(message=message)],
-        usage=SimpleNamespace(prompt_tokens=1, completion_tokens=1, total_tokens=2),
-    )
+    response = _make_response()
     client = FakeClient([response])
     navigator_client = NavigatorClient(client=client, timeout_seconds=0.1)
 
     result = await navigator_client.create(messages=[{"role": "user", "content": [{"type": "text", "text": "Check"}]}])
 
     assert result is response
-    assert result.choices[0].message is message
+    assert result.choices[0].message is response.choices[0].message
     assert len(client.completions.calls) == 1
     assert client.completions.calls[0]["tool_set"] == navigator_client.tool_set
 
@@ -144,13 +132,7 @@ async def test_navigator_client_wraps_sdk_errors() -> None:
 
 @pytest.mark.asyncio
 async def test_navigator_client_retries_transient_errors() -> None:
-    message = SimpleNamespace(
-        content="done", tool_calls=None, model_dump=lambda exclude_none=True: {"role": "assistant"}
-    )
-    response = SimpleNamespace(
-        choices=[SimpleNamespace(message=message)],
-        usage=SimpleNamespace(prompt_tokens=1, completion_tokens=1, total_tokens=2),
-    )
+    response = _make_response()
     client = FakeClient([httpx.ReadTimeout("slow"), response])
     navigator_client = NavigatorClient(
         client=client,
@@ -162,7 +144,7 @@ async def test_navigator_client_retries_transient_errors() -> None:
     result = await navigator_client.create(messages=[{"role": "user", "content": [{"type": "text", "text": "Check"}]}])
 
     assert result is response
-    assert result.choices[0].message is message
+    assert result.choices[0].message is response.choices[0].message
     assert len(client.completions.calls) == 2
 
 
@@ -205,20 +187,14 @@ def test_navigator_client_trim_messages_uses_sdk_compatibility_fallback(monkeypa
 
 @pytest.mark.asyncio
 async def test_navigator_client_omits_tool_set_for_legacy_n1_models() -> None:
-    message = SimpleNamespace(
-        content="done", tool_calls=None, model_dump=lambda exclude_none=True: {"role": "assistant"}
-    )
-    response = SimpleNamespace(
-        choices=[SimpleNamespace(message=message)],
-        usage=SimpleNamespace(prompt_tokens=1, completion_tokens=1, total_tokens=2),
-    )
+    response = _make_response()
     client = FakeClient([response])
     navigator_client = NavigatorClient(client=client, model="n1-latest")
 
     result = await navigator_client.create(messages=[{"role": "user", "content": [{"type": "text", "text": "Check"}]}])
 
     assert result is response
-    assert result.choices[0].message is message
+    assert result.choices[0].message is response.choices[0].message
     assert "tool_set" not in client.completions.calls[0]
 
 
