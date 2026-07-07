@@ -463,9 +463,7 @@ class BrowserManager:
         if self._browser is not None:
             await self._browser.close()
             self._browser = None
-        if self._playwright is not None:
-            await self._playwright.stop()
-            self._playwright = None
+        await self._stop_playwright()
 
     def status(self) -> BrowserStatusResult:
         """Return a serializable view of the current browser state."""
@@ -552,6 +550,9 @@ class BrowserManager:
     async def _stop_playwright_if_idle(self) -> None:
         if self._browser is not None or self._persistent_context is not None:
             return
+        await self._stop_playwright()
+
+    async def _stop_playwright(self) -> None:
         if self._playwright is not None:
             await self._playwright.stop()
             self._playwright = None
