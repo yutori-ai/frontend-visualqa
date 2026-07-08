@@ -163,10 +163,38 @@ class FakeBrowserManager:
         )
 
 
-class FakeClaimVerifier:
-    def __init__(self, results: list[ClaimResult]) -> None:
-        self.results = list(results)
+class _CallRecordingVerifier:
+    """Base for fake ClaimVerifier doubles that record verify() call kwargs.
+
+    Every fake verifier below normalizes an optional positional ``session``
+    arg into ``kwargs["session"]`` and appends it to ``self.calls`` before
+    doing its distinctive behavior (raise, sleep, return a canned result).
+    """
+
+    def __init__(self) -> None:
         self.calls: list[dict[str, Any]] = []
+
+    def _record_call(self, args: tuple[Any, ...], kwargs: dict[str, Any]) -> dict[str, Any]:
+        if args:
+            kwargs["session"] = args[0]
+        self.calls.append(kwargs)
+        return kwargs
+
+
+class _PartialResultVerifierMixin:
+    """Shared ``consume_partial_result`` for fakes that return a canned partial result."""
+
+    partial_result: ClaimResult | None
+
+    def consume_partial_result(self, *, status: str, finding: str) -> ClaimResult | None:
+        del status, finding
+        return self.partial_result
+
+
+class FakeClaimVerifier(_CallRecordingVerifier):
+    def __init__(self, results: list[ClaimResult]) -> None:
+        super().__init__()
+        self.results = list(results)
         self.browser_manager: Any | None = None
         self._visualize = False
         self.set_browser_manager_calls: list[dict[str, Any]] = []
@@ -183,9 +211,7 @@ class FakeClaimVerifier:
             self._visualize = visualize
 
     async def verify(self, *args: Any, **kwargs: Any) -> ClaimResult:
-        if args:
-            kwargs["session"] = args[0]
-        self.calls.append(kwargs)
+        self._record_call(args, kwargs)
         return self.results.pop(0)
 
 
@@ -1114,79 +1140,54 @@ class ResetFailingBrowserManager(FakeBrowserManager):
         raise RuntimeError("target page crashed during reset")
 
 
-class ExplodingClaimVerifier:
-    def __init__(self) -> None:
-        self.calls: list[dict[str, Any]] = []
-
+class ExplodingClaimVerifier(_CallRecordingVerifier):
     async def verify(self, *args: Any, **kwargs: Any) -> ClaimResult:
-        if args:
-            kwargs["session"] = args[0]
-        self.calls.append(kwargs)
+        self._record_call(args, kwargs)
         raise RuntimeError("unexpected verifier crash")
 
 
-class SlowClaimVerifier:
+class SlowClaimVerifier(_CallRecordingVerifier):
     def __init__(self, delay_seconds: float, result: ClaimResult) -> None:
+        super().__init__()
         self.delay_seconds = delay_seconds
         self.result = result
-        self.calls: list[dict[str, Any]] = []
 
     async def verify(self, *args: Any, **kwargs: Any) -> ClaimResult:
-        if args:
-            kwargs["session"] = args[0]
-        self.calls.append(kwargs)
+        self._record_call(args, kwargs)
         await asyncio.sleep(self.delay_seconds)
         return self.result
 
 
-class TimeoutClaimVerifier:
+class TimeoutClaimVerifier(_CallRecordingVerifier, _PartialResultVerifierMixin):
     def __init__(self, partial_result: ClaimResult | None = None) -> None:
-        self.calls: list[dict[str, Any]] = []
+        super().__init__()
         self.partial_result = partial_result
 
     async def verify(self, *args: Any, **kwargs: Any) -> ClaimResult:
-        if args:
-            kwargs["session"] = args[0]
-        self.calls.append(kwargs)
+        self._record_call(args, kwargs)
         raise TimeoutError("verifier timed out internally")
 
-    def consume_partial_result(self, *, status: str, finding: str) -> ClaimResult | None:
-        del status, finding
-        return self.partial_result
 
-
-class RunTimeoutClaimVerifier:
+class RunTimeoutClaimVerifier(_CallRecordingVerifier, _PartialResultVerifierMixin):
     def __init__(self, partial_result: ClaimResult, delay_seconds: float = 1.0) -> None:
-        self.calls: list[dict[str, Any]] = []
+        super().__init__()
         self.partial_result = partial_result
         self.delay_seconds = delay_seconds
 
     async def verify(self, *args: Any, **kwargs: Any) -> ClaimResult:
-        if args:
-            kwargs["session"] = args[0]
-        self.calls.append(kwargs)
+        self._record_call(args, kwargs)
         await asyncio.sleep(self.delay_seconds)
         return self.partial_result
 
-    def consume_partial_result(self, *, status: str, finding: str) -> ClaimResult | None:
-        del status, finding
-        return self.partial_result
 
-
-class PartialExplodingClaimVerifier:
+class PartialExplodingClaimVerifier(_CallRecordingVerifier, _PartialResultVerifierMixin):
     def __init__(self, partial_result: ClaimResult) -> None:
-        self.calls: list[dict[str, Any]] = []
+        super().__init__()
         self.partial_result = partial_result
 
     async def verify(self, *args: Any, **kwargs: Any) -> ClaimResult:
-        if args:
-            kwargs["session"] = args[0]
-        self.calls.append(kwargs)
+        self._record_call(args, kwargs)
         raise RuntimeError("unexpected verifier crash")
-
-    def consume_partial_result(self, *, status: str, finding: str) -> ClaimResult | None:
-        del status, finding
-        return self.partial_result
 
 
 class NavigationFailingBrowserManager(FakeBrowserManager):
