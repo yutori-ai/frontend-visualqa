@@ -128,13 +128,12 @@ class TestOverlayInformationalCards:
         call = page.evaluate.call_args_list[-1]
         script = str(call.args[0])
         assert "__n1ThoughtCard" in script
-        assert "left:50%" in script
-        assert "width:min(720px,calc(100vw - 48px))" in script
-        assert "backdrop-filter:blur(12px)" in script
-        assert "font-size:17px" in script
+        # The thought is a capsule that stretches the badge and can wrap to two lines.
+        assert "badge.style.width" in script
+        assert "webkitLineClamp" in script
         arg = call.args[1]
         assert isinstance(arg, dict)
-        assert len(arg["text"]) <= 150
+        assert len(arg["text"]) <= 520
 
     @pytest.mark.asyncio
     async def test_preview_action_clears_existing_thought_card_before_animating(self) -> None:
@@ -150,7 +149,7 @@ class TestOverlayInformationalCards:
 
         scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
         clear_index = next(
-            index for index, script in enumerate(scripts) if "__n1ThoughtCard" in script and "current.remove()" in script
+            index for index, script in enumerate(scripts) if "__n1ThoughtCard" in script and "vp.remove()" in script
         )
         cursor_index = next(
             index for index, script in enumerate(scripts) if "__n1Cursor" in script and "100px" in script and "200px" in script
@@ -169,7 +168,7 @@ class TestOverlayInformationalCards:
         await controller.set_status("Navigating")
 
         scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
-        assert any("__n1ThoughtCard" in script and "current.remove()" in script for script in scripts)
+        assert any("__n1ThoughtCard" in script and "vp.remove()" in script for script in scripts)
         assert any("__n1StatusChip" in script and "Navigating" in script for script in scripts)
 
     @pytest.mark.asyncio
@@ -216,51 +215,43 @@ class TestOverlayPreviewAction:
         assert any("__n1Cursor" in script and "100px" in script and "200px" in script for script in scripts)
         # Transient root made visible
         assert any("__n1TransientRoot" in script and "visibility = 'visible'" in script for script in scripts)
-        # Click effect with num_clicks
-        assert any("const numClicks = 2" in script or "< 2" in script for script in scripts)
-        # Click keyframe: simple expansion
-        assert any(
-            "n1click" in script
-            and "width:5px;height:5px;opacity:0.6" in script
-            and "width:30px;height:30px;opacity:0" in script
-            for script in scripts
-        )
+        # Ripple loop runs num_clicks times
+        assert any("i < 2" in script for script in scripts)
+        # Refreshed click ripple: an expanding ring plus a shrinking centre dot
+        assert any("__n1ClickStyle" in script for script in scripts)
+        assert any("n1clickring" in script and "n1clickdot" in script for script in scripts)
         # Coordinates used in effect
         assert any("left:100px" in script and "top:200px" in script for script in scripts)
 
     @pytest.mark.asyncio
-    async def test_scroll_effect_shows_directional_chevron(self) -> None:
-        # Scroll viz is now a circular-arrow SVG that drifts in the scroll
-        # direction (carrying directionality) and spins clockwise for
-        # down/right (carrying motion feel). See _show_scroll_effect.
+    async def test_scroll_effect_morphs_badge_to_chevron(self) -> None:
+        # Scroll now morphs the cursor badge into a chevron glyph (down = no
+        # rotation); the separate transient scroll box was retired in the redesign.
         page, controller = await _started_controller()
 
         with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
             await controller.preview_action("scroll", x=640, y=400, direction="down")
 
         scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
-        assert any("__n1ScrollStyle" in script for script in scripts)
-        # Down spins clockwise (positive rotation). Drift is +26 on Y.
-        assert any("rotate(360deg)" in script and "calc(-50% + 26px)" in script for script in scripts)
-        # ↻ U+21BB CLOCKWISE OPEN CIRCLE ARROW for down direction.
-        assert any("↻" in script for script in scripts)
-        assert any("n1scroll" in script and "rotate(0deg)" in script for script in scripts)
-        # Coordinates used
-        assert any("left:640px" in script and "top:400px" in script for script in scripts)
+        # Cursor leads to the scroll target
+        assert any("__n1Cursor" in script and "640px" in script and "400px" in script for script in scripts)
+        # Badge morphs to the chevron glyph via the bloom-in keyframes
+        assert any("__n1BadgeGlyph" in script and "n1badgeIn" in script for script in scripts)
+        assert any("6 10 12 16 18 10" in script for script in scripts)
 
     @pytest.mark.asyncio
-    async def test_scroll_effect_rotates_for_up_direction(self) -> None:
+    async def test_scroll_effect_rotates_badge_for_up_direction(self) -> None:
         page, controller = await _started_controller()
 
         with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
             await controller.preview_action("scroll", x=100, y=200, direction="up")
 
         scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
-        # Up spins counterclockwise (negative rotation). Drift is -26 on Y.
-        assert any("rotate(-360deg)" in script and "calc(-50% + -26px)" in script for script in scripts)
+        # Up rotates the chevron glyph 180deg inside the badge.
+        assert any("__n1BadgeGlyph" in script and "rotate(180deg)" in script for script in scripts)
 
     @pytest.mark.asyncio
-    async def test_type_effect_uses_caret_and_dots(self) -> None:
+    async def test_type_morphs_badge_at_focused_element(self) -> None:
         page, controller = await _started_controller(focused_center={"x": 200, "y": 150})
 
         with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
@@ -268,21 +259,23 @@ class TestOverlayPreviewAction:
 
         scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
         assert any("document.activeElement" in script for script in scripts)
-        assert any("__n1TypeStyle" in script for script in scripts)
-        # Type effect uses caret + dots keyframes
-        assert any("n1tcaret" in script and "n1tdot" in script and "n1tfade" in script for script in scripts)
+        # Type morphs the badge to the type glyph (the standalone typing pill was retired)
+        assert any("__n1BadgeGlyph" in script and "n1badgeIn" in script for script in scripts)
         # Cursor moved to focused element center
         assert any("__n1Cursor" in script and "200px" in script and "150px" in script for script in scripts)
 
     @pytest.mark.asyncio
-    async def test_type_effect_skipped_when_no_focused_element(self) -> None:
+    async def test_type_morphs_badge_even_without_focused_element(self) -> None:
         page, controller = await _started_controller(focused_center=None)
 
         with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
             await controller.preview_action("type")
 
         scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
-        assert not any("__n1TypeStyle" in script for script in scripts)
+        # No focused element to move to, but the badge still morphs to the type glyph.
+        assert any("__n1BadgeGlyph" in script and "n1badgeIn" in script for script in scripts)
+        # The cursor does not relocate when there is no focused-element centre.
+        assert not any("cursor.style.left = '" in script for script in scripts)
 
     @pytest.mark.asyncio
     async def test_hover_action_moves_cursor(self) -> None:

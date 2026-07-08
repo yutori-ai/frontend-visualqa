@@ -41,6 +41,7 @@ BADGE_SLOT_ID = "__n1BadgeSlot"
 BADGE_LOGO_ID = "__n1BadgeLogo"
 BADGE_GLYPH_ID = "__n1BadgeGlyph"
 DRAG_STYLE_ID = "__n1DragStyle"
+BADGE_KF_STYLE_ID = "__n1BadgeKf"
 CLICK_DURATION_MS = 250
 SCROLL_DURATION_MS = 1500
 DRAG_DURATION_MS = 200
@@ -183,10 +184,7 @@ _YLOOP_ANIM_JS = r"""
             + '<path class="__n1mt" fill="none" stroke="url(#__n1LoopGrad)" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"></path>'
             + '</g>'
             + '<circle class="__n1dot" r="15" fill="url(#__n1LoopGrad)" opacity="0"></circle>'
-            + '</svg>'
-            + '<svg class="__n1off" style="position:absolute;width:0;height:0;overflow:hidden;visibility:hidden" xmlns="http://www.w3.org/2000/svg"></svg>';
-        const svgNS = 'http://www.w3.org/2000/svg';
-        const offscreen = logo.querySelector('.__n1off');
+            + '</svg>';
         const loopPath = logo.querySelector('.__n1lp');
         const depthLayer = logo.querySelector('.__n1dl');
         const maskShape = logo.querySelector('.__n1ms');
@@ -195,66 +193,19 @@ _YLOOP_ANIM_JS = r"""
         const travelDot = logo.querySelector('.__n1dot');
         const LOOP_D = 'M213.648 15.1484C213.648 15.1484 69.6484 91.1484 69.6484 164.454C69.6484 199.482 91.2215 219.493 117.833 219.493C144.445 219.493 166.018 199.482 166.018 164.454C166.018 89.6484 15.1484 15.1484 15.1484 15.1484';
         loopPath.setAttribute('d', LOOP_D);
-        const LOOP_L = loopPath.getTotalLength();
 
-        function findCrossover(d, numSamples = 600) {
-            const path = document.createElementNS(svgNS, 'path');
-            path.setAttribute('d', d);
-            offscreen.appendChild(path);
-            const L = path.getTotalLength();
-            const samples = new Array(numSamples);
-            for (let i = 0; i < numSamples; i++) {
-                const len = (L * i) / (numSamples - 1);
-                const pt = path.getPointAtLength(len);
-                samples[i] = { x: pt.x, y: pt.y, len };
-            }
-            offscreen.removeChild(path);
-            const minSep = Math.floor(numSamples / 6);
-            let best = null;
-            for (let i = 0; i < numSamples; i++) {
-                for (let j = i + minSep; j < numSamples; j++) {
-                    const dx = samples[i].x - samples[j].x;
-                    const dy = samples[i].y - samples[j].y;
-                    const d2 = dx * dx + dy * dy;
-                    if (!best || d2 < best.d2) best = { i, j, d2 };
-                }
-            }
-            return {
-                x: (samples[best.i].x + samples[best.j].x) / 2,
-                y: (samples[best.i].y + samples[best.j].y) / 2,
-                len1: samples[best.i].len,
-                len2: samples[best.j].len,
-            };
-        }
-        function buildSegment(d, centerLen, halfRange, numPts = 40) {
-            const path = document.createElementNS(svgNS, 'path');
-            path.setAttribute('d', d);
-            offscreen.appendChild(path);
-            const L = path.getTotalLength();
-            let out = '';
-            for (let i = 0; i < numPts; i++) {
-                const t = i / (numPts - 1);
-                const len = Math.max(0, Math.min(L, centerLen + (t * 2 - 1) * halfRange));
-                const pt = path.getPointAtLength(len);
-                out += (i === 0 ? 'M' : 'L') + pt.x.toFixed(2) + ' ' + pt.y.toFixed(2);
-            }
-            offscreen.removeChild(path);
-            return out;
-        }
-        function tangentAt(d, len, eps = 2) {
-            const path = document.createElementNS(svgNS, 'path');
-            path.setAttribute('d', d);
-            offscreen.appendChild(path);
-            const L = path.getTotalLength();
-            const p1 = path.getPointAtLength(Math.max(0, len - eps));
-            const p2 = path.getPointAtLength(Math.min(L, len + eps));
-            offscreen.removeChild(path);
-            return (Math.atan2(p2.y - p1.y, p2.x - p1.x) * 180) / Math.PI;
-        }
-
-        const loopCross = findCrossover(LOOP_D);
-        const overAngle = tangentAt(LOOP_D, loopCross.len2);
-        const topSegmentD = buildSegment(LOOP_D, loopCross.len2, 34);
+        // Loop draw-cycle geometry, precomputed from the constant LOOP_D above:
+        // the self-intersection crossover point, the over-strand tangent, and
+        // the depth-weave top segment. These were previously derived on every
+        // mount via an O(n^2) closest-pair search (findCrossover) plus
+        // buildSegment/tangentAt getPointAtLength sampling — recomputed on every
+        // navigation re-inject. They are deterministic in LOOP_D, so they are
+        // baked. To regenerate after changing LOOP_D, run the scratchpad script
+        // measure_yloop.py (see PR notes) and paste its outputs here.
+        const LOOP_L = 599.655517578125;
+        const loopCross = { x: 117.2813835144043, y: 83.21451950073242, len1: 118.12913367983097, len2: 476.5209121321995 };
+        const overAngle = -138.05597736147777;
+        const topSegmentD = 'M140.95 107.75L139.83 106.41L138.70 105.08L137.56 103.77L136.40 102.46L135.23 101.17L134.05 99.88L132.86 98.61L131.66 97.34L130.46 96.09L129.24 94.84L128.01 93.60L126.77 92.37L125.53 91.15L124.28 89.94L123.02 88.73L121.75 87.54L120.47 86.35L119.19 85.17L117.90 83.99L116.60 82.83L115.30 81.67L113.99 80.52L112.67 79.38L111.35 78.24L110.02 77.11L108.69 75.99L107.35 74.87L106.00 73.76L104.65 72.66L103.30 71.56L101.94 70.47L100.57 69.39L99.20 68.31L97.82 67.24L96.44 66.17L95.06 65.11L93.67 64.06L92.28 63.01L90.88 61.97';
         const MASK_W = 44, MASK_H = 36;
         maskShape.setAttribute('x', (loopCross.x - MASK_W / 2).toFixed(2));
         maskShape.setAttribute('y', (loopCross.y - MASK_H / 2).toFixed(2));
@@ -264,7 +215,7 @@ _YLOOP_ANIM_JS = r"""
         maskTop.setAttribute('d', topSegmentD);
 
         const MASK_HALF = 34;
-        const MASK_TOP_L = maskTop.getTotalLength();
+        const MASK_TOP_L = 68.0010757446289;
         const MASK_TOP_START_LEN = loopCross.len2 - MASK_HALF;
         const MASK_TOP_END_LEN = loopCross.len2 + MASK_HALF;
         const TIP_HALO_R_MAX = 22;
@@ -457,18 +408,18 @@ _PERSISTENT_ROOT_JS = f"""() => {{
     if (!document.getElementById('{CURSOR_ID}')) {{
         const cursor = document.createElement('div');
         cursor.id = '{CURSOR_ID}';
-        cursor.style.cssText = 'position:fixed;left:-200px;top:-200px;width:96px;height:113px;pointer-events:none;z-index:{Z_INDEX + 2};transition:left {CURSOR_TRANSITION_MS}ms ease-in-out,top {CURSOR_TRANSITION_MS}ms ease-in-out,opacity 200ms ease-in-out;transform:translate(-16px,-3px);';
+        cursor.style.cssText = 'position:fixed;left:-200px;top:-200px;width:110px;height:130px;pointer-events:none;z-index:{Z_INDEX + 2};transition:left {CURSOR_TRANSITION_MS}ms ease-in-out,top {CURSOR_TRANSITION_MS}ms ease-in-out,opacity 200ms ease-in-out;transform:translate(-18.33px,-3.45px);';
         // The badge is a live element carrying the full Figma treatment (fill
         // gradient, gradient rim, two white inner shadows, teal drop shadows).
         // The thought capsule stretches THIS element, so expanded and idle
         // states are one continuous surface.
         const badge = document.createElement('div');
         badge.id = '{BADGE_ID}';
-        badge.style.cssText = 'position:absolute;left:39.6px;top:23.9px;width:33.5px;height:33.5px;border-radius:9.2px;background:linear-gradient(211.4deg,#18AA7E 13.6%,#148F6A 43.9%,#148F6A 64%,#159871 80.8%);box-shadow:inset 0.8px -1.7px 3.3px rgba(255,255,255,0.15),inset -0.8px 2.5px 3.3px rgba(255,255,255,0.4),0 1.7px 1.7px rgba(16,103,111,0.07),0 6.7px 3.3px rgba(16,103,111,0.06),0 15px 4.6px rgba(16,103,111,0.04),0 26.8px 5.4px rgba(16,103,111,0.01);overflow:hidden;pointer-events:none;transition:width 340ms cubic-bezier(0.22,1,0.36,1);';
+        badge.style.cssText = 'position:absolute;left:45.33px;top:27.37px;width:48px;height:48px;border-radius:10.962px;background:linear-gradient(211.4deg,#18AA7E 13.6%,#148F6A 43.9%,#148F6A 64%,#159871 80.8%);box-shadow:inset 1.1px -2.4px 4.7px rgba(255,255,255,0.15),inset -1.1px 3.6px 4.7px rgba(255,255,255,0.4),0 2.4px 2.4px rgba(16,103,111,0.07),0 9.6px 4.7px rgba(16,103,111,0.06),0 21.5px 6.6px rgba(16,103,111,0.04),0 38.4px 7.7px rgba(16,103,111,0.01);overflow:hidden;pointer-events:none;transition:width 340ms cubic-bezier(0.22,1,0.36,1),top 260ms ease-in-out;';
         // Slot pins the y-loop (and morphing action glyph) to the badge end.
         const slot = document.createElement('div');
         slot.id = '{BADGE_SLOT_ID}';
-        slot.style.cssText = 'position:absolute;top:0;left:0;width:33.5px;height:33.5px;pointer-events:none;';
+        slot.style.cssText = 'position:absolute;top:0;left:0;width:48px;height:48px;pointer-events:none;';
         const logo = document.createElement('div');
         logo.id = '{BADGE_LOGO_ID}';
         logo.style.cssText = 'position:absolute;left:0;top:0;width:100%;height:100%;transition:opacity 180ms ease;';
@@ -480,12 +431,12 @@ _PERSISTENT_ROOT_JS = f"""() => {{
         slot.appendChild(badgeGlyph);
         badge.appendChild(slot);
         const rim = document.createElement('div');
-        rim.style.cssText = 'position:absolute;inset:0;border-radius:9.2px;padding:0.7px;background:linear-gradient(to bottom left,#5AE8BD,#127D5D 50%,#19B385);-webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none;';
+        rim.style.cssText = 'position:absolute;inset:0;border-radius:10.962px;padding:1px;background:linear-gradient(to bottom left,#5AE8BD,#127D5D 50%,#19B385);-webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none;';
         badge.appendChild(rim);
         cursor.appendChild(badge);
         const cursorImg = document.createElement('img');
         cursorImg.src = '{_POINTER_DATA_URI}';
-        cursorImg.style.cssText = 'position:absolute;left:0;top:0;width:96px;height:113px;filter:drop-shadow(0 2px 5px rgba(0,0,0,0.18));';
+        cursorImg.style.cssText = 'position:absolute;left:0;top:0;width:110px;height:130px;filter:drop-shadow(0 2px 5px rgba(0,0,0,0.18));';
         cursor.appendChild(cursorImg);
         root.appendChild(cursor);
     }}
@@ -606,6 +557,7 @@ _THOUGHT_CARD_JS = f"""(args) => {{
     const text = args.text || '';
     const timeoutMs = args.timeout_ms;
     const cx = args.cx;
+    const cy = args.cy;
     const root = document.getElementById('{PERSISTENT_ROOT_ID}');
     if (!root) return;
     const badge = document.getElementById('{BADGE_ID}');
@@ -614,18 +566,21 @@ _THOUGHT_CARD_JS = f"""(args) => {{
     const existing = document.getElementById('{THOUGHT_CARD_ID}');
     if (existing) existing.remove();
     if (root.__n1ThoughtTimer) {{ clearTimeout(root.__n1ThoughtTimer); root.__n1ThoughtTimer = null; }}
-    if (root.__n1StreamTimer) {{ clearTimeout(root.__n1StreamTimer); root.__n1StreamTimer = null; }}
     if (root.__n1CollapseTimer) {{ clearTimeout(root.__n1CollapseTimer); root.__n1CollapseTimer = null; }}
 
     // The thought stretches the badge element itself into a capsule — one
-    // continuous surface whose rim + inner shadows wrap whatever width it has.
-    const B = 33.5, MAXW = 340, GAP = 7, END = 11, SPEED = 70;
-    const goLeft = (cx != null && cx >= 0) && ((cx - 16 + 39.6 + MAXW + 14) > window.innerWidth);
+    // continuous surface whose rim + inner shadows wrap whatever size it has.
+    // Short text stays a single-line pill; longer text grows to a taller
+    // two-line pill and clamps with an ellipsis (rather than scrolling a
+    // single-line marquee), keeping the y-loop centered in the grown pill.
+    const B = 48, MAXW = 340, GAP = 10, END = 15, LH = 15;
+    const TOP0 = 27.37;                     // badge's default top within the cursor box
+    const goLeft = (cx != null && cx >= 0) && ((cx - 18.33 + 45.33 + MAXW + 14) > window.innerWidth);
     if (goLeft) {{
-        badge.style.left = 'auto'; badge.style.right = '22.9px';
+        badge.style.left = 'auto'; badge.style.right = '16.67px';
         slot.style.left = 'auto'; slot.style.right = '0';
     }} else {{
-        badge.style.right = 'auto'; badge.style.left = '39.6px';
+        badge.style.right = 'auto'; badge.style.left = '45.33px';
         slot.style.right = 'auto'; slot.style.left = '0';
     }}
 
@@ -634,41 +589,33 @@ _THOUGHT_CARD_JS = f"""(args) => {{
     vp.style.cssText = 'position:absolute;top:0;bottom:0;overflow:hidden;display:flex;align-items:center;opacity:0;transition:opacity 140ms ease;pointer-events:none;'
         + (goLeft ? ('left:' + END + 'px;right:' + (B + GAP) + 'px;') : ('left:' + (B + GAP) + 'px;right:' + END + 'px;'));
     const inner = document.createElement('span');
-    inner.style.cssText = 'display:inline-block;white-space:nowrap;background:linear-gradient(180deg,#C6FAFB 0%,#A4FBFC 55%,#9DFBFC 100%);-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent;font-size:12px;line-height:1;font-weight:500;letter-spacing:0.1px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;will-change:transform;';
+    // Rendered single-line first so its natural width can be measured; switched
+    // to a clamped two-line box below when it would exceed the max pill width.
+    inner.style.cssText = 'display:inline-block;white-space:nowrap;background:linear-gradient(180deg,#C6FAFB 0%,#A4FBFC 55%,#9DFBFC 100%);-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent;font-size:12px;line-height:' + LH + 'px;font-weight:500;letter-spacing:0.1px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;';
     inner.textContent = text;
     vp.appendChild(inner);
     badge.appendChild(vp);
 
     requestAnimationFrame(() => {{
         if (!document.getElementById('{THOUGHT_CARD_ID}')) return;
-        const textW = inner.scrollWidth;
-        const target = Math.min(MAXW, B + GAP + textW + END);
-        badge.style.width = target + 'px';
-        vp.style.opacity = '1';
-        const vpW = target - B - GAP - END;
-        const overflow = Math.max(0, textW - vpW);
-        if (overflow > 0) {{
-            // Fade the trailing edge to signal more text, then slide the text
-            // left to play the overflow through; fade follows the hidden side.
-            const rightFade = 'linear-gradient(to right,#000 0,#000 calc(100% - 16px),transparent 100%)';
-            const bothFade = 'linear-gradient(to right,transparent 0,#000 16px,#000 calc(100% - 16px),transparent 100%)';
-            const leftFade = 'linear-gradient(to right,transparent 0,#000 16px,#000 100%)';
-            const setMask = (m) => {{ vp.style.webkitMaskImage = m; vp.style.maskImage = m; }};
-            setMask(rightFade);
-            root.__n1StreamTimer = setTimeout(() => {{
-                if (!document.getElementById('{THOUGHT_CARD_ID}')) return;
-                setMask(bothFade);
-                const dur = Math.max(900, overflow / SPEED * 1000);
-                inner.style.transition = 'transform ' + dur + 'ms linear';
-                inner.style.transform = 'translateX(-' + overflow + 'px)';
-                inner.addEventListener('transitionend', () => setMask(leftFade), {{ once: true }});
-            }}, 700);
+        const singleW = inner.scrollWidth;
+        const oneLine = (B + GAP + singleW + END) <= MAXW;
+        const width = oneLine ? (B + GAP + singleW + END) : MAXW;
+        if (!oneLine) {{
+            // Wrap to at most two lines, clamped with an ellipsis (fits the 48px pill).
+            inner.style.whiteSpace = 'normal';
+            inner.style.width = (width - (B + GAP) - END) + 'px';
+            inner.style.display = '-webkit-box';
+            inner.style.webkitBoxOrient = 'vertical';
+            inner.style.webkitLineClamp = '2';
+            inner.style.overflow = 'hidden';
         }}
+        badge.style.width = width + 'px';
+        vp.style.opacity = '1';
     }});
 
     if (timeoutMs > 0) {{
         root.__n1ThoughtTimer = setTimeout(() => {{
-            if (root.__n1StreamTimer) {{ clearTimeout(root.__n1StreamTimer); root.__n1StreamTimer = null; }}
             const current = document.getElementById('{THOUGHT_CARD_ID}');
             if (!current) return;
             current.style.opacity = '0';
@@ -676,7 +623,7 @@ _THOUGHT_CARD_JS = f"""(args) => {{
             root.__n1CollapseTimer = setTimeout(() => {{
                 root.__n1CollapseTimer = null;
                 current.remove();
-                badge.style.left = '39.6px'; badge.style.right = 'auto';
+                badge.style.left = '45.33px'; badge.style.right = 'auto';
                 slot.style.left = '0'; slot.style.right = 'auto';
             }}, 360);
         }}, timeoutMs);
@@ -704,13 +651,12 @@ _REMOVE_ALL_JS = f"""() => {{
     const persistent = document.getElementById('{PERSISTENT_ROOT_ID}');
     if (persistent) {{
         if (persistent.__n1ThoughtTimer) clearTimeout(persistent.__n1ThoughtTimer);
-        if (persistent.__n1StreamTimer) clearTimeout(persistent.__n1StreamTimer);
         if (persistent.__n1CollapseTimer) clearTimeout(persistent.__n1CollapseTimer);
         persistent.remove();
     }}
     const transient = document.getElementById('{TRANSIENT_ROOT_ID}');
     if (transient) transient.remove();
-    for (const styleId of ['{BORDER_STYLE_ID}', '{CLICK_STYLE_ID}', '{SCROLL_STYLE_ID}', '{TYPE_STYLE_ID}', '{DRAG_STYLE_ID}', '{THOUGHT_STYLE_ID}']) {{
+    for (const styleId of ['{BORDER_STYLE_ID}', '{CLICK_STYLE_ID}', '{SCROLL_STYLE_ID}', '{TYPE_STYLE_ID}', '{DRAG_STYLE_ID}', '{THOUGHT_STYLE_ID}', '{PASTE_STYLE_ID}', '{COPY_STYLE_ID}', '{BADGE_KF_STYLE_ID}']) {{
         const style = document.getElementById(styleId);
         if (style) style.remove();
     }}
@@ -722,10 +668,6 @@ _CLEAR_THOUGHT_JS = f"""() => {{
         clearTimeout(persistent.__n1ThoughtTimer);
         persistent.__n1ThoughtTimer = null;
     }}
-    if (persistent && persistent.__n1StreamTimer) {{
-        clearTimeout(persistent.__n1StreamTimer);
-        persistent.__n1StreamTimer = null;
-    }}
     if (persistent && persistent.__n1CollapseTimer) {{
         clearTimeout(persistent.__n1CollapseTimer);
         persistent.__n1CollapseTimer = null;
@@ -734,11 +676,11 @@ _CLEAR_THOUGHT_JS = f"""() => {{
     const badge = document.getElementById('{BADGE_ID}');
     const slot = document.getElementById('{BADGE_SLOT_ID}');
     if (vp) vp.style.opacity = '0';
-    if (badge) badge.style.width = '33.5px';
+    if (badge) badge.style.width = '48px';
     const collapseTimer = setTimeout(() => {{
         if (persistent && persistent.__n1CollapseTimer === collapseTimer) persistent.__n1CollapseTimer = null;
         if (vp) vp.remove();
-        if (badge) {{ badge.style.left = '39.6px'; badge.style.right = 'auto'; }}
+        if (badge) {{ badge.style.left = '45.33px'; badge.style.right = 'auto'; }}
         if (slot) {{ slot.style.left = '0'; slot.style.right = 'auto'; }}
     }}, 360);
     if (persistent) persistent.__n1CollapseTimer = collapseTimer;
@@ -857,6 +799,8 @@ class OverlayController:
             f"""() => {{
                 const cursor = document.getElementById('{CURSOR_ID}');
                 if (!cursor) return;
+                const badge = document.getElementById('{BADGE_ID}');
+                if (badge) badge.style.top = ({self._cursor_y} + 72 > window.innerHeight) ? '-68.5px' : '27.37px';
                 cursor.style.transition = 'none';
                 cursor.style.left = '{self._cursor_x}px';
                 cursor.style.top = '{self._cursor_y}px';
@@ -999,6 +943,10 @@ class OverlayController:
             f"""() => {{
                 const cursor = document.getElementById('{CURSOR_ID}');
                 if (!cursor) return true;
+                // Flip the 48px badge above the pointer near the bottom edge so it
+                // doesn't clip off-screen (it otherwise hangs ~72px below the tip).
+                const badge = document.getElementById('{BADGE_ID}');
+                if (badge) badge.style.top = ({y} + 72 > window.innerHeight) ? '-68.5px' : '27.37px';
                 const offScreen = cursor.style.left === '-200px';
                 if (offScreen) {{
                     cursor.style.transition = 'none';
@@ -1265,8 +1213,8 @@ class OverlayController:
             " if (!b) return;"
             f" const logo = document.getElementById('{BADGE_LOGO_ID}');"
             " if (logo) logo.style.opacity = '0';"
-            " if (!document.getElementById('__n1BadgeKf')) {"
-            "   const st = document.createElement('style'); st.id = '__n1BadgeKf';"
+            f" if (!document.getElementById('{BADGE_KF_STYLE_ID}')) {{"
+            f"   const st = document.createElement('style'); st.id = '{BADGE_KF_STYLE_ID}';"
             "   st.textContent = '@keyframes n1badgeIn{0%{opacity:0;transform:scale(0.25);filter:blur(4px)}100%{opacity:1;transform:scale(1);filter:blur(0)}}"
             "@keyframes n1badgeOut{0%{opacity:1;transform:scale(1);filter:blur(0)}100%{opacity:0;transform:scale(0.25);filter:blur(4px)}}';"
             "   document.head.appendChild(st);"
