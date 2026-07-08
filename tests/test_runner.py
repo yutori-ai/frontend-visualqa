@@ -268,6 +268,27 @@ async def _call_run(runner: Any, **kwargs: Any) -> Any:
     return await runner.run(**filtered)
 
 
+def _claim_event_recorder() -> tuple[
+    list[tuple[str, int, str, str | None]],
+    Callable[[int, str], None],
+    Callable[[int, str, ClaimResult], None],
+]:
+    """Build a shared events list plus on_claim_start/on_claim_complete callbacks that record it.
+
+    Returns ``(events, on_claim_start, on_claim_complete)`` for passing directly as
+    ``VisualQARunner.run`` keyword arguments in tests asserting claim-callback ordering.
+    """
+    events: list[tuple[str, int, str, str | None]] = []
+
+    def on_claim_start(index: int, claim: str) -> None:
+        events.append(("start", index, claim, None))
+
+    def on_claim_complete(index: int, claim: str, claim_result: ClaimResult) -> None:
+        events.append(("complete", index, claim, claim_result.status))
+
+    return events, on_claim_start, on_claim_complete
+
+
 async def _call_take_screenshot(runner: Any, **kwargs: Any) -> Any:
     signature = inspect.signature(runner.take_screenshot)
     filtered = {name: value for name, value in kwargs.items() if name in signature.parameters}
@@ -1211,7 +1232,7 @@ async def test_runner_marks_claim_not_testable_when_reset_between_claims_fails(
         monkeypatch=monkeypatch,
         browser_manager=browser,
     )
-    events: list[tuple[str, int, str, str | None]] = []
+    events, on_claim_start, on_claim_complete = _claim_event_recorder()
 
     result = await _call_run(
         runner,
@@ -1222,10 +1243,8 @@ async def test_runner_marks_claim_not_testable_when_reset_between_claims_fails(
         reuse_session=True,
         reset_between_claims=True,
         max_steps_per_claim=5,
-        on_claim_start=lambda index, claim: events.append(("start", index, claim, None)),
-        on_claim_complete=lambda index, claim, claim_result: events.append(
-            ("complete", index, claim, claim_result.status)
-        ),
+        on_claim_start=on_claim_start,
+        on_claim_complete=on_claim_complete,
     )
 
     assert [item.status for item in result.results] == ["passed", "not_testable"]
@@ -1254,7 +1273,7 @@ async def test_runner_marks_claim_not_testable_when_verifier_raises(
         claim_verifier=exploding_verifier,
     )
     viewport = ViewportConfig()
-    events: list[tuple[str, int, str, str | None]] = []
+    events, on_claim_start, on_claim_complete = _claim_event_recorder()
 
     result = await _call_run(
         runner,
@@ -1265,10 +1284,8 @@ async def test_runner_marks_claim_not_testable_when_verifier_raises(
         reuse_session=True,
         reset_between_claims=True,
         max_steps_per_claim=5,
-        on_claim_start=lambda index, claim: events.append(("start", index, claim, None)),
-        on_claim_complete=lambda index, claim, claim_result: events.append(
-            ("complete", index, claim, claim_result.status)
-        ),
+        on_claim_start=on_claim_start,
+        on_claim_complete=on_claim_complete,
     )
 
     assert [item.status for item in result.results] == ["inconclusive"]
@@ -1322,7 +1339,7 @@ async def test_runner_marks_claim_inconclusive_when_claim_timeout_expires(
         monkeypatch=monkeypatch,
         claim_verifier=slow_verifier,
     )
-    events: list[tuple[str, int, str, str | None]] = []
+    events, on_claim_start, on_claim_complete = _claim_event_recorder()
 
     result = await _call_run(
         runner,
@@ -1334,10 +1351,8 @@ async def test_runner_marks_claim_inconclusive_when_claim_timeout_expires(
         reset_between_claims=True,
         max_steps_per_claim=5,
         claim_timeout_seconds=0.01,
-        on_claim_start=lambda index, claim: events.append(("start", index, claim, None)),
-        on_claim_complete=lambda index, claim, claim_result: events.append(
-            ("complete", index, claim, claim_result.status)
-        ),
+        on_claim_start=on_claim_start,
+        on_claim_complete=on_claim_complete,
     )
 
     assert [item.status for item in result.results] == ["inconclusive"]
@@ -1363,7 +1378,7 @@ async def test_runner_handles_timeout_error_when_claim_timeout_is_disabled(
         monkeypatch=monkeypatch,
         claim_verifier=verifier,
     )
-    events: list[tuple[str, int, str, str | None]] = []
+    events, on_claim_start, on_claim_complete = _claim_event_recorder()
 
     result = await _call_run(
         runner,
@@ -1375,10 +1390,8 @@ async def test_runner_handles_timeout_error_when_claim_timeout_is_disabled(
         reset_between_claims=True,
         max_steps_per_claim=5,
         claim_timeout_seconds=None,
-        on_claim_start=lambda index, claim: events.append(("start", index, claim, None)),
-        on_claim_complete=lambda index, claim, claim_result: events.append(
-            ("complete", index, claim, claim_result.status)
-        ),
+        on_claim_start=on_claim_start,
+        on_claim_complete=on_claim_complete,
     )
 
     assert [item.status for item in result.results] == ["inconclusive"]
@@ -1425,7 +1438,7 @@ async def test_runner_uses_partial_claim_result_when_timeout_interrupts_verifier
         monkeypatch=monkeypatch,
         claim_verifier=verifier,
     )
-    events: list[tuple[str, int, str, str | None]] = []
+    events, on_claim_start, on_claim_complete = _claim_event_recorder()
 
     result = await _call_run(
         runner,
@@ -1437,10 +1450,8 @@ async def test_runner_uses_partial_claim_result_when_timeout_interrupts_verifier
         reset_between_claims=True,
         max_steps_per_claim=5,
         claim_timeout_seconds=1.0,
-        on_claim_start=lambda index, claim: events.append(("start", index, claim, None)),
-        on_claim_complete=lambda index, claim, claim_result: events.append(
-            ("complete", index, claim, claim_result.status)
-        ),
+        on_claim_start=on_claim_start,
+        on_claim_complete=on_claim_complete,
     )
 
     assert [item.status for item in result.results] == ["inconclusive"]
@@ -1479,7 +1490,7 @@ async def test_runner_uses_partial_claim_result_when_verifier_crashes(
         monkeypatch=monkeypatch,
         claim_verifier=verifier,
     )
-    events: list[tuple[str, int, str, str | None]] = []
+    events, on_claim_start, on_claim_complete = _claim_event_recorder()
 
     result = await _call_run(
         runner,
@@ -1490,10 +1501,8 @@ async def test_runner_uses_partial_claim_result_when_verifier_crashes(
         reuse_session=True,
         reset_between_claims=True,
         max_steps_per_claim=5,
-        on_claim_start=lambda index, claim: events.append(("start", index, claim, None)),
-        on_claim_complete=lambda index, claim, claim_result: events.append(
-            ("complete", index, claim, claim_result.status)
-        ),
+        on_claim_start=on_claim_start,
+        on_claim_complete=on_claim_complete,
     )
 
     assert [item.status for item in result.results] == ["inconclusive"]
@@ -1521,7 +1530,7 @@ async def test_runner_marks_remaining_claims_inconclusive_when_run_timeout_expir
         monkeypatch=monkeypatch,
         claim_verifier=slow_verifier,
     )
-    events: list[tuple[str, int, str, str | None]] = []
+    events, on_claim_start, on_claim_complete = _claim_event_recorder()
 
     result = await _call_run(
         runner,
@@ -1534,10 +1543,8 @@ async def test_runner_marks_remaining_claims_inconclusive_when_run_timeout_expir
         max_steps_per_claim=5,
         claim_timeout_seconds=None,
         run_timeout_seconds=0.01,
-        on_claim_start=lambda index, claim: events.append(("start", index, claim, None)),
-        on_claim_complete=lambda index, claim, claim_result: events.append(
-            ("complete", index, claim, claim_result.status)
-        ),
+        on_claim_start=on_claim_start,
+        on_claim_complete=on_claim_complete,
     )
 
     assert [item.status for item in result.results] == ["inconclusive", "inconclusive"]
@@ -1575,7 +1582,7 @@ async def test_runner_preserves_partial_claim_result_when_run_timeout_interrupts
         monkeypatch=monkeypatch,
         claim_verifier=verifier,
     )
-    events: list[tuple[str, int, str, str | None]] = []
+    events, on_claim_start, on_claim_complete = _claim_event_recorder()
 
     result = await _call_run(
         runner,
@@ -1587,10 +1594,8 @@ async def test_runner_preserves_partial_claim_result_when_run_timeout_interrupts
         reset_between_claims=True,
         max_steps_per_claim=5,
         run_timeout_seconds=0.01,
-        on_claim_start=lambda index, claim: events.append(("start", index, claim, None)),
-        on_claim_complete=lambda index, claim, claim_result: events.append(
-            ("complete", index, claim, claim_result.status)
-        ),
+        on_claim_start=on_claim_start,
+        on_claim_complete=on_claim_complete,
     )
 
     assert [item.status for item in result.results] == ["inconclusive", "inconclusive"]
