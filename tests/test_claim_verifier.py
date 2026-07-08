@@ -65,6 +65,16 @@ class EvaluatingPage(FakePage):
 
 
 @dataclass
+class PasswordFocusedPage(FakePage):
+    """Fake page reporting a focused password input, for redaction tests."""
+
+    async def evaluate(self, script: str) -> Any:
+        if "activeElement" in script:
+            return True
+        return {}
+
+
+@dataclass
 class FakeSession:
     page: FakePage
     viewport: ViewportConfig
@@ -1657,13 +1667,6 @@ async def test_claim_verifier_gives_up_inconclusive_after_repeated_action_failur
 async def test_claim_verifier_redacts_password_typing_in_trace_events(tmp_path: Path) -> None:
     module = _import_claim_verifier_module()
 
-    @dataclass
-    class PasswordFocusedPage(FakePage):
-        async def evaluate(self, script: str) -> Any:
-            if "activeElement" in script:
-                return True
-            return {}
-
     verifier, navigator_client, action_executor = _build_claim_verifier(
         module,
         tmp_path,
@@ -1698,13 +1701,6 @@ async def test_claim_verifier_redacts_password_typing_in_trace_events(tmp_path: 
 @pytest.mark.asyncio
 async def test_claim_verifier_redacts_malformed_password_type_arguments(tmp_path: Path) -> None:
     module = _import_claim_verifier_module()
-
-    @dataclass
-    class PasswordFocusedPage(FakePage):
-        async def evaluate(self, script: str) -> Any:
-            if "activeElement" in script:
-                return True
-            return {}
 
     verifier, navigator_client, action_executor = _build_claim_verifier(
         module,
@@ -1865,13 +1861,6 @@ async def test_claim_verifier_redacts_every_password_tool_call_in_multi_tool_tur
     the second tool call of a turn; the transcript rewrite must still find the
     stored assistant tool_calls for it."""
     module = _import_claim_verifier_module()
-
-    @dataclass
-    class PasswordFocusedPage(FakePage):
-        async def evaluate(self, script: str) -> Any:
-            if "activeElement" in script:
-                return True
-            return {}
 
     verifier, navigator_client, _ = _build_claim_verifier(
         module,
