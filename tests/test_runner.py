@@ -150,7 +150,7 @@ class FakeBrowserManager:
         return BrowserStatusResult(
             browser_running=not self.closed,
             browser_mode=self.config.mode,
-            user_data_dir=self.config.resolved_user_data_dir if self.config.mode == BrowserMode.persistent else None,
+            user_data_dir=self.config.resolved_user_data_dir if self.config.is_persistent else None,
             sessions=[
                 {
                     "session_key": session.session_key,
