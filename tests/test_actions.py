@@ -17,6 +17,20 @@ def _import_actions_module():
     return import_or_skip("frontend_visualqa.actions")
 
 
+def _build_action_executor(module: Any) -> Any:
+    """Construct an ``ActionExecutor`` with the fixed timeout/settle-delay tuning every test uses.
+
+    Every ``ActionExecutor``-exercising test in this file built one with this identical
+    ``navigation_timeout_ms=1_000, settle_delay_seconds=0`` call, differing only in how ``module``
+    was obtained beforehand. This is the shared constructor they delegate to now.
+    """
+    return instantiate_with_supported_kwargs(
+        module.ActionExecutor,
+        navigation_timeout_ms=1_000,
+        settle_delay_seconds=0,
+    )
+
+
 async def _call_execute_action(
     executor: Any,
     page: Any,
@@ -224,11 +238,7 @@ def test_tool_counts_as_interaction_marks_read_only_expanded_tools_non_interacti
 @pytest.mark.asyncio
 async def test_execute_action_left_click_scales_coordinates_before_dispatch() -> None:
     module = _import_actions_module()
-    executor = instantiate_with_supported_kwargs(
-        module.ActionExecutor,
-        navigation_timeout_ms=1_000,
-        settle_delay_seconds=0,
-    )
+    executor = _build_action_executor(module)
     page = FakePage()
     viewport = ViewportConfig()
 
@@ -252,11 +262,7 @@ async def test_navigation_actions_wait_for_domcontentloaded(
     expected_url_attr: str,
 ) -> None:
     module = _import_actions_module()
-    executor = instantiate_with_supported_kwargs(
-        module.ActionExecutor,
-        navigation_timeout_ms=1_000,
-        settle_delay_seconds=0,
-    )
+    executor = _build_action_executor(module)
     page = FakePage()
     viewport = ViewportConfig()
 
@@ -270,11 +276,7 @@ async def test_navigation_actions_wait_for_domcontentloaded(
 @pytest.mark.asyncio
 async def test_execute_action_type_and_scroll_use_keyboard_and_mouse_inputs() -> None:
     module = _import_actions_module()
-    executor = instantiate_with_supported_kwargs(
-        module.ActionExecutor,
-        navigation_timeout_ms=1_000,
-        settle_delay_seconds=0,
-    )
+    executor = _build_action_executor(module)
     page = FakePage()
     viewport = ViewportConfig()
 
@@ -302,11 +304,7 @@ async def test_execute_action_type_and_scroll_use_keyboard_and_mouse_inputs() ->
 @pytest.mark.asyncio
 async def test_execute_action_supports_hover_drag_and_multi_click_variants() -> None:
     module = _import_actions_module()
-    executor = instantiate_with_supported_kwargs(
-        module.ActionExecutor,
-        navigation_timeout_ms=1_000,
-        settle_delay_seconds=0,
-    )
+    executor = _build_action_executor(module)
     page = FakePage()
     viewport = ViewportConfig()
 
@@ -350,15 +348,13 @@ async def test_execute_action_left_click_previews_before_dispatch_and_waits_for_
 
     overlay.preview_action = AsyncMock(side_effect=_preview_action)
 
-    executor = instantiate_with_supported_kwargs(
-        module.ActionExecutor,
-        navigation_timeout_ms=1_000,
-        settle_delay_seconds=0,
-    )
+    executor = _build_action_executor(module)
     executor.overlay = overlay
 
     viewport = ViewportConfig()
-    task = asyncio.create_task(_call_execute_action(executor, page, "left_click", {"coordinates": [500, 250]}, viewport))
+    task = asyncio.create_task(
+        _call_execute_action(executor, page, "left_click", {"coordinates": [500, 250]}, viewport)
+    )
 
     await asyncio.wait_for(preview_started.wait(), timeout=1)
     assert call_order == [
@@ -393,11 +389,7 @@ async def test_execute_action_navigation_shows_status_before_dispatch() -> None:
 
     overlay.set_status = AsyncMock(side_effect=_set_status)
 
-    executor = instantiate_with_supported_kwargs(
-        module.ActionExecutor,
-        navigation_timeout_ms=1_000,
-        settle_delay_seconds=0,
-    )
+    executor = _build_action_executor(module)
     executor.overlay = overlay
 
     viewport = ViewportConfig()
@@ -409,7 +401,7 @@ async def test_execute_action_navigation_shows_status_before_dispatch() -> None:
         viewport,
     )
 
-    assert trace == "goto_url(\"http://fixture.local/modal\")"
+    assert trace == 'goto_url("http://fixture.local/modal")'
     assert call_order[0] == ("set_status", "Navigating")
     assert call_order[1][0] == "goto"
     assert overlay.set_status.await_count == 1
@@ -430,11 +422,7 @@ async def test_execute_action_semantic_key_shortcut_uses_single_overlay_footer()
 
     overlay.set_status = AsyncMock(side_effect=_set_status)
 
-    executor = instantiate_with_supported_kwargs(
-        module.ActionExecutor,
-        navigation_timeout_ms=1_000,
-        settle_delay_seconds=0,
-    )
+    executor = _build_action_executor(module)
     executor.overlay = overlay
 
     viewport = ViewportConfig()
@@ -464,11 +452,7 @@ async def test_execute_action_hover_previews_before_mouse_move() -> None:
 
     overlay.preview_action = AsyncMock(side_effect=_preview_action)
 
-    executor = instantiate_with_supported_kwargs(
-        module.ActionExecutor,
-        navigation_timeout_ms=1_000,
-        settle_delay_seconds=0,
-    )
+    executor = _build_action_executor(module)
     executor.overlay = overlay
 
     viewport = ViewportConfig()
@@ -483,11 +467,7 @@ async def test_execute_action_hover_previews_before_mouse_move() -> None:
 @pytest.mark.asyncio
 async def test_execute_action_mouse_move_and_ref_resolution_use_sdk_tool_helpers() -> None:
     module = _import_actions_module()
-    executor = instantiate_with_supported_kwargs(
-        module.ActionExecutor,
-        navigation_timeout_ms=1_000,
-        settle_delay_seconds=0,
-    )
+    executor = _build_action_executor(module)
     page = FakePage()
     page.evaluate_results = [{"success": True, "coordinates": [301, 199]}]
     viewport = ViewportConfig()
@@ -502,11 +482,7 @@ async def test_execute_action_mouse_move_and_ref_resolution_use_sdk_tool_helpers
 @pytest.mark.asyncio
 async def test_execute_action_click_modifier_holds_and_releases_keys() -> None:
     module = _import_actions_module()
-    executor = instantiate_with_supported_kwargs(
-        module.ActionExecutor,
-        navigation_timeout_ms=1_000,
-        settle_delay_seconds=0,
-    )
+    executor = _build_action_executor(module)
     page = FakePage()
     viewport = ViewportConfig()
 
@@ -550,11 +526,7 @@ async def test_execute_action_drag_previews_before_drag_motion() -> None:
 
     overlay.preview_action = AsyncMock(side_effect=_preview_action)
 
-    executor = instantiate_with_supported_kwargs(
-        module.ActionExecutor,
-        navigation_timeout_ms=1_000,
-        settle_delay_seconds=0,
-    )
+    executor = _build_action_executor(module)
     executor.overlay = overlay
 
     viewport = ViewportConfig()
@@ -578,11 +550,7 @@ async def test_execute_action_drag_previews_before_drag_motion() -> None:
 @pytest.mark.asyncio
 async def test_execute_action_key_press_supports_shortcuts_and_semantic_navigation() -> None:
     module = _import_actions_module()
-    executor = instantiate_with_supported_kwargs(
-        module.ActionExecutor,
-        navigation_timeout_ms=1_000,
-        settle_delay_seconds=0,
-    )
+    executor = _build_action_executor(module)
     page = FakePage()
     viewport = ViewportConfig()
 
@@ -599,11 +567,7 @@ async def test_execute_action_key_press_supports_shortcuts_and_semantic_navigati
 @pytest.mark.asyncio
 async def test_execute_action_key_press_supports_repeated_key_sequences() -> None:
     module = _import_actions_module()
-    executor = instantiate_with_supported_kwargs(
-        module.ActionExecutor,
-        navigation_timeout_ms=1_000,
-        settle_delay_seconds=0,
-    )
+    executor = _build_action_executor(module)
     page = FakePage()
     viewport = ViewportConfig()
 
@@ -616,11 +580,7 @@ async def test_execute_action_key_press_supports_repeated_key_sequences() -> Non
 @pytest.mark.asyncio
 async def test_execute_action_key_press_ignores_zoom_shortcuts() -> None:
     module = _import_actions_module()
-    executor = instantiate_with_supported_kwargs(
-        module.ActionExecutor,
-        navigation_timeout_ms=1_000,
-        settle_delay_seconds=0,
-    )
+    executor = _build_action_executor(module)
     page = FakePage()
     viewport = ViewportConfig()
 
@@ -633,11 +593,7 @@ async def test_execute_action_key_press_ignores_zoom_shortcuts() -> None:
 @pytest.mark.asyncio
 async def test_execute_action_hold_key_supports_duration_and_fallback_press(monkeypatch: pytest.MonkeyPatch) -> None:
     module = _import_actions_module()
-    executor = instantiate_with_supported_kwargs(
-        module.ActionExecutor,
-        navigation_timeout_ms=1_000,
-        settle_delay_seconds=0,
-    )
+    executor = _build_action_executor(module)
     page = FakePage()
     viewport = ViewportConfig()
 
@@ -659,11 +615,7 @@ async def test_execute_action_hold_key_supports_duration_and_fallback_press(monk
 @pytest.mark.asyncio
 async def test_execute_action_screenshot_is_a_no_op_for_n1_default_tool_calls() -> None:
     module = _import_actions_module()
-    executor = instantiate_with_supported_kwargs(
-        module.ActionExecutor,
-        navigation_timeout_ms=1_000,
-        settle_delay_seconds=0,
-    )
+    executor = _build_action_executor(module)
     page = FakePage()
     viewport = ViewportConfig()
 
@@ -677,11 +629,7 @@ async def test_execute_action_screenshot_is_a_no_op_for_n1_default_tool_calls() 
 @pytest.mark.asyncio
 async def test_execute_action_rejects_invalid_scroll_direction() -> None:
     module = _import_actions_module()
-    executor = instantiate_with_supported_kwargs(
-        module.ActionExecutor,
-        navigation_timeout_ms=1_000,
-        settle_delay_seconds=0,
-    )
+    executor = _build_action_executor(module)
     page = FakePage()
     viewport = ViewportConfig()
 
@@ -698,11 +646,7 @@ async def test_execute_action_rejects_invalid_scroll_direction() -> None:
 @pytest.mark.asyncio
 async def test_execute_tool_call_runs_find_without_counting_as_interaction(monkeypatch: pytest.MonkeyPatch) -> None:
     module = _import_actions_module()
-    executor = instantiate_with_supported_kwargs(
-        module.ActionExecutor,
-        navigation_timeout_ms=1_000,
-        settle_delay_seconds=0,
-    )
+    executor = _build_action_executor(module)
     page = FakePage()
     viewport = ViewportConfig()
 
@@ -729,11 +673,7 @@ async def test_execute_tool_call_runs_find_without_counting_as_interaction(monke
 async def test_execute_action_click_modifier_released_on_failure() -> None:
     """Modifier keys must be released even when the click raises."""
     module = _import_actions_module()
-    executor = instantiate_with_supported_kwargs(
-        module.ActionExecutor,
-        navigation_timeout_ms=1_000,
-        settle_delay_seconds=0,
-    )
+    executor = _build_action_executor(module)
     page = FakePage()
     viewport = ViewportConfig()
 
@@ -744,7 +684,9 @@ async def test_execute_action_click_modifier_released_on_failure() -> None:
 
     with pytest.raises(module.BrowserActionError, match="click exploded"):
         await _call_execute_action(
-            executor, page, "left_click",
+            executor,
+            page,
+            "left_click",
             {"coordinates": [500, 250], "modifier": "ctrl"},
             viewport,
         )
@@ -758,18 +700,16 @@ async def test_execute_action_click_modifier_released_on_failure() -> None:
 async def test_resolve_coordinates_falls_back_to_raw_when_ref_fails() -> None:
     """When ref resolution fails, fall back to the raw coordinates arg."""
     module = _import_actions_module()
-    executor = instantiate_with_supported_kwargs(
-        module.ActionExecutor,
-        navigation_timeout_ms=1_000,
-        settle_delay_seconds=0,
-    )
+    executor = _build_action_executor(module)
     page = FakePage()
     # Queue a failed evaluate result for ref resolution
     page.evaluate_results.append({"success": False, "message": "element not found"})
     viewport = ViewportConfig()
 
     trace = await _call_execute_action(
-        executor, page, "left_click",
+        executor,
+        page,
+        "left_click",
         {"coordinates": [500, 250], "ref": "missing-ref"},
         viewport,
     )
@@ -783,18 +723,16 @@ async def test_resolve_coordinates_falls_back_to_raw_when_ref_fails() -> None:
 async def test_resolve_coordinates_raises_when_ref_fails_and_no_coords() -> None:
     """When ref fails and there are no fallback coordinates, raise BrowserActionError."""
     module = _import_actions_module()
-    executor = instantiate_with_supported_kwargs(
-        module.ActionExecutor,
-        navigation_timeout_ms=1_000,
-        settle_delay_seconds=0,
-    )
+    executor = _build_action_executor(module)
     page = FakePage()
     page.evaluate_results.append({"success": False, "message": "element not found"})
     viewport = ViewportConfig()
 
     with pytest.raises(module.BrowserActionError, match="element not found"):
         await _call_execute_action(
-            executor, page, "left_click",
+            executor,
+            page,
+            "left_click",
             {"ref": "missing-ref"},  # no coordinates fallback
             viewport,
         )
@@ -803,11 +741,7 @@ async def test_resolve_coordinates_raises_when_ref_fails_and_no_coords() -> None
 @pytest.mark.asyncio
 async def test_execute_action_type_masks_text_when_focused_element_is_password() -> None:
     module = _import_actions_module()
-    executor = instantiate_with_supported_kwargs(
-        module.ActionExecutor,
-        navigation_timeout_ms=1_000,
-        settle_delay_seconds=0,
-    )
+    executor = _build_action_executor(module)
     page = FakePage()
     page.evaluate_results.append(True)  # focused element is a password input
     viewport = ViewportConfig()
@@ -822,11 +756,7 @@ async def test_execute_action_type_masks_text_when_focused_element_is_password()
 @pytest.mark.asyncio
 async def test_execute_action_type_keeps_text_for_non_password_fields() -> None:
     module = _import_actions_module()
-    executor = instantiate_with_supported_kwargs(
-        module.ActionExecutor,
-        navigation_timeout_ms=1_000,
-        settle_delay_seconds=0,
-    )
+    executor = _build_action_executor(module)
     page = FakePage()
     page.evaluate_results.append(False)  # focused element is not a password input
     viewport = ViewportConfig()
@@ -840,11 +770,7 @@ async def test_execute_action_type_keeps_text_for_non_password_fields() -> None:
 @pytest.mark.asyncio
 async def test_execute_tool_call_set_element_value_masks_password_values(monkeypatch: pytest.MonkeyPatch) -> None:
     module = _import_actions_module()
-    executor = instantiate_with_supported_kwargs(
-        module.ActionExecutor,
-        navigation_timeout_ms=1_000,
-        settle_delay_seconds=0,
-    )
+    executor = _build_action_executor(module)
     page = FakePage()
     viewport = ViewportConfig()
 
@@ -880,11 +806,7 @@ async def test_execute_tool_call_set_element_value_masks_password_values(monkeyp
 @pytest.mark.asyncio
 async def test_execute_action_wait_caps_model_requested_duration(monkeypatch: pytest.MonkeyPatch) -> None:
     module = _import_actions_module()
-    executor = instantiate_with_supported_kwargs(
-        module.ActionExecutor,
-        navigation_timeout_ms=1_000,
-        settle_delay_seconds=0,
-    )
+    executor = _build_action_executor(module)
     page = FakePage()
     viewport = ViewportConfig()
     sleeps: list[float] = []
@@ -907,11 +829,7 @@ async def test_execute_action_type_masks_text_when_password_detection_fails() ->
     """Detection failures fail closed: with no evaluate result queued, FakePage
     raises, the helper returns None, and the trace must still be masked."""
     module = _import_actions_module()
-    executor = instantiate_with_supported_kwargs(
-        module.ActionExecutor,
-        navigation_timeout_ms=1_000,
-        settle_delay_seconds=0,
-    )
+    executor = _build_action_executor(module)
     page = FakePage()  # no evaluate result queued -> detection error
     viewport = ViewportConfig()
 
