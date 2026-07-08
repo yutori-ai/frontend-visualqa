@@ -13,7 +13,7 @@ from frontend_visualqa.claim_verifier import ClaimVerifier
 from frontend_visualqa.runner import VisualQARunner
 from frontend_visualqa.schemas import ViewportConfig
 
-from fakes import FakeNavigatorClient, FakeResponse, serve_static_directory, tool_call_message
+from fakes import FakeNavigatorClient, FakeResponse, import_or_skip, serve_static_directory, tool_call_message
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
@@ -29,14 +29,10 @@ def _import_overlay_controller_or_skip() -> Any:
 
     Some worktrees for this suite check out only part of ``src/``, so the
     headed-overlay tests below need to skip gracefully instead of failing on
-    import when ``overlay.py`` isn't present.
+    import when ``overlay.py`` isn't present. Delegates to the shared
+    ``import_or_skip`` convention in ``fakes.py`` used by the other test modules.
     """
-    overlay_path = PACKAGE_ROOT / "src/frontend_visualqa/overlay.py"
-    if not overlay_path.exists():
-        pytest.skip("headed overlay implementation is not present in this partial worktree")
-    from frontend_visualqa.overlay import OverlayController
-
-    return OverlayController
+    return import_or_skip("frontend_visualqa.overlay").OverlayController
 
 
 def _build_live_runner(
