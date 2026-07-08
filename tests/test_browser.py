@@ -99,6 +99,16 @@ class _FakeCdpContext:
         return self.cdp_session
 
 
+class _FakeCdpSessionBase:
+    """Base for the per-test fake CDP sessions below; tracks detach() calls, leaves send() to subclasses."""
+
+    def __init__(self) -> None:
+        self.detach_calls = 0
+
+    async def detach(self) -> None:
+        self.detach_calls += 1
+
+
 @pytest.fixture()
 def example_url() -> str:
     for base_url in serve_static_directory(PACKAGE_ROOT / "examples"):
@@ -125,11 +135,11 @@ def test_browser_config_defaults_persistent_user_data_dir() -> None:
 
 @pytest.mark.asyncio
 async def test_browser_manager_capture_screenshot_prefers_cdp_in_headed_mode() -> None:
-    class FakeCDPSession:
+    class FakeCDPSession(_FakeCdpSessionBase):
         def __init__(self, payload: bytes) -> None:
+            super().__init__()
             self.payload = payload
             self.send_calls: list[tuple[str, dict[str, object]]] = []
-            self.detach_calls = 0
 
         async def send(self, method: str, params: dict[str, object] | None = None) -> dict[str, str]:
             resolved_params = params or {}
@@ -137,9 +147,6 @@ async def test_browser_manager_capture_screenshot_prefers_cdp_in_headed_mode() -
             if method == "Page.getLayoutMetrics":
                 return _LAYOUT_METRICS_RESPONSE
             return {"data": base64.b64encode(self.payload).decode("ascii")}
-
-        async def detach(self) -> None:
-            self.detach_calls += 1
 
     png_payload = _png_bytes(size=(640, 400))
     cdp_session = FakeCDPSession(png_payload)
@@ -181,17 +188,11 @@ async def test_browser_manager_capture_screenshot_prefers_cdp_in_headed_mode() -
 
 @pytest.mark.asyncio
 async def test_browser_manager_capture_screenshot_falls_back_to_playwright_in_headed_mode() -> None:
-    class FakeCDPSession:
-        def __init__(self) -> None:
-            self.detach_calls = 0
-
+    class FakeCDPSession(_FakeCdpSessionBase):
         async def send(self, method: str, params: dict[str, object] | None = None) -> dict[str, str]:
             if method == "Page.getLayoutMetrics":
                 return _LAYOUT_METRICS_RESPONSE
             raise RuntimeError("capture failed")
-
-        async def detach(self) -> None:
-            self.detach_calls += 1
 
     cdp_session = FakeCDPSession()
     context = _FakeCdpContext(cdp_session)
@@ -217,18 +218,12 @@ async def test_browser_manager_capture_screenshot_times_out_stuck_cdp_and_falls_
 ) -> None:
     monkeypatch.setattr(browser_module, "DEFAULT_CDP_SCREENSHOT_TIMEOUT_SECONDS", 0.01)
 
-    class FakeCDPSession:
-        def __init__(self) -> None:
-            self.detach_calls = 0
-
+    class FakeCDPSession(_FakeCdpSessionBase):
         async def send(self, method: str, params: dict[str, object] | None = None) -> dict[str, str]:
             if method == "Page.getLayoutMetrics":
                 return _LAYOUT_METRICS_RESPONSE
             await asyncio.sleep(1)
             return {"data": ""}
-
-        async def detach(self) -> None:
-            self.detach_calls += 1
 
     cdp_session = FakeCDPSession()
     context = _FakeCdpContext(cdp_session)
@@ -616,18 +611,12 @@ async def test_browser_manager_capture_screenshot_times_out_stuck_layout_metrics
 ) -> None:
     monkeypatch.setattr(browser_module, "DEFAULT_CDP_SCREENSHOT_TIMEOUT_SECONDS", 0.01)
 
-    class FakeCDPSession:
-        def __init__(self) -> None:
-            self.detach_calls = 0
-
+    class FakeCDPSession(_FakeCdpSessionBase):
         async def send(self, method: str, params: dict[str, object] | None = None) -> dict[str, str]:
             del params
             if method == "Page.getLayoutMetrics":
                 await asyncio.sleep(1)
             return {"data": ""}
-
-        async def detach(self) -> None:
-            self.detach_calls += 1
 
     cdp_session = FakeCDPSession()
     context = _FakeCdpContext(cdp_session)
