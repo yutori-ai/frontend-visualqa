@@ -66,6 +66,15 @@ def _assert_webp_bytes(image_bytes: bytes, *, expected_size: tuple[int, int] | N
         assert image.size == expected_size
 
 
+def _persistent_browser_config(tmp_path: Path) -> BrowserConfig:
+    return BrowserConfig(
+        mode=BrowserMode.persistent,
+        user_data_dir=str(tmp_path / "browser-profile"),
+        headless=True,
+        settle_delay_seconds=0,
+    )
+
+
 # CDP-vs-Playwright screenshot fallback response for a 640x400 layout at a 320x200 viewport,
 # shared by the capture_screenshot fake-CDP-session tests below.
 _LAYOUT_METRICS_RESPONSE: dict[str, object] = {
@@ -381,12 +390,7 @@ async def test_browser_manager_persistent_mode_preserves_cookies_across_relaunch
     tmp_path: Path,
 ) -> None:
     profile_dir = tmp_path / "browser-profile"
-    config = BrowserConfig(
-        mode=BrowserMode.persistent,
-        user_data_dir=str(profile_dir),
-        headless=True,
-        settle_delay_seconds=0,
-    )
+    config = _persistent_browser_config(tmp_path)
     viewport = ViewportConfig()
 
     async with BrowserManager(config=config) as manager:
@@ -409,12 +413,7 @@ async def test_browser_manager_persistent_mode_preserves_cookies_across_relaunch
 
 @pytest.mark.asyncio
 async def test_browser_manager_persistent_mode_accepts_initial_named_session_key(tmp_path: Path) -> None:
-    config = BrowserConfig(
-        mode=BrowserMode.persistent,
-        user_data_dir=str(tmp_path / "browser-profile"),
-        headless=True,
-        settle_delay_seconds=0,
-    )
+    config = _persistent_browser_config(tmp_path)
     viewport = ViewportConfig()
 
     async with BrowserManager(config=config) as manager:
@@ -431,12 +430,7 @@ async def test_browser_manager_persistent_mode_rejects_switching_active_session_
     operation: str,
     tmp_path: Path,
 ) -> None:
-    config = BrowserConfig(
-        mode=BrowserMode.persistent,
-        user_data_dir=str(tmp_path / "browser-profile"),
-        headless=True,
-        settle_delay_seconds=0,
-    )
+    config = _persistent_browser_config(tmp_path)
 
     async with BrowserManager(config=config) as manager:
         await manager.get_session("authenticated", viewport=ViewportConfig())
@@ -454,12 +448,7 @@ async def test_browser_manager_persistent_mode_rejects_switching_active_session_
 
 @pytest.mark.asyncio
 async def test_browser_manager_persistent_mode_allows_new_named_session_after_close(tmp_path: Path) -> None:
-    config = BrowserConfig(
-        mode=BrowserMode.persistent,
-        user_data_dir=str(tmp_path / "browser-profile"),
-        headless=True,
-        settle_delay_seconds=0,
-    )
+    config = _persistent_browser_config(tmp_path)
 
     async with BrowserManager(config=config) as manager:
         await manager.get_session("authenticated", viewport=ViewportConfig())
@@ -472,12 +461,7 @@ async def test_browser_manager_persistent_mode_allows_new_named_session_after_cl
 
 @pytest.mark.asyncio
 async def test_browser_manager_persistent_mode_dead_session_releases_lock_for_new_name(tmp_path: Path) -> None:
-    config = BrowserConfig(
-        mode=BrowserMode.persistent,
-        user_data_dir=str(tmp_path / "browser-profile"),
-        headless=True,
-        settle_delay_seconds=0,
-    )
+    config = _persistent_browser_config(tmp_path)
 
     async with BrowserManager(config=config) as manager:
         session = await manager.get_session("authenticated", viewport=ViewportConfig())
@@ -496,12 +480,7 @@ async def test_browser_manager_persistent_mode_dead_session_releases_lock_for_li
     operation: str,
     tmp_path: Path,
 ) -> None:
-    config = BrowserConfig(
-        mode=BrowserMode.persistent,
-        user_data_dir=str(tmp_path / "browser-profile"),
-        headless=True,
-        settle_delay_seconds=0,
-    )
+    config = _persistent_browser_config(tmp_path)
 
     async with BrowserManager(config=config) as manager:
         session = await manager.get_session("authenticated", viewport=ViewportConfig())
@@ -528,12 +507,7 @@ async def test_browser_manager_persistent_mode_uses_dedicated_automation_page(
     example_url: str,
     tmp_path: Path,
 ) -> None:
-    config = BrowserConfig(
-        mode=BrowserMode.persistent,
-        user_data_dir=str(tmp_path / "browser-profile"),
-        headless=True,
-        settle_delay_seconds=0,
-    )
+    config = _persistent_browser_config(tmp_path)
     viewport = ViewportConfig()
 
     async with BrowserManager(config=config) as manager:
@@ -553,12 +527,7 @@ async def test_browser_manager_persistent_mode_relaunches_for_dpr_change(
     example_url: str,
     tmp_path: Path,
 ) -> None:
-    config = BrowserConfig(
-        mode=BrowserMode.persistent,
-        user_data_dir=str(tmp_path / "browser-profile"),
-        headless=True,
-        settle_delay_seconds=0,
-    )
+    config = _persistent_browser_config(tmp_path)
     initial_viewport = ViewportConfig()
     refreshed_viewport = ViewportConfig(width=1280, height=800, device_scale_factor=2)
 
@@ -579,12 +548,7 @@ async def test_browser_manager_persistent_mode_recovers_after_external_context_c
     example_url: str,
     tmp_path: Path,
 ) -> None:
-    config = BrowserConfig(
-        mode=BrowserMode.persistent,
-        user_data_dir=str(tmp_path / "browser-profile"),
-        headless=True,
-        settle_delay_seconds=0,
-    )
+    config = _persistent_browser_config(tmp_path)
     viewport = ViewportConfig()
 
     async with BrowserManager(config=config) as manager:
