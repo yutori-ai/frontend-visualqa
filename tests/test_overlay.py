@@ -15,6 +15,10 @@ def _make_mock_page(
     evaluate_side_effect: Exception | None = None,
 ) -> MagicMock:
     page = MagicMock()
+    # Track whether a thought card is currently mounted so the card builder can
+    # report hadExisting (the real DOM signal show_thought reads to time its
+    # collapse+expand settle) instead of a constant.
+    dom = {"thought_card": False}
 
     async def evaluate(script: str, *args: object) -> object:
         del args
@@ -23,6 +27,13 @@ def _make_mock_page(
         script_text = str(script)
         if "document.activeElement" in script_text:
             return focused_center
+        if "n1renderMarkdown" in script_text:  # thought card builder
+            had_existing = dom["thought_card"]
+            dom["thought_card"] = True
+            return had_existing
+        if "__n1ThoughtCard" in script_text:  # clear_thought removes the card
+            dom["thought_card"] = False
+            return None
         return None
 
     page.evaluate = AsyncMock(side_effect=evaluate)
@@ -135,7 +146,7 @@ class TestOverlayCursor:
     async def test_reinject_after_navigation_replays_active_thought(self) -> None:
         # Reasoning is shown before the action; a navigation rebuilds the overlay
         # DOM and must replay the current thought so it doesn't vanish for the
-        # rest of the turn. "webkitLineClamp" is unique to the show_thought card.
+        # rest of the turn. "n1renderMarkdown" is unique to the show_thought card.
         page = _make_mock_page()
         controller = OverlayController(page)
         controller._active = True
@@ -145,7 +156,7 @@ class TestOverlayCursor:
         await controller._reinject_after_navigation()
 
         scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
-        assert any("webkitLineClamp" in script for script in scripts)
+        assert any("n1renderMarkdown" in script for script in scripts)
 
     @pytest.mark.asyncio
     async def test_reinject_after_navigation_shows_no_thought_when_none(self) -> None:
@@ -158,7 +169,7 @@ class TestOverlayCursor:
         await controller._reinject_after_navigation()
 
         scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
-        assert not any("webkitLineClamp" in script for script in scripts)
+        assert not any("n1renderMarkdown" in script for script in scripts)
 
 
 class TestOverlayInformationalCards:
@@ -174,7 +185,7 @@ class TestOverlayInformationalCards:
         assert "__n1ThoughtCard" in script
         # The thought is a capsule that stretches the badge and can wrap to two lines.
         assert "badge.style.width" in script
-        assert "webkitLineClamp" in script
+        assert "maxHeight" in script
         arg = call.args[1]
         assert isinstance(arg, dict)
         assert len(arg["text"]) <= 520

@@ -543,10 +543,10 @@ _THOUGHT_STYLE_CSS = (
     f"#{THOUGHT_CARD_ID} pre{{background:rgba(0,0,0,0.32);border-radius:8px;padding:10px 12px;"
     "overflow-x:auto;margin:8px 0}"
     f"#{THOUGHT_CARD_ID} pre code{{background:transparent;padding:0;font-size:0.9em}}"
-    f"#{THOUGHT_CARD_ID} ul{{padding-left:18px;margin:6px 0}}"
-    f"#{THOUGHT_CARD_ID} li{{margin:2px 0}}"
+    f"#{THOUGHT_CARD_ID} ul{{padding-left:0;margin:0;list-style:none}}"
+    f"#{THOUGHT_CARD_ID} li{{margin:0;padding:0}}"
     f"#{THOUGHT_CARD_ID} h2,#{THOUGHT_CARD_ID} h3,#{THOUGHT_CARD_ID} h4{{"
-    "margin:8px 0 4px;font-weight:700;line-height:1.3}"
+    "margin:0;font-weight:700;line-height:1.3}"
     f"#{THOUGHT_CARD_ID} h2{{font-size:1.18em}}"
     f"#{THOUGHT_CARD_ID} h3{{font-size:1.08em}}"
     f"#{THOUGHT_CARD_ID} h4{{font-size:1em;opacity:0.9}}"
@@ -606,7 +606,7 @@ _THOUGHT_CARD_JS = f"""(args) => {{
     // Reasoning is rendered as sanitized markdown (n1renderMarkdown escapes HTML
     // and scheme-checks links) so emphasis/code/links/lists format instead of
     // showing raw syntax — matching the pre-redesign card.
-    inner.style.cssText = 'display:inline-block;white-space:nowrap;background:linear-gradient(180deg,#C6FAFB 0%,#A4FBFC 55%,#9DFBFC 100%);-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent;font-size:12px;line-height:' + LH + 'px;font-weight:500;letter-spacing:0.1px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;';
+    inner.style.cssText = 'display:inline-block;white-space:nowrap;text-align:left;background:linear-gradient(180deg,#C6FAFB 0%,#A4FBFC 55%,#9DFBFC 100%);-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent;font-size:12px;line-height:' + LH + 'px;font-weight:500;letter-spacing:0.1px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;';
     inner.innerHTML = n1renderMarkdown(text);
     vp.appendChild(inner);
     badge.appendChild(vp);
@@ -618,12 +618,16 @@ _THOUGHT_CARD_JS = f"""(args) => {{
             const oneLine = (B + GAP + singleW + END) <= MAXW;
             const width = oneLine ? (B + GAP + singleW + END) : MAXW;
             if (!oneLine) {{
-                // Wrap to at most two lines, clamped with an ellipsis (fits the 48px pill).
+                // Cap at two lines via a block container + max-height, NOT
+                // -webkit-line-clamp's -webkit-box: markdown block content (lists,
+                // headers) lays out and clips LEFT-aligned here, whereas -webkit-box
+                // only positions inline text and shoves block children toward center
+                // (the "centered pill" bug). text-align:left guards page inheritance.
                 inner.style.whiteSpace = 'normal';
                 inner.style.width = (width - (B + GAP) - END) + 'px';
-                inner.style.display = '-webkit-box';
-                inner.style.webkitBoxOrient = 'vertical';
-                inner.style.webkitLineClamp = '2';
+                inner.style.display = 'block';
+                inner.style.textAlign = 'left';
+                inner.style.maxHeight = (2 * LH) + 'px';
                 inner.style.overflow = 'hidden';
             }}
             badge.style.width = width + 'px';
@@ -659,6 +663,7 @@ _THOUGHT_CARD_JS = f"""(args) => {{
             }}, 360);
         }}, timeoutMs);
     }}
+    return hadExisting;
 }}"""
 
 _TRANSIENT_ROOT_JS = f"""() => {{
@@ -936,19 +941,13 @@ class OverlayController:
     async def show_thought(self, text: str) -> None:
         if not self._active:
             return
-        replacing = self._thought_text is not None
         self._thought_text = text
-        # Record when the shrink→expand settles (collapse+expand when replacing a
-        # visible thought, expand-only for the first) so a click can hold until
-        # the pill is fully visible — see _await_thought_settled.
-        settle_ms = (THOUGHT_COLLAPSE_MS + THOUGHT_EXPAND_MS) if replacing else THOUGHT_EXPAND_MS
-        self._thought_settle_at = time.monotonic() + settle_ms / 1000
         await self._inject_persistent_root()
         clipped = self._clip_text(text, 520)
         # During "Analyzing" the card stays until clear_thought() is called;
         # otherwise the fallback timeout removes it.
         timeout_ms = 0 if self._current_status == "Analyzing" else THOUGHT_DURATION_MS
-        await self._eval(
+        had_existing = await self._safe_evaluate(
             _THOUGHT_CARD_JS,
             {
                 "text": clipped,
@@ -957,6 +956,15 @@ class OverlayController:
                 "cy": self._cursor_y if self._cursor_y is not None else -1,
             },
         )
+        # Record when the shrink→expand settles so a click can hold until the pill
+        # is fully visible (see _await_thought_settled). The card builder collapses
+        # then re-expands (collapse+expand) only when a card already existed in the
+        # DOM; a fresh mount — the first thought, or a post-navigation replay onto a
+        # rebuilt DOM — expands only. Derive this from the DOM (the JS's returned
+        # hadExisting), not from _thought_text: a replay sets _thought_text but runs
+        # no collapse, so trusting Python state would add a phantom ~360ms hold.
+        settle_ms = (THOUGHT_COLLAPSE_MS + THOUGHT_EXPAND_MS) if had_existing else THOUGHT_EXPAND_MS
+        self._thought_settle_at = time.monotonic() + settle_ms / 1000
 
     async def clear_thought(self) -> None:
         self._thought_text = None
