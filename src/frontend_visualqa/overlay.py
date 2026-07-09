@@ -554,12 +554,14 @@ _THOUGHT_STYLE_CSS = (
 
 
 _THOUGHT_CARD_JS = f"""(args) => {{
+    {_RENDER_MARKDOWN_JS}
     const text = args.text || '';
     const timeoutMs = args.timeout_ms;
     const cx = args.cx;
     const cy = args.cy;
     const root = document.getElementById('{PERSISTENT_ROOT_ID}');
     if (!root) return;
+    {_inject_style_js(THOUGHT_STYLE_ID, repr(_THOUGHT_STYLE_CSS), guard=True)}
     const badge = document.getElementById('{BADGE_ID}');
     const slot = document.getElementById('{BADGE_SLOT_ID}');
     if (!badge || !slot) return;
@@ -591,8 +593,11 @@ _THOUGHT_CARD_JS = f"""(args) => {{
     const inner = document.createElement('span');
     // Rendered single-line first so its natural width can be measured; switched
     // to a clamped two-line box below when it would exceed the max pill width.
+    // Reasoning is rendered as sanitized markdown (n1renderMarkdown escapes HTML
+    // and scheme-checks links) so emphasis/code/links/lists format instead of
+    // showing raw syntax — matching the pre-redesign card.
     inner.style.cssText = 'display:inline-block;white-space:nowrap;background:linear-gradient(180deg,#C6FAFB 0%,#A4FBFC 55%,#9DFBFC 100%);-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent;font-size:12px;line-height:' + LH + 'px;font-weight:500;letter-spacing:0.1px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;';
-    inner.textContent = text;
+    inner.innerHTML = n1renderMarkdown(text);
     vp.appendChild(inner);
     badge.appendChild(vp);
 
