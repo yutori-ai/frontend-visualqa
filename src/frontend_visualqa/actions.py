@@ -509,7 +509,7 @@ class ActionExecutor:
                 # Copy/paste chords (Ctrl/Cmd+C / +V) get a clipboard glyph
                 # overlay at the focused element (best-effort).
                 chord = {p.strip().lower() for p in key_comb.replace("+", " ").split()}
-                if self._overlay is not None and (chord & {"control", "ctrl", "meta", "cmd", "command"}):
+                if self._overlay is not None and (chord & {"control", "ctrl", "meta", "cmd", "command", "controlormeta"}):
                     if "c" in chord:
                         await self._best_effort_overlay_preview_action(action_type="copy")
                     elif "v" in chord:
