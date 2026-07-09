@@ -195,6 +195,23 @@ class TestOverlayInformationalCards:
         assert "badge.style.width = width + 'px'" in script  # then expand to fit
 
     @pytest.mark.asyncio
+    async def test_show_thought_applies_vertical_flip_from_cursor_y(self) -> None:
+        # The capsule mirrors _move_cursor's vertical flip: near the bottom edge
+        # the badge sits above the pointer, so a thought shown before the action
+        # (cursor already low) doesn't hang the pill below the viewport.
+        page, controller = await _started_controller()
+        controller._cursor_x = 400
+        controller._cursor_y = 780
+
+        await controller.show_thought("Reasoning near the bottom edge.")
+
+        call = page.evaluate.call_args_list[-1]
+        script = str(call.args[0])
+        assert "badge.style.top" in script
+        assert "-68.5px" in script
+        assert call.args[1]["cy"] == 780
+
+    @pytest.mark.asyncio
     async def test_preview_action_preserves_existing_thought_card(self) -> None:
         # The reasoning capsule is shown synced with its action (by claim_verifier,
         # before the action runs), so preview_action must NOT clear it — it stays

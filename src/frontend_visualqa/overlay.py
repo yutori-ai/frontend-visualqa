@@ -580,6 +580,14 @@ _THOUGHT_CARD_JS = f"""(args) => {{
         badge.style.right = 'auto'; badge.style.left = '45.33px';
         slot.style.right = 'auto'; slot.style.left = '0';
     }}
+    // Mirror the vertical badge flip from _move_cursor: near the bottom edge the
+    // badge sits above the pointer, so a thought shown before the action (cursor
+    // already low) doesn't hang the pill below the viewport. cy is -1 before the
+    // first cursor move — leave the default top in that case. Keep the 72 / -68.5
+    // constants in sync with _move_cursor.
+    if (cy != null && cy >= 0) {{
+        badge.style.top = (cy + 72 > window.innerHeight) ? '-68.5px' : (TOP0 + 'px');
+    }}
 
     const vp = document.createElement('div');
     vp.id = '{THOUGHT_CARD_ID}';
