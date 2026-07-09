@@ -180,6 +180,21 @@ class TestOverlayInformationalCards:
         assert len(arg["text"]) <= 520
 
     @pytest.mark.asyncio
+    async def test_show_thought_collapses_then_expands_when_replacing(self) -> None:
+        # Replacing a visible thought collapses the pill to the 48px badge (B)
+        # then expands to fit, so the container shrinks and re-grows on each text
+        # change rather than resizing in place (preview_action no longer clears
+        # the thought between actions).
+        page, controller = await _started_controller()
+        await controller.show_thought("First reasoning.")
+        await controller.show_thought("Second, different reasoning.")
+
+        script = str(page.evaluate.call_args_list[-1].args[0])
+        assert "hadExisting" in script
+        assert "badge.style.width = B + 'px'" in script      # collapse to the badge
+        assert "badge.style.width = width + 'px'" in script  # then expand to fit
+
+    @pytest.mark.asyncio
     async def test_preview_action_preserves_existing_thought_card(self) -> None:
         # The reasoning capsule is shown synced with its action (by claim_verifier,
         # before the action runs), so preview_action must NOT clear it — it stays

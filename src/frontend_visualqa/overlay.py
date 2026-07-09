@@ -560,6 +560,7 @@ _THOUGHT_CARD_JS = f"""(args) => {{
     const slot = document.getElementById('{BADGE_SLOT_ID}');
     if (!badge || !slot) return;
     const existing = document.getElementById('{THOUGHT_CARD_ID}');
+    const hadExisting = !!existing;
     if (existing) existing.remove();
     if (root.__n1ThoughtTimer) {{ clearTimeout(root.__n1ThoughtTimer); root.__n1ThoughtTimer = null; }}
     if (root.__n1CollapseTimer) {{ clearTimeout(root.__n1CollapseTimer); root.__n1CollapseTimer = null; }}
@@ -595,23 +596,39 @@ _THOUGHT_CARD_JS = f"""(args) => {{
     vp.appendChild(inner);
     badge.appendChild(vp);
 
-    requestAnimationFrame(() => {{
-        if (!document.getElementById('{THOUGHT_CARD_ID}')) return;
-        const singleW = inner.scrollWidth;
-        const oneLine = (B + GAP + singleW + END) <= MAXW;
-        const width = oneLine ? (B + GAP + singleW + END) : MAXW;
-        if (!oneLine) {{
-            // Wrap to at most two lines, clamped with an ellipsis (fits the 48px pill).
-            inner.style.whiteSpace = 'normal';
-            inner.style.width = (width - (B + GAP) - END) + 'px';
-            inner.style.display = '-webkit-box';
-            inner.style.webkitBoxOrient = 'vertical';
-            inner.style.webkitLineClamp = '2';
-            inner.style.overflow = 'hidden';
-        }}
-        badge.style.width = width + 'px';
-        vp.style.opacity = '1';
-    }});
+    const applyExpand = () => {{
+        requestAnimationFrame(() => {{
+            if (!document.getElementById('{THOUGHT_CARD_ID}')) return;
+            const singleW = inner.scrollWidth;
+            const oneLine = (B + GAP + singleW + END) <= MAXW;
+            const width = oneLine ? (B + GAP + singleW + END) : MAXW;
+            if (!oneLine) {{
+                // Wrap to at most two lines, clamped with an ellipsis (fits the 48px pill).
+                inner.style.whiteSpace = 'normal';
+                inner.style.width = (width - (B + GAP) - END) + 'px';
+                inner.style.display = '-webkit-box';
+                inner.style.webkitBoxOrient = 'vertical';
+                inner.style.webkitLineClamp = '2';
+                inner.style.overflow = 'hidden';
+            }}
+            badge.style.width = width + 'px';
+            vp.style.opacity = '1';
+        }});
+    }};
+    if (hadExisting) {{
+        // Replacing a visible thought: collapse the pill back to the 48px cursor
+        // badge, then expand to fit the new text, so the green container visibly
+        // shrinks and re-grows on each new reasoning (the badge's 340ms width
+        // transition animates both). preview_action no longer clears the thought
+        // between actions, so without this the pill would just resize in place.
+        badge.style.width = B + 'px';
+        root.__n1CollapseTimer = setTimeout(() => {{
+            root.__n1CollapseTimer = null;
+            applyExpand();
+        }}, 360);
+    }} else {{
+        applyExpand();
+    }}
 
     if (timeoutMs > 0) {{
         root.__n1ThoughtTimer = setTimeout(() => {{
