@@ -509,10 +509,14 @@ class ActionExecutor:
                 # Copy/paste chords (Ctrl/Cmd+C / +V) get a clipboard glyph
                 # overlay at the focused element (best-effort).
                 chord = {p.strip().lower() for p in key_comb.replace("+", " ").split()}
-                if self._overlay is not None and (chord & {"control", "ctrl", "meta", "cmd", "command", "controlormeta"}):
-                    if "c" in chord:
+                mods = {"control", "ctrl", "meta", "cmd", "command", "controlormeta"}
+                # Only a *bare* Ctrl/Cmd+C or +V is copy/paste. Any extra token — the
+                # Shift in Ctrl+Shift+C (devtools, not copy), an Alt, or another key —
+                # makes it a different shortcut, so it must not show the clipboard glyph.
+                if self._overlay is not None and (chord & mods):
+                    if "c" in chord and chord <= mods | {"c"}:
                         await self._best_effort_overlay_preview_action(action_type="copy")
-                    elif "v" in chord:
+                    elif "v" in chord and chord <= mods | {"v"}:
                         await self._best_effort_overlay_preview_action(action_type="paste")
                 await self._best_effort_overlay_set_status("Pressing keys")
                 for key_name in key_sequence:
