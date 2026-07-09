@@ -52,6 +52,17 @@ def _import_mcp_server_module():
     return import_or_skip("frontend_visualqa.mcp_server")
 
 
+def _persistent_browser_config(**overrides: Any) -> BrowserConfig:
+    """Build a persistent-mode BrowserConfig pointed at a fixed test profile dir.
+
+    ``test_close_runners_sync_*`` and ``test_configure_server_*`` each independently
+    constructed this identical ``BrowserConfig(mode=BrowserMode.persistent,
+    user_data_dir="/tmp/profile")`` literal. This is the shared constructor they
+    delegate to now.
+    """
+    return BrowserConfig(mode=BrowserMode.persistent, user_data_dir="/tmp/profile", **overrides)
+
+
 class FakeRunner:
     def __init__(self) -> None:
         self.run_calls: list[dict[str, Any]] = []
@@ -264,7 +275,7 @@ def test_close_runners_sync_closes_cached_runners(monkeypatch: pytest.MonkeyPatc
     fake_runner = FakeRunner()
     _reset_server_module_state(module)
     monkeypatch.setitem(module._runners_by_loop, 123, fake_runner)
-    module._server_browser_config = BrowserConfig(mode=BrowserMode.persistent, user_data_dir="/tmp/profile")
+    module._server_browser_config = _persistent_browser_config()
     module._config_frozen = True
 
     module.close_runners_sync()
@@ -290,7 +301,7 @@ async def test_configure_server_passes_browser_config_to_new_runner(monkeypatch:
 
     monkeypatch.setattr(runner_module, "VisualQARunner", fake_visual_qa_runner)
 
-    browser_config = BrowserConfig(mode=BrowserMode.persistent, user_data_dir="/tmp/profile", headless=False)
+    browser_config = _persistent_browser_config(headless=False)
     module.configure_server(browser_config)
     runner = await module._get_runner()
 
@@ -310,13 +321,13 @@ async def test_configure_server_rejects_changes_after_runner_creation(monkeypatc
     await module._get_runner()
 
     with pytest.raises(RuntimeError, match="Cannot change browser config after runner has been created"):
-        module.configure_server(BrowserConfig(mode=BrowserMode.persistent, user_data_dir="/tmp/profile"))
+        module.configure_server(_persistent_browser_config())
 
 
 def test_close_runners_sync_resets_config_without_cached_runners() -> None:
     module = _import_mcp_server_module()
     _reset_server_module_state(module)
-    module._server_browser_config = BrowserConfig(mode=BrowserMode.persistent, user_data_dir="/tmp/profile")
+    module._server_browser_config = _persistent_browser_config()
 
     module.close_runners_sync()
 
@@ -332,7 +343,7 @@ async def test_close_runners_sync_resets_state_immediately_inside_running_loop(
     fake_runner = FakeRunner()
     _reset_server_module_state(module)
     monkeypatch.setitem(module._runners_by_loop, module._loop_key(), fake_runner)
-    module._server_browser_config = BrowserConfig(mode=BrowserMode.persistent, user_data_dir="/tmp/profile")
+    module._server_browser_config = _persistent_browser_config()
     module._config_frozen = True
 
     module.close_runners_sync()
