@@ -730,6 +730,11 @@ class OverlayController:
         # action — fine, the off-screen sentinel is what we want pre-action.
         self._cursor_x: int | None = None
         self._cursor_y: int | None = None
+        # Current reasoning text, if a thought capsule is showing. Kept so a
+        # full-page navigation (which tears down the overlay DOM) can replay it
+        # in _reinject_after_navigation — the reasoning is shown before the
+        # action now, so without this it would vanish on the post-nav page.
+        self._thought_text: str | None = None
 
     async def claim_started(self) -> None:
         self._active = True
@@ -782,6 +787,11 @@ class OverlayController:
         # the cursor as continuously visible across the navigation.
         await self._restore_cursor_position()
         await self._ensure_transient_root()
+        # Reasoning is shown before the action (synced), so a navigation would
+        # otherwise drop the capsule for the rest of the turn. Replay it on the
+        # rebuilt DOM so the thought survives the navigation.
+        if self._thought_text is not None:
+            await self.show_thought(self._thought_text)
 
     async def _restore_cursor_position(self) -> None:
         """Teleport the cursor to the last known position with no transition.
@@ -883,6 +893,7 @@ class OverlayController:
     async def show_thought(self, text: str) -> None:
         if not self._active:
             return
+        self._thought_text = text
         await self._inject_persistent_root()
         clipped = self._clip_text(text, 520)
         # During "Analyzing" the card stays until clear_thought() is called;
@@ -899,6 +910,7 @@ class OverlayController:
         )
 
     async def clear_thought(self) -> None:
+        self._thought_text = None
         if not self._active:
             return
         await self._eval(_CLEAR_THOUGHT_JS)

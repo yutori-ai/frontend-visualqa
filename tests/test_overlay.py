@@ -131,6 +131,35 @@ class TestOverlayCursor:
         assert "goLeft" in script
         assert "innerWidth" in script
 
+    @pytest.mark.asyncio
+    async def test_reinject_after_navigation_replays_active_thought(self) -> None:
+        # Reasoning is shown before the action; a navigation rebuilds the overlay
+        # DOM and must replay the current thought so it doesn't vanish for the
+        # rest of the turn. "webkitLineClamp" is unique to the show_thought card.
+        page = _make_mock_page()
+        controller = OverlayController(page)
+        controller._active = True
+        controller._thought_text = "Now let me click the Login button."
+        page.evaluate.reset_mock()
+
+        await controller._reinject_after_navigation()
+
+        scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
+        assert any("webkitLineClamp" in script for script in scripts)
+
+    @pytest.mark.asyncio
+    async def test_reinject_after_navigation_shows_no_thought_when_none(self) -> None:
+        page = _make_mock_page()
+        controller = OverlayController(page)
+        controller._active = True
+        controller._thought_text = None
+        page.evaluate.reset_mock()
+
+        await controller._reinject_after_navigation()
+
+        scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
+        assert not any("webkitLineClamp" in script for script in scripts)
+
 
 class TestOverlayInformationalCards:
     @pytest.mark.asyncio
