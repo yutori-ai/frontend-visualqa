@@ -6,6 +6,7 @@ import asyncio
 import base64
 import json
 import logging
+import time
 from typing import TYPE_CHECKING, Any
 
 from frontend_visualqa.text_utils import clip_text_preserving_lines
@@ -41,6 +42,12 @@ CLICK_DURATION_MS = 250
 DRAG_DURATION_MS = 200
 CURSOR_TRANSITION_MS = 350
 THOUGHT_DURATION_MS = 2000
+# Thought capsule shrink→expand on a new reasoning: collapse to the 48px badge
+# (THOUGHT_COLLAPSE_MS), then the badge width transition expands it to fit
+# (THOUGHT_EXPAND_MS — must match the badge CSS width transition). Used to hold a
+# click until the pill is fully visible (see _await_thought_settled).
+THOUGHT_COLLAPSE_MS = 360
+THOUGHT_EXPAND_MS = 340
 
 _CURSOR_SVG = (
     '<svg width="110" height="130" viewBox="0 0 110 130" fill="none" xmlns="http://www.w3.org/2000/svg"> <g id="Default Live Cursor"> <g id="Badge" filter="url(#filter0_ddddii_45_139)"> <rect x="45.3307" y="27.3717" width="48" height="48" rx="10.962" fill="url(#paint0_linear_45_139)"/> <rect x="45.3307" y="27.3717" width="48" height="48" rx="10.962" stroke="url(#paint1_linear_45_139)"/> <g id="yLoop"> <path d="M80.8847 38.0808C82.1521 37.5842 83.3202 38.0103 83.6386 38.9578C83.9999 40.0335 83.2812 40.9254 82.2812 41.3797C73.98 45.1497 65.5645 51.8231 65.5644 57.1961C65.5644 60.7133 67.6232 61.8054 69.2607 61.8054C70.8982 61.8053 72.9687 60.7132 72.9687 57.1961C72.9687 55.1469 71.7266 53.1005 70.5117 51.6082C70.5117 51.6082 71.8191 50.0465 73.3418 48.9539C75.573 51.5308 76.9794 54.0813 76.9794 57.1961C76.9794 62.1932 73.7452 65.8716 69.2607 65.8719C64.776 65.8718 61.541 62.1933 61.541 57.1961C61.541 49.1584 73.6804 40.9043 80.8847 38.0808ZM55.0224 38.9597C55.3407 38.012 56.5088 37.5851 57.7763 38.0818C60.72 39.2354 64.4873 41.296 67.914 43.8777C66.3195 45.1252 65.0859 46.4549 65.0859 46.4549C62.4438 44.5139 59.4042 42.7542 56.3798 41.3806C55.38 40.9264 54.6614 40.0353 55.0224 38.9597Z" fill="url(#paint2_linear_45_139)"/> <path d="M80.8847 38.0808C82.1521 37.5842 83.3202 38.0103 83.6386 38.9578C83.9999 40.0335 83.2812 40.9254 82.2812 41.3797C73.98 45.1497 65.5645 51.8231 65.5644 57.1961C65.5644 60.7133 67.6232 61.8054 69.2607 61.8054C70.8982 61.8053 72.9687 60.7132 72.9687 57.1961C72.9687 55.1469 71.7266 53.1005 70.5117 51.6082C70.5117 51.6082 71.8191 50.0465 73.3418 48.9539C75.573 51.5308 76.9794 54.0813 76.9794 57.1961C76.9794 62.1932 73.7452 65.8716 69.2607 65.8719C64.776 65.8718 61.541 62.1933 61.541 57.1961C61.541 49.1584 73.6804 40.9043 80.8847 38.0808ZM55.0224 38.9597C55.3407 38.012 56.5088 37.5851 57.7763 38.0818C60.72 39.2354 64.4873 41.296 67.914 43.8777C66.3195 45.1252 65.0859 46.4549 65.0859 46.4549C62.4438 44.5139 59.4042 42.7542 56.3798 41.3806C55.38 40.9264 54.6614 40.0353 55.0224 38.9597Z" fill="#F8FAFC" style="mix-blend-mode:overlay"/> <path d="M80.8847 38.0808C82.1521 37.5842 83.3202 38.0103 83.6386 38.9578C83.9999 40.0335 83.2812 40.9254 82.2812 41.3797C73.98 45.1497 65.5645 51.8231 65.5644 57.1961C65.5644 60.7133 67.6232 61.8054 69.2607 61.8054C70.8982 61.8053 72.9687 60.7132 72.9687 57.1961C72.9687 55.1469 71.7266 53.1005 70.5117 51.6082C70.5117 51.6082 71.8191 50.0465 73.3418 48.9539C75.573 51.5308 76.9794 54.0813 76.9794 57.1961C76.9794 62.1932 73.7452 65.8716 69.2607 65.8719C64.776 65.8718 61.541 62.1933 61.541 57.1961C61.541 49.1584 73.6804 40.9043 80.8847 38.0808ZM55.0224 38.9597C55.3407 38.012 56.5088 37.5851 57.7763 38.0818C60.72 39.2354 64.4873 41.296 67.914 43.8777C66.3195 45.1252 65.0859 46.4549 65.0859 46.4549C62.4438 44.5139 59.4042 42.7542 56.3798 41.3806C55.38 40.9264 54.6614 40.0353 55.0224 38.9597Z" fill="#F8FAFC" fill-opacity="0.5"/> </g> </g> <g id="Yutori Cursor" filter="url(#filter1_ddddii_45_139)"> <path d="M17.7686 7.16441C16.8071 4.87975 18.9606 2.51614 21.3246 3.26145L51.2884 12.7081C54.3315 13.6675 54.214 18.0135 51.1235 18.8071C43.5544 20.7507 37.8792 27.0293 36.7077 34.7557L36.5332 35.9063C36.0312 39.2174 31.4966 39.7823 30.1974 36.6956L17.7686 7.16441Z" fill="url(#paint3_linear_45_139)"/> <path d="M17.7686 7.16441C16.8071 4.87975 18.9606 2.51614 21.3246 3.26145L51.2884 12.7081C54.3315 13.6675 54.214 18.0135 51.1235 18.8071C43.5544 20.7507 37.8792 27.0293 36.7077 34.7557L36.5332 35.9063C36.0312 39.2174 31.4966 39.7823 30.1974 36.6956L17.7686 7.16441Z" stroke="url(#paint4_linear_45_139)"/> </g> </g> <defs> <filter id="filter0_ddddii_45_139" x="29.2307" y="24.4717" width="80.2" height="105.4" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB"> <feFlood flood-opacity="0" result="BackgroundImageFix"/> <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/> <feOffset dy="2.4"/> <feGaussianBlur stdDeviation="2.4"/> <feColorMatrix type="matrix" values="0 0 0 0 0.0627451 0 0 0 0 0.403922 0 0 0 0 0.435294 0 0 0 0.07 0"/> <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_45_139"/> <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/> <feOffset dy="9.6"/> <feGaussianBlur stdDeviation="4.8"/> <feColorMatrix type="matrix" values="0 0 0 0 0.0627451 0 0 0 0 0.403922 0 0 0 0 0.435294 0 0 0 0.06 0"/> <feBlend mode="normal" in2="effect1_dropShadow_45_139" result="effect2_dropShadow_45_139"/> <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/> <feOffset dy="21.6"/> <feGaussianBlur stdDeviation="6.6"/> <feColorMatrix type="matrix" values="0 0 0 0 0.0627451 0 0 0 0 0.403922 0 0 0 0 0.435294 0 0 0 0.04 0"/> <feBlend mode="normal" in2="effect2_dropShadow_45_139" result="effect3_dropShadow_45_139"/> <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/> <feOffset dy="38.4"/> <feGaussianBlur stdDeviation="7.8"/> <feColorMatrix type="matrix" values="0 0 0 0 0.0627451 0 0 0 0 0.403922 0 0 0 0 0.435294 0 0 0 0.01 0"/> <feBlend mode="normal" in2="effect3_dropShadow_45_139" result="effect4_dropShadow_45_139"/> <feBlend mode="normal" in="SourceGraphic" in2="effect4_dropShadow_45_139" result="shape"/> <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/> <feOffset dx="1.2" dy="-2.4"/> <feGaussianBlur stdDeviation="2.4"/> <feComposite in2="hardAlpha" operator="arithmetic" k2="-1" k3="1"/> <feColorMatrix type="matrix" values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.15 0"/> <feBlend mode="normal" in2="shape" result="effect5_innerShadow_45_139"/> <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/> <feOffset dx="-1.2" dy="3.6"/> <feGaussianBlur stdDeviation="2.4"/> <feComposite in2="hardAlpha" operator="arithmetic" k2="-1" k3="1"/> <feColorMatrix type="matrix" values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.4 0"/> <feBlend mode="normal" in2="effect5_innerShadow_45_139" result="effect6_innerShadow_45_139"/> </filter> <filter id="filter1_ddddii_45_139" x="1.90735e-06" y="4.29153e-06" width="71.0401" height="98.1868" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB"> <feFlood flood-opacity="0" result="BackgroundImageFix"/> <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/> <feOffset dy="2.62043"/> <feGaussianBlur stdDeviation="2.62043"/> <feColorMatrix type="matrix" values="0 0 0 0 0.0627451 0 0 0 0 0.403922 0 0 0 0 0.435294 0 0 0 0.07 0"/> <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_45_139"/> <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/> <feOffset dy="10.4817"/> <feGaussianBlur stdDeviation="5.24087"/> <feColorMatrix type="matrix" values="0 0 0 0 0.0627451 0 0 0 0 0.403922 0 0 0 0 0.435294 0 0 0 0.06 0"/> <feBlend mode="normal" in2="effect1_dropShadow_45_139" result="effect2_dropShadow_45_139"/> <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/> <feOffset dy="23.5839"/> <feGaussianBlur stdDeviation="7.20619"/> <feColorMatrix type="matrix" values="0 0 0 0 0.0627451 0 0 0 0 0.403922 0 0 0 0 0.435294 0 0 0 0.04 0"/> <feBlend mode="normal" in2="effect2_dropShadow_45_139" result="effect3_dropShadow_45_139"/> <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/> <feOffset dy="41.9269"/> <feGaussianBlur stdDeviation="8.51641"/> <feColorMatrix type="matrix" values="0 0 0 0 0.0627451 0 0 0 0 0.403922 0 0 0 0 0.435294 0 0 0 0.01 0"/> <feBlend mode="normal" in2="effect3_dropShadow_45_139" result="effect4_dropShadow_45_139"/> <feBlend mode="normal" in="SourceGraphic" in2="effect4_dropShadow_45_139" result="shape"/> <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/> <feOffset dx="1.31022" dy="-2.62043"/> <feGaussianBlur stdDeviation="2.62043"/> <feComposite in2="hardAlpha" operator="arithmetic" k2="-1" k3="1"/> <feColorMatrix type="matrix" values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.15 0"/> <feBlend mode="normal" in2="shape" result="effect5_innerShadow_45_139"/> <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/> <feOffset dx="-1.31022" dy="3.93065"/> <feGaussianBlur stdDeviation="2.62043"/> <feComposite in2="hardAlpha" operator="arithmetic" k2="-1" k3="1"/> <feColorMatrix type="matrix" values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.4 0"/> <feBlend mode="normal" in2="effect5_innerShadow_45_139" result="effect6_innerShadow_45_139"/> </filter> <linearGradient id="paint0_linear_45_139" x1="76.1071" y1="27.3717" x2="52.9875" y2="65.2146" gradientUnits="userSpaceOnUse"> <stop stop-color="#18AA7E"/> <stop offset="0.45" stop-color="#148F6A"/> <stop offset="0.75" stop-color="#148F6A"/> <stop offset="1" stop-color="#159871"/> </linearGradient> <linearGradient id="paint1_linear_45_139" x1="93.3307" y1="27.3717" x2="45.3307" y2="75.3718" gradientUnits="userSpaceOnUse"> <stop stop-color="#5AE8BD"/> <stop offset="0.5" stop-color="#127D5D"/> <stop offset="1" stop-color="#19B385"/> </linearGradient> <linearGradient id="paint2_linear_45_139" x1="69.3591" y1="37.8241" x2="58.779" y2="60.9714" gradientUnits="userSpaceOnUse"> <stop stop-color="#5DF3C6"/> <stop offset="0.45" stop-color="#29B188"/> <stop offset="0.75" stop-color="#22A67E"/> <stop offset="1" stop-color="#22C191"/> </linearGradient> <linearGradient id="paint3_linear_45_139" x1="41.8168" y1="0.821967" x2="17.2954" y2="37.3243" gradientUnits="userSpaceOnUse"> <stop stop-color="#18AA7E"/> <stop offset="0.45" stop-color="#148F6A"/> <stop offset="0.75" stop-color="#148F6A"/> <stop offset="1" stop-color="#159871"/> </linearGradient> <linearGradient id="paint4_linear_45_139" x1="25.3307" y1="1.37175" x2="18.0622" y2="39.8967" gradientUnits="userSpaceOnUse"> <stop stop-color="#5AE8BD"/> <stop offset="0.5" stop-color="#009367"/> <stop offset="0.9" stop-color="#19B385"/> </linearGradient> </defs> </svg>'
@@ -633,7 +640,7 @@ _THOUGHT_CARD_JS = f"""(args) => {{
         root.__n1CollapseTimer = setTimeout(() => {{
             root.__n1CollapseTimer = null;
             applyExpand();
-        }}, 360);
+        }}, {THOUGHT_COLLAPSE_MS});
     }} else {{
         applyExpand();
     }}
@@ -760,6 +767,11 @@ class OverlayController:
         # in _reinject_after_navigation — the reasoning is shown before the
         # action now, so without this it would vanish on the post-nav page.
         self._thought_text: str | None = None
+        # Monotonic time when the current thought's shrink→expand finishes. A
+        # click is held until then (see _await_thought_settled) so a navigating
+        # click's reasoning is fully visible on the pre-nav page. None when
+        # nothing is settling.
+        self._thought_settle_at: float | None = None
 
     async def claim_started(self) -> None:
         self._active = True
@@ -888,6 +900,12 @@ class OverlayController:
                 await asyncio.sleep(CURSOR_TRANSITION_MS / 1000)
 
         if action_type in {"left_click", "double_click", "triple_click", "middle_click", "right_click"}:
+            # Hold the click until the reasoning capsule has finished expanding,
+            # so a navigating click's thought is fully visible on the pre-nav page
+            # instead of finishing its expand on the destination. The cursor glide
+            # above overlaps the expand, so this usually adds little; a thought
+            # shown earlier in the turn is already settled (no-op).
+            await self._await_thought_settled()
             await self._show_click_effect(x, y, num_clicks)
         elif action_type == "scroll":
             _rot = {"down": 0, "up": 180, "right": -90, "left": 90}.get(direction, 0)
@@ -918,7 +936,13 @@ class OverlayController:
     async def show_thought(self, text: str) -> None:
         if not self._active:
             return
+        replacing = self._thought_text is not None
         self._thought_text = text
+        # Record when the shrink→expand settles (collapse+expand when replacing a
+        # visible thought, expand-only for the first) so a click can hold until
+        # the pill is fully visible — see _await_thought_settled.
+        settle_ms = (THOUGHT_COLLAPSE_MS + THOUGHT_EXPAND_MS) if replacing else THOUGHT_EXPAND_MS
+        self._thought_settle_at = time.monotonic() + settle_ms / 1000
         await self._inject_persistent_root()
         clipped = self._clip_text(text, 520)
         # During "Analyzing" the card stays until clear_thought() is called;
@@ -936,9 +960,24 @@ class OverlayController:
 
     async def clear_thought(self) -> None:
         self._thought_text = None
+        self._thought_settle_at = None
         if not self._active:
             return
         await self._eval(_CLEAR_THOUGHT_JS)
+
+    async def _await_thought_settled(self) -> None:
+        """Wait until the current thought capsule has finished its shrink→expand.
+
+        Lets a navigating click hold until the reasoning is fully visible on the
+        pre-navigation page. No-op when nothing is settling (already past, or no
+        thought shown). Visualize-only pacing: the real click just fires slightly
+        later, like the cursor-glide sleep — Navigator's behavior is unchanged.
+        """
+        if not self._active or self._thought_settle_at is None:
+            return
+        remaining = self._thought_settle_at - time.monotonic()
+        if remaining > 0:
+            await asyncio.sleep(remaining)
 
     async def before_screenshot(self) -> None:
         if not self._active:

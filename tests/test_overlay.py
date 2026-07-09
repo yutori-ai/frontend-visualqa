@@ -212,6 +212,21 @@ class TestOverlayInformationalCards:
         assert call.args[1]["cy"] == 780
 
     @pytest.mark.asyncio
+    async def test_preview_click_holds_until_thought_settles(self) -> None:
+        # A click after a *replacing* thought is held until the pill finishes its
+        # shrink→expand, so a navigating click's reasoning is fully visible on the
+        # pre-nav page instead of expanding on the destination. The hold is a
+        # sleep ≈ the settle time (collapse + expand).
+        page, controller = await _started_controller()
+        await controller.show_thought("First reasoning.")
+        await controller.show_thought("Second, replacing reasoning.")
+        with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock) as sleep_mock:
+            await controller.preview_action("left_click", x=100, y=200)
+
+        sleeps = [call.args[0] for call in sleep_mock.call_args_list if call.args]
+        assert any(s >= 0.5 for s in sleeps), f"expected a settle-hold sleep, got {sleeps}"
+
+    @pytest.mark.asyncio
     async def test_preview_action_preserves_existing_thought_card(self) -> None:
         # The reasoning capsule is shown synced with its action (by claim_verifier,
         # before the action runs), so preview_action must NOT clear it — it stays
