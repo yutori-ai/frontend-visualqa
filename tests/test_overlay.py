@@ -115,6 +115,22 @@ class TestOverlayCursor:
         assert "150px" in script
         assert "250px" in script
 
+    @pytest.mark.asyncio
+    async def test_move_cursor_reflows_thought_pill_for_new_position(self) -> None:
+        # The pill's left/right flip is chosen at show_thought time from the
+        # previous cursor position; _move_cursor must recompute it for the new
+        # position so the capsule can't run off-screen after the cursor moves.
+        page = _make_mock_page()
+        controller = OverlayController(page)
+        controller._active = True
+
+        await controller._move_cursor(1200, 250)
+
+        script = str(page.evaluate.call_args.args[0])
+        assert "__n1ThoughtCard" in script
+        assert "goLeft" in script
+        assert "innerWidth" in script
+
 
 class TestOverlayInformationalCards:
     @pytest.mark.asyncio

@@ -949,6 +949,26 @@ class OverlayController:
                 // doesn't clip off-screen (it otherwise hangs ~72px below the tip).
                 const badge = document.getElementById('{BADGE_ID}');
                 if (badge) badge.style.top = ({y} + 72 > window.innerHeight) ? '-68.5px' : '27.37px';
+                // The thought pill's horizontal side (left/right of the badge) was
+                // chosen at show_thought time from the *previous* cursor x. Recompute
+                // it for the new x so the capsule can't run off-screen after the cursor
+                // moves to the action target. Mirrors goLeft in _THOUGHT_CARD_JS — keep
+                // the constants and formula in sync with it.
+                const card = document.getElementById('{THOUGHT_CARD_ID}');
+                const slot = document.getElementById('{BADGE_SLOT_ID}');
+                if (card && badge && slot) {{
+                    const B = 48, MAXW = 340, GAP = 10, END = 15;
+                    const goLeft = ({x} + (-18.33 + 45.33 + MAXW + 14)) > window.innerWidth;
+                    if (goLeft) {{
+                        badge.style.left = 'auto'; badge.style.right = '16.67px';
+                        slot.style.left = 'auto'; slot.style.right = '0';
+                        card.style.left = END + 'px'; card.style.right = (B + GAP) + 'px';
+                    }} else {{
+                        badge.style.right = 'auto'; badge.style.left = '45.33px';
+                        slot.style.right = 'auto'; slot.style.left = '0';
+                        card.style.left = (B + GAP) + 'px'; card.style.right = END + 'px';
+                    }}
+                }}
                 const offScreen = cursor.style.left === '-200px';
                 if (offScreen) {{
                     cursor.style.transition = 'none';
