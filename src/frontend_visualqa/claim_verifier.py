@@ -296,13 +296,16 @@ class ClaimVerifier:
                         messages=messages,
                     )
                     await self._safe_hook_call("on_tool_start", name=tool_name, arguments=tool_arguments)
-                    # Show this turn's reasoning synced with its first interaction
-                    # action: BEFORE the action runs, so it lands on the action's own
-                    # page rather than the next one after a navigation, and BEFORE the
-                    # evidence screenshot, which hides the whole overlay — so the model
-                    # still never reads its own reasoning off a capture. An interaction
-                    # with no narration clears any stale prior thought instead.
-                    if not reasoning_shown and self._overlay and tool_counts_as_interaction(tool_name):
+                    # Show this turn's reasoning synced with its FIRST tool — passive
+                    # (extract_elements/find/…) or interactive — so it lands on the
+                    # right page and never trails the action, and BEFORE the evidence
+                    # screenshot, which hides the whole overlay so the model can't read
+                    # its own reasoning off a capture. Gating on the first *interaction*
+                    # tool instead left the previous turn's stale capsule on screen
+                    # through passive-first turns (set_status no longer clears it), and
+                    # showed nothing for all-passive turns. A turn with no narration
+                    # clears any stale prior thought instead.
+                    if not reasoning_shown and self._overlay:
                         if turn_reasoning:
                             await self._best_effort_overlay_call("show_thought", turn_reasoning)
                         else:

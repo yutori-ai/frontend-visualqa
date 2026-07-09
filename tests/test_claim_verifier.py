@@ -587,6 +587,53 @@ async def test_claim_verifier_shows_post_capture_analysis_ui_after_action_screen
 
 
 @pytest.mark.asyncio
+async def test_claim_verifier_shows_thought_before_a_passive_first_tool(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _import_claim_verifier_module()
+    overlay_events: list[Any] = []
+    monkeypatch.setattr(module, "_create_overlay_controller", lambda page: RecordingFakeOverlay(overlay_events))
+    reasoning = "I need the form fields — let me extract the interactive elements."
+    verifier, _, _ = _build_claim_verifier(
+        module,
+        tmp_path,
+        responses=[
+            FakeMessage(
+                content=reasoning,
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-1",
+                        function=FakeFunction(
+                            name="extract_elements", arguments=json.dumps({"filter": "interactive"})
+                        ),
+                    )
+                ],
+            ),
+            _verdict_response(status="passed", finding="The form is present."),
+        ],
+        visualize=True,
+    )
+
+    await _call_verify(
+        verifier,
+        page=FakePage(url="http://fixture.local/page"),
+        viewport=ViewportConfig(),
+        claim="The form is present",
+        url="http://fixture.local/page",
+        navigation_hint=None,
+        visualize=True,
+    )
+
+    # The turn's only tool is passive (extract_elements): the reasoning must still
+    # be shown (before the evidence screenshot), not left as the prior turn's
+    # stale capsule.
+    assert ("show_thought", reasoning) in overlay_events
+    thought_index = overlay_events.index(("show_thought", reasoning))
+    before_index = overlay_events.index("before_screenshot")
+    assert thought_index < before_index
+
+
+@pytest.mark.asyncio
 async def test_claim_verifier_does_not_show_thought_for_plain_text_turn_without_tool_calls(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
