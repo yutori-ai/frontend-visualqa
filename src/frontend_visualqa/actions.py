@@ -506,6 +506,18 @@ class ActionExecutor:
                     if semantic_action is not None:
                         await self.execute_action(session, semantic_action, {})
                         return trace
+                # Copy/paste chords (Ctrl/Cmd+C / +V) get a clipboard glyph
+                # overlay at the focused element (best-effort).
+                chord = {p.strip().lower() for p in key_comb.replace("+", " ").split()}
+                mods = {"control", "ctrl", "meta", "cmd", "command", "controlormeta"}
+                # Only a *bare* Ctrl/Cmd+C or +V is copy/paste. Any extra token — the
+                # Shift in Ctrl+Shift+C (devtools, not copy), an Alt, or another key —
+                # makes it a different shortcut, so it must not show the clipboard glyph.
+                if self._overlay is not None and (chord & mods):
+                    if "c" in chord and chord <= mods | {"c"}:
+                        await self._best_effort_overlay_preview_action(action_type="copy")
+                    elif "v" in chord and chord <= mods | {"v"}:
+                        await self._best_effort_overlay_preview_action(action_type="paste")
                 await self._best_effort_overlay_set_status("Pressing keys")
                 await self._press_keys_skipping_zoom_shortcuts(page, key_sequence)
 
@@ -609,6 +621,21 @@ class ActionExecutor:
             value_is_sensitive = bool(value) and (
                 not ref or await referenced_element_is_password(page, ref) is not False
             )
+            # DOM value-set pastes the value in rather than keystroking it, and
+            # the expanded-tool path shows no cursor/effect. Preview a clipboard-
+            # paste glyph at the target field (best-effort; never breaks the set).
+            if self._overlay is not None and ref:
+                try:
+                    ref_info = await evaluate_tool_script(page, GET_ELEMENT_BY_REF_SCRIPT, ref)
+                    coords = ref_info.get("coordinates") if ref_info.get("success") else None
+                    if _is_coordinate_pair(coords):
+                        await self._best_effort_overlay_preview_action(
+                            action_type="set_element_value",
+                            x=round(float(coords[0])),
+                            y=round(float(coords[1])),
+                        )
+                except Exception:
+                    logger.debug("paste-effect preview failed for ref %s", ref, exc_info=True)
             result = await evaluate_tool_script(page, SET_ELEMENT_VALUE_SCRIPT, ref, value)
             output = result.get("message", "set_element_value completed")
             trace_arguments = redact_element_value(arguments) if value_is_sensitive else arguments

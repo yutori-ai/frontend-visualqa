@@ -465,6 +465,38 @@ async def test_execute_action_hover_previews_before_mouse_move() -> None:
 
 
 @pytest.mark.asyncio
+async def test_execute_action_key_press_shows_copy_paste_glyph_only_for_bare_chords() -> None:
+    module = _import_actions_module()
+
+    async def _preview_types(key_comb: str) -> list[str]:
+        call_order: list[tuple[Any, ...]] = []
+        page = _make_overlay_enabled_page(call_order)
+        overlay = MagicMock()
+
+        async def _preview_action(action_type: str, **kwargs: Any) -> None:
+            call_order.append(("preview_action", action_type))
+
+        overlay.preview_action = AsyncMock(side_effect=_preview_action)
+        executor = instantiate_with_supported_kwargs(
+            module.ActionExecutor,
+            navigation_timeout_ms=1_000,
+            settle_delay_seconds=0,
+        )
+        executor.overlay = overlay
+        await _call_execute_action(executor, page, "key_press", {"key_comb": key_comb}, ViewportConfig())
+        return [entry[1] for entry in call_order if entry[0] == "preview_action"]
+
+    # A bare Ctrl/Cmd+C or +V shows the clipboard glyph.
+    assert await _preview_types("Control+C") == ["copy"]
+    assert await _preview_types("Meta+V") == ["paste"]
+    assert await _preview_types("ControlOrMeta+C") == ["copy"]
+    # A shifted chord is a different shortcut (e.g. Ctrl+Shift+C = devtools) and
+    # must not be mislabeled as copy/paste.
+    assert await _preview_types("Control+Shift+C") == []
+    assert await _preview_types("Control+Shift+V") == []
+
+
+@pytest.mark.asyncio
 async def test_execute_action_mouse_move_and_ref_resolution_use_sdk_tool_helpers() -> None:
     module = _import_actions_module()
     executor = _build_action_executor(module)

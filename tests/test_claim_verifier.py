@@ -520,20 +520,14 @@ async def test_claim_verifier_records_reasoning_events_and_shows_thought_for_too
     )
 
     assert ("show_thought", reasoning) in overlay_events
-    # The thought card must appear AFTER evidence capture (after_screenshot)
-    # so it plays during the next LLM call, avoiding flash.
-    last_after = len(overlay_events) - 1 - overlay_events[::-1].index("after_screenshot")
-    first_post_capture_status = next(
-        index
-        for index, event in enumerate(overlay_events)
-        if index > last_after and event == ("set_status", "Analyzing")
-    )
+    # The thought card must appear synced with its action: BEFORE the evidence
+    # screenshot (which hides the whole overlay), so it lands on the action's own
+    # page and the model never reads its own reasoning off the capture.
     first_thought = overlay_events.index(("show_thought", reasoning))
-    assert first_thought > last_after, (
-        f"show_thought at index {first_thought} should come after after_screenshot at index {last_after}"
+    first_before = overlay_events.index("before_screenshot")
+    assert first_thought < first_before, (
+        f"show_thought at index {first_thought} should come before before_screenshot at index {first_before}"
     )
-    assert first_post_capture_status > last_after
-    assert first_thought > first_post_capture_status
     action_event, verdict_event = _field(result, "trace").events
     assert action_event.type == "action"
     assert action_event.reasoning == reasoning
@@ -597,15 +591,56 @@ async def test_claim_verifier_shows_post_capture_analysis_ui_after_action_screen
     )
 
     assert _field(result, "status") == "passed"
-    after_index = overlay_events.index("after_screenshot")
-    first_post_capture_status = next(
-        index
-        for index, event in enumerate(overlay_events)
-        if index > after_index and event == ("set_status", "Analyzing")
-    )
     thought_index = overlay_events.index(("show_thought", reasoning))
-    assert first_post_capture_status > after_index
-    assert thought_index > first_post_capture_status
+    before_index = overlay_events.index("before_screenshot")
+    assert thought_index < before_index
+
+
+@pytest.mark.asyncio
+async def test_claim_verifier_shows_thought_before_a_passive_first_tool(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _import_claim_verifier_module()
+    overlay_events: list[Any] = []
+    monkeypatch.setattr(module, "_create_overlay_controller", lambda page: RecordingFakeOverlay(overlay_events))
+    reasoning = "I need the form fields — let me extract the interactive elements."
+    verifier, _, _ = _build_claim_verifier(
+        module,
+        tmp_path,
+        responses=[
+            FakeMessage(
+                content=reasoning,
+                tool_calls=[
+                    FakeToolCall(
+                        id="tool-1",
+                        function=FakeFunction(
+                            name="extract_elements", arguments=json.dumps({"filter": "interactive"})
+                        ),
+                    )
+                ],
+            ),
+            _verdict_response(status="passed", finding="The form is present."),
+        ],
+        visualize=True,
+    )
+
+    await _call_verify(
+        verifier,
+        page=FakePage(url="http://fixture.local/page"),
+        viewport=ViewportConfig(),
+        claim="The form is present",
+        url="http://fixture.local/page",
+        navigation_hint=None,
+        visualize=True,
+    )
+
+    # The turn's only tool is passive (extract_elements): the reasoning must still
+    # be shown (before the evidence screenshot), not left as the prior turn's
+    # stale capsule.
+    assert ("show_thought", reasoning) in overlay_events
+    thought_index = overlay_events.index(("show_thought", reasoning))
+    before_index = overlay_events.index("before_screenshot")
+    assert thought_index < before_index
 
 
 @pytest.mark.asyncio
@@ -792,15 +827,9 @@ async def test_claim_verifier_preserves_tool_call_order_when_action_and_verdict_
     assert _field(result, "status") == "passed"
     assert action_executor.calls == [("goto_url", {"url": "http://fixture.local/modal"})]
     assert _field(result, "page").url == "http://fixture.local/modal"
-    after_index = overlay_events.index("after_screenshot")
-    post_capture_status_index = next(
-        index
-        for index, event in enumerate(overlay_events)
-        if index > after_index and event == ("set_status", "Analyzing")
-    )
     thought_index = overlay_events.index(("show_thought", reasoning))
-    assert post_capture_status_index > after_index
-    assert thought_index > post_capture_status_index
+    before_index = overlay_events.index("before_screenshot")
+    assert thought_index < before_index
     assert overlay_events[-1] == "claim_ended"
 
 
