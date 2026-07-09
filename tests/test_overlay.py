@@ -69,9 +69,8 @@ class TestOverlayControllerLifecycle:
         assert any("__n1PersistentRoot" in script for script in scripts)
         assert any("__n1TransientRoot" in script for script in scripts)
         assert any("__n1ClickStyle" in script for script in scripts)
-        assert any("__n1ScrollStyle" in script for script in scripts)
-        assert any("__n1TypeStyle" in script for script in scripts)
         assert any("__n1DragStyle" in script for script in scripts)
+        assert any("__n1BadgeKf" in script for script in scripts)
         assert any("__n1ThoughtTimer" in script for script in scripts)
 
         page.evaluate.reset_mock()

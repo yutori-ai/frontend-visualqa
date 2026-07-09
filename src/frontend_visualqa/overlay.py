@@ -19,7 +19,6 @@ logger = logging.getLogger(__name__)
 
 Z_INDEX = 2_147_483_646
 YUTORI_GREEN = "#1DCD98"
-EFFECT_DURATION_MS = 600
 BORDER_CYCLE_MS = 1000
 
 PERSISTENT_ROOT_ID = "__n1PersistentRoot"
@@ -30,10 +29,6 @@ STATUS_CHIP_ID = "__n1StatusChip"
 THOUGHT_CARD_ID = "__n1ThoughtCard"
 THOUGHT_STYLE_ID = "__n1ThoughtStyle"
 CLICK_STYLE_ID = "__n1ClickStyle"
-SCROLL_STYLE_ID = "__n1ScrollStyle"
-TYPE_STYLE_ID = "__n1TypeStyle"
-PASTE_STYLE_ID = "__n1PasteStyle"
-COPY_STYLE_ID = "__n1CopyStyle"
 
 CURSOR_ID = "__n1Cursor"
 BADGE_ID = "__n1Badge"
@@ -43,7 +38,6 @@ BADGE_GLYPH_ID = "__n1BadgeGlyph"
 DRAG_STYLE_ID = "__n1DragStyle"
 BADGE_KF_STYLE_ID = "__n1BadgeKf"
 CLICK_DURATION_MS = 250
-SCROLL_DURATION_MS = 1500
 DRAG_DURATION_MS = 200
 CURSOR_TRANSITION_MS = 350
 THOUGHT_DURATION_MS = 2000
@@ -661,7 +655,7 @@ _REMOVE_ALL_JS = f"""() => {{
     }}
     const transient = document.getElementById('{TRANSIENT_ROOT_ID}');
     if (transient) transient.remove();
-    for (const styleId of ['{BORDER_STYLE_ID}', '{CLICK_STYLE_ID}', '{SCROLL_STYLE_ID}', '{TYPE_STYLE_ID}', '{DRAG_STYLE_ID}', '{THOUGHT_STYLE_ID}', '{PASTE_STYLE_ID}', '{COPY_STYLE_ID}', '{BADGE_KF_STYLE_ID}']) {{
+    for (const styleId of ['{BORDER_STYLE_ID}', '{CLICK_STYLE_ID}', '{DRAG_STYLE_ID}', '{THOUGHT_STYLE_ID}', '{BADGE_KF_STYLE_ID}']) {{
         const style = document.getElementById(styleId);
         if (style) style.remove();
     }}
@@ -1004,118 +998,6 @@ class OverlayController:
             }}"""
         )
 
-    async def _show_scroll_effect(self, x: int, y: int, direction: str = "down", *, amount: int = 1) -> None:
-        # Directional chevrons, matching the Navigator browser extension's
-        # scroll effect (navigator-browser-extension/modules/visual_effects.js):
-        # three chevrons cascade top->bottom inside a rounded box, and the whole
-        # box is rotated to point in the scroll direction. Reads unambiguously as
-        # scrolling (a circular arrow reads as "refresh"). ``amount`` is accepted
-        # for signature compatibility but not used for scaling.
-        rotation = {"down": 0, "up": 180, "right": -90, "left": 90}.get(direction, 0)
-        scroll_style = _inject_style_js(
-            SCROLL_STYLE_ID,
-            (
-                "'@keyframes n1scrollfade{0%{opacity:0;transform:translate(-50%,-50%) scale(0.9)}"
-                "15%{opacity:1;transform:translate(-50%,-50%) scale(1)}"
-                "85%{opacity:1;transform:translate(-50%,-50%) scale(1)}"
-                "100%{opacity:0;transform:translate(-50%,-50%) scale(0.95)}}"
-                "@keyframes n1scrollchevron{0%{opacity:0;transform:translateY(-6px) scale(0.7)}"
-                "35%{opacity:1;transform:translateY(0) scale(1)}"
-                "65%{opacity:1;transform:translateY(0) scale(1)}"
-                "100%{opacity:0;transform:translateY(8px) scale(0.95)}}'"
-            ),
-            guard=True,
-        )
-        await self._eval(
-            f"""() => {{
-                const root = document.getElementById('{TRANSIENT_ROOT_ID}');
-                if (!root) return;
-                {scroll_style}
-
-                const container = document.createElement('div');
-                container.style.cssText = 'position:fixed;left:{x}px;top:{y}px;pointer-events:none;z-index:{Z_INDEX};animation:n1scrollfade {SCROLL_DURATION_MS}ms ease-out forwards;';
-
-                // Unrotated chevrons point down; rotating the box reorients them
-                // to the scroll direction.
-                const box = document.createElement('div');
-                box.style.cssText = 'width:56px;height:56px;border:2.5px solid {YUTORI_GREEN};border-radius:12px;box-shadow:0 0 20px rgba(29,205,152,0.4);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;box-sizing:border-box;transform:rotate({rotation}deg);';
-
-                const chevronSvg = "<svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='{YUTORI_GREEN}' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'></polyline></svg>";
-                for (let i = 0; i < 3; i++) {{
-                    const chev = document.createElement('div');
-                    chev.style.cssText = 'display:flex;opacity:0;animation:n1scrollchevron 400ms ease-out infinite;animation-delay:' + (i * 100) + 'ms;';
-                    chev.innerHTML = chevronSvg;
-                    box.appendChild(chev);
-                }}
-                container.appendChild(box);
-
-                // Only n1scrollfade is finite, so animationend fires once when the
-                // fade completes; the chevron cascade is infinite.
-                container.addEventListener('animationend', () => {{
-                    container.remove();
-                }}, {{once: true}});
-                root.appendChild(container);
-            }}"""
-        )
-
-    async def _show_type_effect(self, center: dict[str, int] | None) -> None:
-        if center is None:
-            return
-
-        cx = center["x"]
-        cy_raw = center["y"]
-        show_below = cy_raw < 50
-        cy = cy_raw + 30 if show_below else cy_raw - 36
-        bob = "6px" if show_below else "-6px"
-        dot_bob = "5px" if show_below else "-5px"
-        fade_from = "-10px" if show_below else "10px"
-        fade_to = "10px" if show_below else "-10px"
-
-        # Labeled "typing" pill, matching the extension's showTypeEffect:
-        # green pill with the word "typing" + bobbing dots + a blinking caret.
-        type_css = (
-            "'@keyframes n1tbob{0%,100%{transform:translateX(-50%) translateY(0)}"
-            "50%{transform:translateX(-50%) translateY(" + bob + ")}}"
-            "@keyframes n1tglow{0%,100%{box-shadow:0 4px 16px rgba(29,205,152,0.5)}"
-            "50%{box-shadow:0 4px 28px rgba(29,205,152,0.9),0 0 12px rgba(29,205,152,0.5)}}"
-            "@keyframes n1tdot{0%,100%{opacity:0.2;transform:translateY(0) scale(0.8)}"
-            "50%{opacity:1;transform:translateY(" + dot_bob + ") scale(1.1)}}"
-            "@keyframes n1tcaret{0%,100%{opacity:1}50%{opacity:0}}"
-            "@keyframes n1tfade{0%{opacity:0;transform:translateX(-50%) translateY(" + fade_from + ")}"
-            "15%{opacity:1;transform:translateX(-50%) translateY(0)}85%{opacity:1}"
-            "100%{opacity:0;transform:translateX(-50%) translateY(" + fade_to + ")}}'"
-        )
-        type_style = _inject_style_js(TYPE_STYLE_ID, type_css)
-        await self._eval(
-            f"""() => {{
-                const root = document.getElementById('{TRANSIENT_ROOT_ID}');
-                if (!root) return;
-                {type_style}
-                const indicator = document.createElement('div');
-                indicator.style.cssText = 'position:fixed;left:{cx}px;top:{cy}px;background:{YUTORI_GREEN};color:#000;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;padding:6px 12px;border-radius:5px;pointer-events:none;z-index:{Z_INDEX};transform:translateX(-50%);animation:n1tfade {EFFECT_DURATION_MS}ms ease-out forwards,n1tbob 0.6s ease-in-out infinite,n1tglow 0.8s ease-in-out infinite;display:flex;align-items:center;gap:3px;';
-
-                const label = document.createElement('span');
-                label.textContent = 'typing';
-                indicator.appendChild(label);
-
-                for (let i = 0; i < 3; i++) {{
-                    const dot = document.createElement('span');
-                    dot.textContent = '\u00b7';
-                    dot.style.cssText = 'display:inline-block;font-size:14px;font-weight:700;line-height:1;animation:n1tdot 0.5s ease-in-out infinite;animation-delay:' + (i * 0.1) + 's;';
-                    indicator.appendChild(dot);
-                }}
-
-                const caret = document.createElement('span');
-                caret.style.cssText = 'width:2px;height:12px;background:#000;margin-left:4px;border-radius:1px;animation:n1tcaret 0.53s step-end infinite;';
-                indicator.appendChild(caret);
-
-                // Only n1tfade is finite; bob/glow/dot/caret are infinite and
-                // never fire animationend, so this fires once on fade-out.
-                indicator.addEventListener('animationend', () => {{ indicator.remove(); style.remove(); }}, {{once: true}});
-                root.appendChild(indicator);
-            }}"""
-        )
-
     async def _show_drag_effect(self, start_x: int, start_y: int, end_x: int, end_y: int) -> None:
         drag_style = _inject_style_js(
             DRAG_STYLE_ID,
@@ -1141,68 +1023,6 @@ class OverlayController:
                 // Trail animation outlasts the pressed dot, so its animationend
                 // is the right signal to tear down both elements + the style.
                 trail.addEventListener('animationend', () => {{ pressed.remove(); trail.remove(); style.remove(); }}, {{once: true}});
-            }}"""
-        )
-
-    async def _show_paste_effect(self, x: int, y: int) -> None:
-        # DOM value-set ("set_element_value") pastes a value straight into a
-        # field rather than keystroking it — so it gets a clipboard-paste glyph
-        # (Lucide clipboard-paste), not the "typing" pill. Mirrors the extension's
-        # visual language; keeps the overlay honest about which mechanism ran.
-        show_below = y < 50
-        py = y + 30 if show_below else y - 36
-        fade_from = "-10px" if show_below else "10px"
-        fade_to = "10px" if show_below else "-10px"
-        paste_css = (
-            "'@keyframes n1pglow{0%,100%{box-shadow:0 4px 16px rgba(29,205,152,0.5)}"
-            "50%{box-shadow:0 4px 28px rgba(29,205,152,0.9),0 0 12px rgba(29,205,152,0.5)}}"
-            "@keyframes n1pfade{0%{opacity:0;transform:translateX(-50%) translateY(" + fade_from + ")}"
-            "15%{opacity:1;transform:translateX(-50%) translateY(0)}85%{opacity:1}"
-            "100%{opacity:0;transform:translateX(-50%) translateY(" + fade_to + ")}}'"
-        )
-        paste_style = _inject_style_js(PASTE_STYLE_ID, paste_css)
-        await self._eval(
-            f"""() => {{
-                const root = document.getElementById('{TRANSIENT_ROOT_ID}');
-                if (!root) return;
-                {paste_style}
-                const pill = document.createElement('div');
-                pill.style.cssText = 'position:fixed;left:{x}px;top:{py}px;background:{YUTORI_GREEN};color:#000;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;padding:6px 10px;border-radius:5px;pointer-events:none;z-index:{Z_INDEX};transform:translateX(-50%);animation:n1pfade {EFFECT_DURATION_MS}ms ease-out forwards,n1pglow 0.8s ease-in-out infinite;display:flex;align-items:center;gap:5px;';
-                pill.innerHTML = "<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='#000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M11 14h10'></path><path d='M16 4h2a2 2 0 0 1 2 2v1.344'></path><path d='m17 18 4-4-4-4'></path><path d='M8 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 1.793-1.113'></path><rect x='8' y='2' width='8' height='4' rx='1'></rect></svg><span>pasting</span>";
-
-                // Only n1pfade is finite; n1pglow is infinite, so animationend
-                // fires once on fade-out.
-                pill.addEventListener('animationend', () => {{ pill.remove(); style.remove(); }}, {{once: true}});
-                root.appendChild(pill);
-            }}"""
-        )
-
-    async def _show_copy_effect(self, x: int, y: int) -> None:
-        # Copy (Control/Cmd+C) — a clipboard "copy" glyph (Lucide copy) at the
-        # selected/focused element. Paired with the paste glyph on Control/Cmd+V.
-        show_below = y < 50
-        py = y + 30 if show_below else y - 36
-        fade_from = "-10px" if show_below else "10px"
-        fade_to = "10px" if show_below else "-10px"
-        copy_css = (
-            "'@keyframes n1cglow{0%,100%{box-shadow:0 4px 16px rgba(29,205,152,0.5)}"
-            "50%{box-shadow:0 4px 28px rgba(29,205,152,0.9),0 0 12px rgba(29,205,152,0.5)}}"
-            "@keyframes n1cfade{0%{opacity:0;transform:translateX(-50%) translateY(" + fade_from + ")}"
-            "15%{opacity:1;transform:translateX(-50%) translateY(0)}85%{opacity:1}"
-            "100%{opacity:0;transform:translateX(-50%) translateY(" + fade_to + ")}}'"
-        )
-        copy_style = _inject_style_js(COPY_STYLE_ID, copy_css)
-        await self._eval(
-            f"""() => {{
-                const root = document.getElementById('{TRANSIENT_ROOT_ID}');
-                if (!root) return;
-                {copy_style}
-                const pill = document.createElement('div');
-                pill.style.cssText = 'position:fixed;left:{x}px;top:{py}px;background:{YUTORI_GREEN};color:#000;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;padding:6px 10px;border-radius:5px;pointer-events:none;z-index:{Z_INDEX};transform:translateX(-50%);animation:n1cfade {EFFECT_DURATION_MS}ms ease-out forwards,n1cglow 0.8s ease-in-out infinite;display:flex;align-items:center;gap:5px;';
-                pill.innerHTML = "<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='#000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect width='14' height='14' x='8' y='8' rx='2' ry='2'></rect><path d='M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2'></path></svg><span>copying</span>";
-
-                pill.addEventListener('animationend', () => {{ pill.remove(); style.remove(); }}, {{once: true}});
-                root.appendChild(pill);
             }}"""
         )
 
