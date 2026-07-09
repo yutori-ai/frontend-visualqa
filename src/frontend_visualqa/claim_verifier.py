@@ -278,6 +278,8 @@ class ClaimVerifier:
                     break
 
                 had_action_in_turn = False
+                turn_reasoning = self._hook.current_turn_reasoning if self._hook else None
+                reasoning_shown = False
                 # Execute every tool call in the turn even when the step budget
                 # runs out mid-list: each tool_call in the assistant message
                 # must receive a role="tool" reply before the next user message,
@@ -294,6 +296,18 @@ class ClaimVerifier:
                         messages=messages,
                     )
                     await self._safe_hook_call("on_tool_start", name=tool_name, arguments=tool_arguments)
+                    # Show this turn's reasoning synced with its first interaction
+                    # action: BEFORE the action runs, so it lands on the action's own
+                    # page rather than the next one after a navigation, and BEFORE the
+                    # evidence screenshot, which hides the whole overlay — so the model
+                    # still never reads its own reasoning off a capture. An interaction
+                    # with no narration clears any stale prior thought instead.
+                    if not reasoning_shown and self._overlay and tool_counts_as_interaction(tool_name):
+                        if turn_reasoning:
+                            await self._best_effort_overlay_call("show_thought", turn_reasoning)
+                        else:
+                            await self._best_effort_overlay_call("clear_thought")
+                        reasoning_shown = True
                     execution = await self._execute_tool_call(session, tool_call)
                     if sensitive_text is not None:
                         execution = self._redact_sensitive_execution(execution, sensitive_text)
@@ -473,12 +487,10 @@ class ClaimVerifier:
         if not had_actions:
             return
 
-        # The screenshot is already clean at this point. Restore only the
-        # persistent analysis affordances that should cover the next turn.
+        # Reasoning is now shown synced with the action (before the evidence
+        # screenshot), not here. Restore only the "Analyzing" status chip for the
+        # upcoming turn; the screenshot is already clean.
         await self._best_effort_overlay_call("set_status", "Analyzing")
-        reasoning = self._hook.current_turn_reasoning if self._hook else None
-        if reasoning and self._overlay:
-            await self._best_effort_overlay_call("show_thought", reasoning)
 
     async def _best_effort_overlay_call(self, method_name: str, *args: Any, **kwargs: Any) -> None:
         """Invoke an optional overlay hook without interrupting verification."""

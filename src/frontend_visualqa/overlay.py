@@ -825,7 +825,6 @@ class OverlayController:
         if not self._active:
             return
 
-        await self.clear_thought()
         await self._ensure_transient_root()
 
         # Cursor-first choreography: move cursor to target, then trigger effect.
@@ -873,8 +872,12 @@ class OverlayController:
         self._current_status = label
         if not self._active:
             return
-        if label != "Analyzing":
-            await self.clear_thought()
+        # A status change no longer clears the thought: the reasoning capsule is
+        # shown synced with its action (by claim_verifier, before the action runs)
+        # and replaced per-turn by the next show_thought / explicit clear_thought.
+        # Clearing here would wipe a just-shown reasoning when an action flips the
+        # chip to "Running …"/"Pressing keys". The evidence screenshot still hides
+        # the whole overlay, so the model never reads the reasoning off a capture.
         await self._inject_persistent_root()
 
     async def show_thought(self, text: str) -> None:

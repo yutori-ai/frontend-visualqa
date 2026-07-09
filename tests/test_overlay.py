@@ -135,7 +135,11 @@ class TestOverlayInformationalCards:
         assert len(arg["text"]) <= 520
 
     @pytest.mark.asyncio
-    async def test_preview_action_clears_existing_thought_card_before_animating(self) -> None:
+    async def test_preview_action_preserves_existing_thought_card(self) -> None:
+        # The reasoning capsule is shown synced with its action (by claim_verifier,
+        # before the action runs), so preview_action must NOT clear it — it stays
+        # through the cursor move/morph and is hidden only by the evidence
+        # screenshot. clear_thought's signature is `vp.remove()`.
         page = _make_mock_page()
         controller = OverlayController(page)
 
@@ -147,16 +151,15 @@ class TestOverlayInformationalCards:
             await controller.preview_action("left_click", x=100, y=200)
 
         scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
-        clear_index = next(
-            index for index, script in enumerate(scripts) if "__n1ThoughtCard" in script and "vp.remove()" in script
+        assert not any("vp.remove()" in script for script in scripts)
+        assert any(
+            "__n1Cursor" in script and "100px" in script and "200px" in script for script in scripts
         )
-        cursor_index = next(
-            index for index, script in enumerate(scripts) if "__n1Cursor" in script and "100px" in script and "200px" in script
-        )
-        assert clear_index < cursor_index
 
     @pytest.mark.asyncio
-    async def test_set_status_non_analyzing_clears_existing_thought_card(self) -> None:
+    async def test_set_status_non_analyzing_preserves_existing_thought_card(self) -> None:
+        # A status change no longer clears the thought (see set_status): the synced
+        # reasoning must survive an action flipping the chip to "Navigating"/"Running …".
         page = _make_mock_page()
         controller = OverlayController(page)
 
@@ -167,7 +170,7 @@ class TestOverlayInformationalCards:
         await controller.set_status("Navigating")
 
         scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
-        assert any("__n1ThoughtCard" in script and "vp.remove()" in script for script in scripts)
+        assert not any("vp.remove()" in script for script in scripts)
         assert any("__n1StatusChip" in script and "Navigating" in script for script in scripts)
 
     @pytest.mark.asyncio
