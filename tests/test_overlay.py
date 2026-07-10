@@ -40,6 +40,16 @@ def _make_mock_page(
     return page
 
 
+def _evaluated_scripts(page: MagicMock) -> list[str]:
+    """Return the script text of every page.evaluate() call made so far."""
+    return [str(call.args[0]) for call in page.evaluate.call_args_list]
+
+
+def _last_evaluated_script(page: MagicMock) -> str:
+    """Return the script text of the most recent page.evaluate() call."""
+    return str(page.evaluate.call_args.args[0])
+
+
 async def _started_controller(
     *, focused_center: dict[str, int] | None = None
 ) -> tuple[MagicMock, OverlayController]:
@@ -65,7 +75,7 @@ class TestOverlayControllerLifecycle:
 
         assert controller._active is True
         assert controller._current_status == "Analyzing"
-        scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
+        scripts = _evaluated_scripts(page)
         assert any("__n1PersistentRoot" in script for script in scripts)
         assert any("__n1TransientRoot" in script for script in scripts)
 
@@ -76,7 +86,7 @@ class TestOverlayControllerLifecycle:
         await controller.claim_ended()
 
         assert controller._active is False
-        scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
+        scripts = _evaluated_scripts(page)
         assert any("__n1PersistentRoot" in script for script in scripts)
         assert any("__n1TransientRoot" in script for script in scripts)
         assert any("__n1ClickStyle" in script for script in scripts)
@@ -95,7 +105,7 @@ class TestOverlayControllerLifecycle:
         await controller.set_status("Navigating")
 
         assert controller._current_status == "Navigating"
-        script = str(page.evaluate.call_args.args[0])
+        script = _last_evaluated_script(page)
         assert "__n1PersistentRoot" in script
 
 
@@ -109,7 +119,7 @@ class TestOverlayCursor:
 
         await controller.claim_started()
 
-        scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
+        scripts = _evaluated_scripts(page)
         assert any("__n1PersistentRoot" in script and "__n1Cursor" in script and "createElement('img')" in script for script in scripts)
 
     @pytest.mark.asyncio
@@ -120,7 +130,7 @@ class TestOverlayCursor:
 
         await controller._move_cursor(150, 250)
 
-        script = str(page.evaluate.call_args.args[0])
+        script = _last_evaluated_script(page)
         assert "__n1Cursor" in script
         assert "150px" in script
         assert "250px" in script
@@ -136,7 +146,7 @@ class TestOverlayCursor:
 
         await controller._move_cursor(1200, 250)
 
-        script = str(page.evaluate.call_args.args[0])
+        script = _last_evaluated_script(page)
         assert "__n1ThoughtCard" in script
         assert "goLeft" in script
         assert "innerWidth" in script
@@ -154,7 +164,7 @@ class TestOverlayCursor:
 
         await controller._reinject_after_navigation()
 
-        scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
+        scripts = _evaluated_scripts(page)
         assert any("n1renderMarkdown" in script for script in scripts)
 
     @pytest.mark.asyncio
@@ -167,7 +177,7 @@ class TestOverlayCursor:
 
         await controller._reinject_after_navigation()
 
-        scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
+        scripts = _evaluated_scripts(page)
         assert not any("n1renderMarkdown" in script for script in scripts)
 
 
@@ -199,7 +209,7 @@ class TestOverlayInformationalCards:
         await controller.show_thought("First reasoning.")
         await controller.show_thought("Second, different reasoning.")
 
-        script = str(page.evaluate.call_args_list[-1].args[0])
+        script = _last_evaluated_script(page)
         assert "hadExisting" in script
         assert "badge.style.width = B + 'px'" in script      # collapse to the badge
         assert "badge.style.width = width + 'px'" in script  # then expand to fit
@@ -252,7 +262,7 @@ class TestOverlayInformationalCards:
         with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
             await controller.preview_action("left_click", x=100, y=200)
 
-        scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
+        scripts = _evaluated_scripts(page)
         assert not any("vp.remove()" in script for script in scripts)
         assert any(
             "__n1Cursor" in script and "100px" in script and "200px" in script for script in scripts
@@ -271,7 +281,7 @@ class TestOverlayInformationalCards:
 
         await controller.set_status("Navigating")
 
-        scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
+        scripts = _evaluated_scripts(page)
         assert not any("vp.remove()" in script for script in scripts)
         assert any("__n1PersistentRoot" in script for script in scripts)
 
@@ -286,7 +296,7 @@ class TestOverlayInformationalCards:
 
         await controller.set_status("Analyzing")
 
-        scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
+        scripts = _evaluated_scripts(page)
         assert not any("__n1ThoughtCard" in script and "current.remove()" in script for script in scripts)
 
     @pytest.mark.asyncio
@@ -297,7 +307,7 @@ class TestOverlayInformationalCards:
             await controller.preview_action("double_click", x=100, y=200, num_clicks=2)
 
         assert controller._current_status == "Analyzing"
-        scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
+        scripts = _evaluated_scripts(page)
         assert any("__n1TransientRoot" in script and "visibility = 'visible'" in script for script in scripts)
         assert any("__n1Cursor" in script and "100px" in script and "200px" in script for script in scripts)
         assert any("n1click" in script for script in scripts)
@@ -314,7 +324,7 @@ class TestOverlayPreviewAction:
 
         # preview_action does not update persistent status
         assert controller._current_status == "Analyzing"
-        scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
+        scripts = _evaluated_scripts(page)
         # Cursor moved first
         assert any("__n1Cursor" in script and "100px" in script and "200px" in script for script in scripts)
         # Transient root made visible
@@ -336,7 +346,7 @@ class TestOverlayPreviewAction:
         with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
             await controller.preview_action("scroll", x=640, y=400, direction="down")
 
-        scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
+        scripts = _evaluated_scripts(page)
         # Cursor leads to the scroll target
         assert any("__n1Cursor" in script and "640px" in script and "400px" in script for script in scripts)
         # Badge morphs to the chevron glyph via the bloom-in keyframes
@@ -350,7 +360,7 @@ class TestOverlayPreviewAction:
         with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
             await controller.preview_action("scroll", x=100, y=200, direction="up")
 
-        scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
+        scripts = _evaluated_scripts(page)
         # Up rotates the chevron glyph 180deg inside the badge.
         assert any("__n1BadgeGlyph" in script and "rotate(180deg)" in script for script in scripts)
 
@@ -361,7 +371,7 @@ class TestOverlayPreviewAction:
         with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
             await controller.preview_action("type")
 
-        scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
+        scripts = _evaluated_scripts(page)
         assert any("document.activeElement" in script for script in scripts)
         # Type morphs the badge to the type glyph (the standalone typing pill was retired)
         assert any("__n1BadgeGlyph" in script and "n1badgeIn" in script for script in scripts)
@@ -375,7 +385,7 @@ class TestOverlayPreviewAction:
         with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
             await controller.preview_action("type")
 
-        scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
+        scripts = _evaluated_scripts(page)
         # No focused element to move to, but the badge still morphs to the type glyph.
         assert any("__n1BadgeGlyph" in script and "n1badgeIn" in script for script in scripts)
         # The cursor does not relocate when there is no focused-element centre.
@@ -390,7 +400,7 @@ class TestOverlayPreviewAction:
 
         # preview_action does not update persistent status
         assert controller._current_status == "Analyzing"
-        scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
+        scripts = _evaluated_scripts(page)
         # Cursor moved to hover target
         assert any("__n1Cursor" in script and "300px" in script and "400px" in script for script in scripts)
         # No chip update from preview_action
@@ -403,7 +413,7 @@ class TestOverlayPreviewAction:
         with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
             await controller.preview_action("drag", x=500, y=600, start_x=100, start_y=200)
 
-        scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
+        scripts = _evaluated_scripts(page)
         # Cursor moved to start point first
         assert any("__n1Cursor" in script and "100px" in script and "200px" in script for script in scripts)
         # Drag style injected with trail keyframes
@@ -423,7 +433,7 @@ class TestOverlayPreviewAction:
             await controller.preview_action("unknown_action_xyz", x=10, y=20)
 
         # Cursor still moves for unknown actions (since x/y are provided)
-        scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
+        scripts = _evaluated_scripts(page)
         cursor_moves = [s for s in scripts if "__n1Cursor" in s]
         assert len(cursor_moves) >= 1
 
@@ -453,7 +463,7 @@ class TestOverlayPreviewAction:
 
         await controller._move_cursor(50, 60)
 
-        scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
+        scripts = _evaluated_scripts(page)
         cursor_scripts = [s for s in scripts if "offScreen" in s]
         assert len(cursor_scripts) == 1
         js = cursor_scripts[0]
@@ -475,7 +485,7 @@ class TestOverlayScreenshotBoundary:
 
         await controller.before_screenshot()
 
-        script = str(page.evaluate.call_args.args[0])
+        script = _last_evaluated_script(page)
         assert "__n1PersistentRoot" in script
         assert "__n1TransientRoot" in script
         assert "visibility = 'hidden'" in script
@@ -487,7 +497,7 @@ class TestOverlayScreenshotBoundary:
 
         await controller.after_screenshot()
 
-        script = str(page.evaluate.call_args.args[0])
+        script = _last_evaluated_script(page)
         assert "__n1PersistentRoot" in script
         assert "__n1TransientRoot" not in script
         assert "visibility = 'visible'" in script
@@ -507,7 +517,7 @@ class TestOverlayScreenshotBoundary:
         with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
             await controller.preview_action("left_click", x=100, y=200)
 
-        scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
+        scripts = _evaluated_scripts(page)
         assert any(
             "__n1TransientRoot" in script and "visibility = 'visible'" in script
             for script in scripts
