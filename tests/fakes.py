@@ -61,6 +61,17 @@ def serve_static_directory(directory: Path) -> Iterator[str]:
     yield from serve_http(handler)
 
 
+async def noop_sleep(*_args: Any, **_kwargs: Any) -> None:
+    """A no-op replacement for ``asyncio.sleep``, for monkeypatching it out in tests.
+
+    ``test_cli.py`` (x2) and ``test_actions.py`` each defined an identical local
+    ``async def _noop_sleep(_: float) -> None: return None`` to monkeypatch
+    ``<module>.asyncio.sleep`` and skip real delays. This is the shared version they
+    delegate to now.
+    """
+    return None
+
+
 def import_or_skip(module_path: str) -> ModuleType:
     """Import *module_path*, skipping the test if it is not implemented yet.
 
