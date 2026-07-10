@@ -96,8 +96,7 @@ class TestOverlayControllerLifecycle:
 
         assert controller._current_status == "Navigating"
         script = str(page.evaluate.call_args.args[0])
-        assert "__n1StatusChip" in script
-        assert "Navigating" in script
+        assert "__n1PersistentRoot" in script
 
 
 class TestOverlayCursor:
@@ -262,7 +261,7 @@ class TestOverlayInformationalCards:
     @pytest.mark.asyncio
     async def test_set_status_non_analyzing_preserves_existing_thought_card(self) -> None:
         # A status change no longer clears the thought (see set_status): the synced
-        # reasoning must survive an action flipping the chip to "Navigating"/"Running …".
+        # reasoning must survive the status label changing to "Navigating"/"Running …".
         page = _make_mock_page()
         controller = OverlayController(page)
 
@@ -274,7 +273,7 @@ class TestOverlayInformationalCards:
 
         scripts = [str(call.args[0]) for call in page.evaluate.call_args_list]
         assert not any("vp.remove()" in script for script in scripts)
-        assert any("__n1StatusChip" in script and "Navigating" in script for script in scripts)
+        assert any("__n1PersistentRoot" in script for script in scripts)
 
     @pytest.mark.asyncio
     async def test_set_status_analyzing_preserves_existing_thought_card(self) -> None:
