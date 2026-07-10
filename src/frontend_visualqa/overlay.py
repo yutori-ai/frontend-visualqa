@@ -1139,18 +1139,23 @@ class OverlayController:
         # then blooms back out to reveal the default y-loop after revert_ms.
         rot = f"transform:rotate({rotate}deg);" if rotate else ""
         inner = f"<div style='width:62%;height:62%;display:flex;align-items:center;justify-content:center;{rot}'>{glyph_svg}</div>"
+        badge_kf_style = _inject_style_js(
+            BADGE_KF_STYLE_ID,
+            (
+                "'@keyframes n1badgeIn{0%{opacity:0;transform:scale(0.25);filter:blur(4px)}"
+                "100%{opacity:1;transform:scale(1);filter:blur(0)}}"
+                "@keyframes n1badgeOut{0%{opacity:1;transform:scale(1);filter:blur(0)}"
+                "100%{opacity:0;transform:scale(0.25);filter:blur(4px)}}'"
+            ),
+            guard=True,
+        )
         js = (
             "() => {"
             f" const b = document.getElementById('{BADGE_GLYPH_ID}');"
             " if (!b) return;"
             f" const logo = document.getElementById('{BADGE_LOGO_ID}');"
             " if (logo) logo.style.opacity = '0';"
-            f" if (!document.getElementById('{BADGE_KF_STYLE_ID}')) {{"
-            f"   const st = document.createElement('style'); st.id = '{BADGE_KF_STYLE_ID}';"
-            "   st.textContent = '@keyframes n1badgeIn{0%{opacity:0;transform:scale(0.25);filter:blur(4px)}100%{opacity:1;transform:scale(1);filter:blur(0)}}"
-            "@keyframes n1badgeOut{0%{opacity:1;transform:scale(1);filter:blur(0)}100%{opacity:0;transform:scale(0.25);filter:blur(4px)}}';"
-            "   document.head.appendChild(st);"
-            " }"
+            f" {badge_kf_style}"
             f" b.innerHTML = {json.dumps(inner)};"
             " b.style.animation = 'none'; void b.offsetWidth;"
             " b.style.animation = 'n1badgeIn 300ms cubic-bezier(0.22,1,0.36,1) forwards';"
