@@ -373,7 +373,7 @@ frontend-visualqa verify <url> --claims-file claims.md [options]
 | `--width` / `--height` | 1280 / 800 | Viewport size |
 | `--device-scale-factor` | 1.0 | DPR |
 | `--headed` | off | Show the browser (implies `--visualize`) |
-| `--visualize` / `--no-visualize` | on when headed | Show in-browser action overlay (cursor, click pulses, scroll arrows, status chip) |
+| `--visualize` / `--no-visualize` | on when headed | Show in-browser action overlay (cursor, click pulses, scroll arrows) |
 | `--browser-mode` | ephemeral | `ephemeral` or `persistent` |
 | `--user-data-dir` | | Custom profile directory |
 | `--session-key` | default | Named browser session. Persistent mode supports one named session at a time. |
