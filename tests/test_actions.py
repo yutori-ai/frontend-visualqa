@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from fakes import import_or_skip, instantiate_with_supported_kwargs
+from fakes import import_or_skip, instantiate_with_supported_kwargs, noop_sleep
 from frontend_visualqa.schemas import ViewportConfig
 
 
@@ -629,10 +629,7 @@ async def test_execute_action_hold_key_supports_duration_and_fallback_press(monk
     page = FakePage()
     viewport = ViewportConfig()
 
-    async def _noop_sleep(_: float) -> None:
-        return None
-
-    monkeypatch.setattr(module.asyncio, "sleep", _noop_sleep)
+    monkeypatch.setattr(module.asyncio, "sleep", noop_sleep)
 
     duration_trace = await _call_execute_action(executor, page, "hold_key", {"key": "shift", "duration": 0.5}, viewport)
     press_trace = await _call_execute_action(executor, page, "hold_key", {"key": "enter"}, viewport)
