@@ -82,6 +82,16 @@ def _make_response() -> SimpleNamespace:
     )
 
 
+def _check_messages() -> list[dict[str, Any]]:
+    """A fresh single-turn "Check" user message list.
+
+    Returns a new list each call (not a shared constant) so tests that mutate
+    the payload in place, like the trim_messages fallback test, don't corrupt
+    state for other tests.
+    """
+    return [{"role": "user", "content": [{"type": "text", "text": "Check"}]}]
+
+
 def test_navigator_client_imports_async_yutori_client_from_sdk() -> None:
     assert AsyncYutoriClient.__name__ == "AsyncYutoriClient"
 
@@ -91,7 +101,7 @@ async def test_navigator_client_calls_sdk_with_provided_messages() -> None:
     response = _make_response()
     client = FakeClient([response])
     navigator_client = NavigatorClient(client=client)
-    messages = [{"role": "user", "content": [{"type": "text", "text": "Check"}]}]
+    messages = _check_messages()
 
     result = await navigator_client.create(messages=messages)
 
@@ -112,7 +122,7 @@ async def test_navigator_client_calls_sdk_once_and_returns_message() -> None:
     client = FakeClient([response])
     navigator_client = NavigatorClient(client=client, timeout_seconds=0.1)
 
-    result = await navigator_client.create(messages=[{"role": "user", "content": [{"type": "text", "text": "Check"}]}])
+    result = await navigator_client.create(messages=_check_messages())
 
     assert result is response
     assert len(client.completions.calls) == 1
@@ -125,7 +135,7 @@ async def test_navigator_client_wraps_sdk_errors() -> None:
     navigator_client = NavigatorClient(client=client, timeout_seconds=0.1)
 
     with pytest.raises(NavigatorClientError):
-        await navigator_client.create(messages=[{"role": "user", "content": [{"type": "text", "text": "Check"}]}])
+        await navigator_client.create(messages=_check_messages())
 
 
 @pytest.mark.asyncio
@@ -139,7 +149,7 @@ async def test_navigator_client_retries_transient_errors() -> None:
         max_backoff_seconds=0.0,
     )
 
-    result = await navigator_client.create(messages=[{"role": "user", "content": [{"type": "text", "text": "Check"}]}])
+    result = await navigator_client.create(messages=_check_messages())
 
     assert result is response
     assert len(client.completions.calls) == 2
@@ -162,7 +172,7 @@ def test_wait_exponential_matches_original_retry_delays() -> None:
 def test_navigator_client_trim_messages_uses_sdk_compatibility_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     import frontend_visualqa.navigator_client as module
 
-    messages = [{"role": "user", "content": [{"type": "text", "text": "Check"}]}]
+    messages = _check_messages()
     navigator_client = NavigatorClient(client=FakeClient([]), max_request_bytes=10)
     trim_calls: list[dict[str, Any]] = []
 
@@ -188,7 +198,7 @@ async def test_navigator_client_omits_tool_set_for_legacy_n1_models() -> None:
     client = FakeClient([response])
     navigator_client = NavigatorClient(client=client, model="n1-latest")
 
-    result = await navigator_client.create(messages=[{"role": "user", "content": [{"type": "text", "text": "Check"}]}])
+    result = await navigator_client.create(messages=_check_messages())
 
     assert result is response
     assert "tool_set" not in client.completions.calls[0]
@@ -208,7 +218,7 @@ async def test_navigator_client_bounds_stalled_request_with_per_request_timeout(
     navigator_client = NavigatorClient(client=client, timeout_seconds=0.05, max_retries=0)
 
     with pytest.raises(NavigatorRequestTimeout):
-        await navigator_client.create(messages=[{"role": "user", "content": [{"type": "text", "text": "Check"}]}])
+        await navigator_client.create(messages=_check_messages())
 
     # The hung request was cancelled by the per-request timeout, not awaited to completion.
     assert len(client.completions.calls) == 1
@@ -227,7 +237,7 @@ async def test_navigator_client_retries_after_per_request_timeout() -> None:
         max_backoff_seconds=0.0,
     )
 
-    result = await navigator_client.create(messages=[{"role": "user", "content": [{"type": "text", "text": "Check"}]}])
+    result = await navigator_client.create(messages=_check_messages())
 
     assert result is response
     assert len(client.completions.calls) == 2
@@ -245,7 +255,7 @@ async def test_navigator_client_does_not_retry_or_wrap_cancelled_error() -> None
     )
 
     with pytest.raises(asyncio.CancelledError):
-        await navigator_client.create(messages=[{"role": "user", "content": [{"type": "text", "text": "Check"}]}])
+        await navigator_client.create(messages=_check_messages())
 
     # Not retried (it is not transient) and not re-wrapped as NavigatorClientError.
     assert len(client.completions.calls) == 1
@@ -271,7 +281,7 @@ async def test_outer_asyncio_timeout_cancels_hung_request() -> None:
 
     with pytest.raises(TimeoutError):
         async with asyncio.timeout(0.05):
-            await navigator_client.create(messages=[{"role": "user", "content": [{"type": "text", "text": "Check"}]}])
+            await navigator_client.create(messages=_check_messages())
 
     # Cancelled mid-flight — never retried into a second attempt.
     assert len(client.completions.calls) == 1
