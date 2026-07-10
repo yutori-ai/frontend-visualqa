@@ -270,10 +270,9 @@ async def test_live_runner_headed_overlay_hides_restores_and_cleans_up(
             assert state["transient"]["display"] != "none"
             assert state["transient"]["visibility"] == "hidden"
             assert state["transient"]["opacity"] == "0"
-            # Chip is only present on the same page — navigation actions
-            # destroy the persistent root when the new page loads.
-            if state["chip"]["present"]:
-                assert state["chip"]["text"].upper() == "ANALYZING"
+            # No status chip element is rendered (retired in the overlay redesign;
+            # the thought capsule conveys status instead).
+            assert state["chip"]["present"] is False
 
         after_screenshot_index = max(
             index for index, sample in enumerate(lifecycle_samples) if sample["phase"] == "after_screenshot"
@@ -283,8 +282,9 @@ async def test_live_runner_headed_overlay_hides_restores_and_cleans_up(
             for index, sample in enumerate(lifecycle_samples)
             if index > after_screenshot_index and sample["phase"] == "set_status"
         )
-        assert post_capture_status_sample["state"]["chip"]["present"] is True
-        assert post_capture_status_sample["state"]["chip"]["text"].upper() == "ANALYZING"
+        # No status chip element is rendered (retired in the overlay redesign;
+        # the thought capsule conveys status instead) — present should stay False.
+        assert post_capture_status_sample["state"]["chip"]["present"] is False
 
         started_state = started_samples[0]["state"]
         assert started_samples[0]["error"] is None
@@ -292,8 +292,7 @@ async def test_live_runner_headed_overlay_hides_restores_and_cleans_up(
         assert started_state["persistent"]["display"] != "none"
         assert started_state["persistent"]["visibility"] == "visible"
         assert started_state["persistent"]["opacity"] == "1"
-        assert started_state["chip"]["present"] is True
-        assert started_state["chip"]["text"].upper() == "ANALYZING"
+        assert started_state["chip"]["present"] is False
 
         ended_state = ended_samples[0]["state"]
         assert ended_samples[0]["error"] is None
@@ -354,8 +353,9 @@ async def test_live_runner_headed_overlay_zero_action_path_skips_hide_restore(
         assert started_state["persistent"]["present"] is True
         assert started_state["persistent"]["visibility"] == "visible"
         assert started_state["persistent"]["opacity"] == "1"
-        assert started_state["chip"]["present"] is True
-        assert started_state["chip"]["text"].upper() == "ANALYZING"
+        # No status chip element is rendered (retired in the overlay redesign;
+        # the thought capsule conveys status instead).
+        assert started_state["chip"]["present"] is False
 
         ended_state = ended_samples[0]["state"]
         assert ended_samples[0]["error"] is None

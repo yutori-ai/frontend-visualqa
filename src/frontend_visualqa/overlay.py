@@ -26,7 +26,6 @@ PERSISTENT_ROOT_ID = "__n1PersistentRoot"
 TRANSIENT_ROOT_ID = "__n1TransientRoot"
 GRADIENT_BORDER_ID = "__n1GradientBorder"
 BORDER_STYLE_ID = "__n1BorderStyle"
-STATUS_CHIP_ID = "__n1StatusChip"
 THOUGHT_CARD_ID = "__n1ThoughtCard"
 THOUGHT_STYLE_ID = "__n1ThoughtStyle"
 CLICK_STYLE_ID = "__n1ClickStyle"
@@ -396,7 +395,7 @@ _PERSISTENT_ROOT_JS = f"""() => {{
     // Status chip intentionally not rendered — the thought card already
     // conveys what the agent is doing, so the "Analyzing" pill was redundant.
     // set_status / _current_status are retained (they gate thought-card
-    // persistence); _set_chip_text no-ops since no chip element exists.
+    // persistence).
 
     // Cursor lives in the persistent root so it survives navigation
     // (the persistent root is re-mounted on every domcontentloaded) and
@@ -1001,15 +1000,6 @@ class OverlayController:
 
     async def _inject_persistent_root(self) -> None:
         await self._eval(_PERSISTENT_ROOT_JS)
-        await self._set_chip_text(self._current_status)
-
-    async def _set_chip_text(self, label: str) -> None:
-        await self._eval(
-            f"""() => {{
-                const chip = document.getElementById('{STATUS_CHIP_ID}');
-                if (chip) chip.textContent = {label!r};
-            }}"""
-        )
 
     async def _move_cursor(self, x: int, y: int) -> bool:
         """Move the branded cursor to the given viewport coordinates.
