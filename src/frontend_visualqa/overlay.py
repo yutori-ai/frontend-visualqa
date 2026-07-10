@@ -47,6 +47,10 @@ THOUGHT_DURATION_MS = 2000
 # click until the pill is fully visible (see _await_thought_settled).
 THOUGHT_COLLAPSE_MS = 360
 THOUGHT_EXPAND_MS = 340
+# Fade the overlay out/in around each evidence screenshot to smooth the
+# hide/restore blink in headed --visualize videos. The fade-out is awaited
+# (adds ~this many ms per capture); the fade-in is post-capture and free.
+SCREENSHOT_FADE_MS = 200
 
 _CURSOR_SVG = (
     '<svg width="110" height="130" viewBox="0 0 110 130" fill="none" xmlns="http://www.w3.org/2000/svg"> <g id="Default Live Cursor"> <g id="Badge" filter="url(#filter0_ddddii_45_139)"> <rect x="45.3307" y="27.3717" width="48" height="48" rx="10.962" fill="url(#paint0_linear_45_139)"/> <rect x="45.3307" y="27.3717" width="48" height="48" rx="10.962" stroke="url(#paint1_linear_45_139)"/> <g id="yLoop"> <path d="M80.8847 38.0808C82.1521 37.5842 83.3202 38.0103 83.6386 38.9578C83.9999 40.0335 83.2812 40.9254 82.2812 41.3797C73.98 45.1497 65.5645 51.8231 65.5644 57.1961C65.5644 60.7133 67.6232 61.8054 69.2607 61.8054C70.8982 61.8053 72.9687 60.7132 72.9687 57.1961C72.9687 55.1469 71.7266 53.1005 70.5117 51.6082C70.5117 51.6082 71.8191 50.0465 73.3418 48.9539C75.573 51.5308 76.9794 54.0813 76.9794 57.1961C76.9794 62.1932 73.7452 65.8716 69.2607 65.8719C64.776 65.8718 61.541 62.1933 61.541 57.1961C61.541 49.1584 73.6804 40.9043 80.8847 38.0808ZM55.0224 38.9597C55.3407 38.012 56.5088 37.5851 57.7763 38.0818C60.72 39.2354 64.4873 41.296 67.914 43.8777C66.3195 45.1252 65.0859 46.4549 65.0859 46.4549C62.4438 44.5139 59.4042 42.7542 56.3798 41.3806C55.38 40.9264 54.6614 40.0353 55.0224 38.9597Z" fill="url(#paint2_linear_45_139)"/> <path d="M80.8847 38.0808C82.1521 37.5842 83.3202 38.0103 83.6386 38.9578C83.9999 40.0335 83.2812 40.9254 82.2812 41.3797C73.98 45.1497 65.5645 51.8231 65.5644 57.1961C65.5644 60.7133 67.6232 61.8054 69.2607 61.8054C70.8982 61.8053 72.9687 60.7132 72.9687 57.1961C72.9687 55.1469 71.7266 53.1005 70.5117 51.6082C70.5117 51.6082 71.8191 50.0465 73.3418 48.9539C75.573 51.5308 76.9794 54.0813 76.9794 57.1961C76.9794 62.1932 73.7452 65.8716 69.2607 65.8719C64.776 65.8718 61.541 62.1933 61.541 57.1961C61.541 49.1584 73.6804 40.9043 80.8847 38.0808ZM55.0224 38.9597C55.3407 38.012 56.5088 37.5851 57.7763 38.0818C60.72 39.2354 64.4873 41.296 67.914 43.8777C66.3195 45.1252 65.0859 46.4549 65.0859 46.4549C62.4438 44.5139 59.4042 42.7542 56.3798 41.3806C55.38 40.9264 54.6614 40.0353 55.0224 38.9597Z" fill="#F8FAFC" style="mix-blend-mode:overlay"/> <path d="M80.8847 38.0808C82.1521 37.5842 83.3202 38.0103 83.6386 38.9578C83.9999 40.0335 83.2812 40.9254 82.2812 41.3797C73.98 45.1497 65.5645 51.8231 65.5644 57.1961C65.5644 60.7133 67.6232 61.8054 69.2607 61.8054C70.8982 61.8053 72.9687 60.7132 72.9687 57.1961C72.9687 55.1469 71.7266 53.1005 70.5117 51.6082C70.5117 51.6082 71.8191 50.0465 73.3418 48.9539C75.573 51.5308 76.9794 54.0813 76.9794 57.1961C76.9794 62.1932 73.7452 65.8716 69.2607 65.8719C64.776 65.8718 61.541 62.1933 61.541 57.1961C61.541 49.1584 73.6804 40.9043 80.8847 38.0808ZM55.0224 38.9597C55.3407 38.012 56.5088 37.5851 57.7763 38.0818C60.72 39.2354 64.4873 41.296 67.914 43.8777C66.3195 45.1252 65.0859 46.4549 65.0859 46.4549C62.4438 44.5139 59.4042 42.7542 56.3798 41.3806C55.38 40.9264 54.6614 40.0353 55.0224 38.9597Z" fill="#F8FAFC" fill-opacity="0.5"/> </g> </g> <g id="Yutori Cursor" filter="url(#filter1_ddddii_45_139)"> <path d="M17.7686 7.16441C16.8071 4.87975 18.9606 2.51614 21.3246 3.26145L51.2884 12.7081C54.3315 13.6675 54.214 18.0135 51.1235 18.8071C43.5544 20.7507 37.8792 27.0293 36.7077 34.7557L36.5332 35.9063C36.0312 39.2174 31.4966 39.7823 30.1974 36.6956L17.7686 7.16441Z" fill="url(#paint3_linear_45_139)"/> <path d="M17.7686 7.16441C16.8071 4.87975 18.9606 2.51614 21.3246 3.26145L51.2884 12.7081C54.3315 13.6675 54.214 18.0135 51.1235 18.8071C43.5544 20.7507 37.8792 27.0293 36.7077 34.7557L36.5332 35.9063C36.0312 39.2174 31.4966 39.7823 30.1974 36.6956L17.7686 7.16441Z" stroke="url(#paint4_linear_45_139)"/> </g> </g> <defs> <filter id="filter0_ddddii_45_139" x="29.2307" y="24.4717" width="80.2" height="105.4" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB"> <feFlood flood-opacity="0" result="BackgroundImageFix"/> <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/> <feOffset dy="2.4"/> <feGaussianBlur stdDeviation="2.4"/> <feColorMatrix type="matrix" values="0 0 0 0 0.0627451 0 0 0 0 0.403922 0 0 0 0 0.435294 0 0 0 0.07 0"/> <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_45_139"/> <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/> <feOffset dy="9.6"/> <feGaussianBlur stdDeviation="4.8"/> <feColorMatrix type="matrix" values="0 0 0 0 0.0627451 0 0 0 0 0.403922 0 0 0 0 0.435294 0 0 0 0.06 0"/> <feBlend mode="normal" in2="effect1_dropShadow_45_139" result="effect2_dropShadow_45_139"/> <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/> <feOffset dy="21.6"/> <feGaussianBlur stdDeviation="6.6"/> <feColorMatrix type="matrix" values="0 0 0 0 0.0627451 0 0 0 0 0.403922 0 0 0 0 0.435294 0 0 0 0.04 0"/> <feBlend mode="normal" in2="effect2_dropShadow_45_139" result="effect3_dropShadow_45_139"/> <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/> <feOffset dy="38.4"/> <feGaussianBlur stdDeviation="7.8"/> <feColorMatrix type="matrix" values="0 0 0 0 0.0627451 0 0 0 0 0.403922 0 0 0 0 0.435294 0 0 0 0.01 0"/> <feBlend mode="normal" in2="effect3_dropShadow_45_139" result="effect4_dropShadow_45_139"/> <feBlend mode="normal" in="SourceGraphic" in2="effect4_dropShadow_45_139" result="shape"/> <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/> <feOffset dx="1.2" dy="-2.4"/> <feGaussianBlur stdDeviation="2.4"/> <feComposite in2="hardAlpha" operator="arithmetic" k2="-1" k3="1"/> <feColorMatrix type="matrix" values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.15 0"/> <feBlend mode="normal" in2="shape" result="effect5_innerShadow_45_139"/> <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/> <feOffset dx="-1.2" dy="3.6"/> <feGaussianBlur stdDeviation="2.4"/> <feComposite in2="hardAlpha" operator="arithmetic" k2="-1" k3="1"/> <feColorMatrix type="matrix" values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.4 0"/> <feBlend mode="normal" in2="effect5_innerShadow_45_139" result="effect6_innerShadow_45_139"/> </filter> <filter id="filter1_ddddii_45_139" x="1.90735e-06" y="4.29153e-06" width="71.0401" height="98.1868" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB"> <feFlood flood-opacity="0" result="BackgroundImageFix"/> <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/> <feOffset dy="2.62043"/> <feGaussianBlur stdDeviation="2.62043"/> <feColorMatrix type="matrix" values="0 0 0 0 0.0627451 0 0 0 0 0.403922 0 0 0 0 0.435294 0 0 0 0.07 0"/> <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_45_139"/> <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/> <feOffset dy="10.4817"/> <feGaussianBlur stdDeviation="5.24087"/> <feColorMatrix type="matrix" values="0 0 0 0 0.0627451 0 0 0 0 0.403922 0 0 0 0 0.435294 0 0 0 0.06 0"/> <feBlend mode="normal" in2="effect1_dropShadow_45_139" result="effect2_dropShadow_45_139"/> <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/> <feOffset dy="23.5839"/> <feGaussianBlur stdDeviation="7.20619"/> <feColorMatrix type="matrix" values="0 0 0 0 0.0627451 0 0 0 0 0.403922 0 0 0 0 0.435294 0 0 0 0.04 0"/> <feBlend mode="normal" in2="effect2_dropShadow_45_139" result="effect3_dropShadow_45_139"/> <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/> <feOffset dy="41.9269"/> <feGaussianBlur stdDeviation="8.51641"/> <feColorMatrix type="matrix" values="0 0 0 0 0.0627451 0 0 0 0 0.403922 0 0 0 0 0.435294 0 0 0 0.01 0"/> <feBlend mode="normal" in2="effect3_dropShadow_45_139" result="effect4_dropShadow_45_139"/> <feBlend mode="normal" in="SourceGraphic" in2="effect4_dropShadow_45_139" result="shape"/> <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/> <feOffset dx="1.31022" dy="-2.62043"/> <feGaussianBlur stdDeviation="2.62043"/> <feComposite in2="hardAlpha" operator="arithmetic" k2="-1" k3="1"/> <feColorMatrix type="matrix" values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.15 0"/> <feBlend mode="normal" in2="shape" result="effect5_innerShadow_45_139"/> <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/> <feOffset dx="-1.31022" dy="3.93065"/> <feGaussianBlur stdDeviation="2.62043"/> <feComposite in2="hardAlpha" operator="arithmetic" k2="-1" k3="1"/> <feColorMatrix type="matrix" values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.4 0"/> <feBlend mode="normal" in2="effect5_innerShadow_45_139" result="effect6_innerShadow_45_139"/> </filter> <linearGradient id="paint0_linear_45_139" x1="76.1071" y1="27.3717" x2="52.9875" y2="65.2146" gradientUnits="userSpaceOnUse"> <stop stop-color="#18AA7E"/> <stop offset="0.45" stop-color="#148F6A"/> <stop offset="0.75" stop-color="#148F6A"/> <stop offset="1" stop-color="#159871"/> </linearGradient> <linearGradient id="paint1_linear_45_139" x1="93.3307" y1="27.3717" x2="45.3307" y2="75.3718" gradientUnits="userSpaceOnUse"> <stop stop-color="#5AE8BD"/> <stop offset="0.5" stop-color="#127D5D"/> <stop offset="1" stop-color="#19B385"/> </linearGradient> <linearGradient id="paint2_linear_45_139" x1="69.3591" y1="37.8241" x2="58.779" y2="60.9714" gradientUnits="userSpaceOnUse"> <stop stop-color="#5DF3C6"/> <stop offset="0.45" stop-color="#29B188"/> <stop offset="0.75" stop-color="#22A67E"/> <stop offset="1" stop-color="#22C191"/> </linearGradient> <linearGradient id="paint3_linear_45_139" x1="41.8168" y1="0.821967" x2="17.2954" y2="37.3243" gradientUnits="userSpaceOnUse"> <stop stop-color="#18AA7E"/> <stop offset="0.45" stop-color="#148F6A"/> <stop offset="0.75" stop-color="#148F6A"/> <stop offset="1" stop-color="#159871"/> </linearGradient> <linearGradient id="paint4_linear_45_139" x1="25.3307" y1="1.37175" x2="18.0622" y2="39.8967" gradientUnits="userSpaceOnUse"> <stop stop-color="#5AE8BD"/> <stop offset="0.5" stop-color="#009367"/> <stop offset="0.9" stop-color="#19B385"/> </linearGradient> </defs> </svg>'
@@ -721,29 +725,62 @@ _CLEAR_THOUGHT_JS = f"""() => {{
     if (persistent) persistent.__n1CollapseTimer = collapseTimer;
 }}"""
 
-def _toggle_both_roots_js(*, visibility: str, opacity: str) -> str:
-    """Generate JS to set visibility/opacity on both overlay roots."""
-    return f"""() => {{
-    const persistent = document.getElementById('{PERSISTENT_ROOT_ID}');
-    if (persistent) {{
-        {_set_visibility_opacity_js("persistent", visibility=visibility, opacity=opacity)}
-    }}
-    const transient = document.getElementById('{TRANSIENT_ROOT_ID}');
-    if (transient) {{
-        {_set_visibility_opacity_js("transient", visibility=visibility, opacity=opacity)}
-    }}
+# Fade both overlay roots out (opacity 1→0) for the evidence screenshot, wait
+# for the fade to actually finish via transitionend, then hard-hide as the
+# capture backstop. The listener is filtered to each root's OWN opacity
+# transition so a bubbled child transition (badge morph, click ripple) can't
+# resolve the fade early. The fallback timer guarantees the Promise resolves
+# even when a transition is a no-op (root already at opacity 0) or is
+# interrupted, so page.evaluate — which has no timeout of its own — can't hang.
+# The awaited hard-hide (visibility:hidden + opacity:0, transition cleared so
+# the next transient re-show is instant) is what keeps the capture clean
+# regardless of the fade's timing; the fade is only a cosmetic layer on top.
+# Layers stay mounted (no display toggle) to avoid the compositor snap that
+# display:none causes in headed Chromium.
+_FADE_OUT_AND_HIDE_JS = f"""() => {{
+    const roots = ['{PERSISTENT_ROOT_ID}', '{TRANSIENT_ROOT_ID}']
+        .map(id => document.getElementById(id)).filter(Boolean);
+    return new Promise(resolve => {{
+        let settled = false;
+        const hardHide = () => {{
+            if (settled) return;
+            settled = true;
+            for (const r of roots) {{
+                r.style.transition = 'none';
+                r.style.visibility = 'hidden';
+                r.style.opacity = '0';
+            }}
+            resolve();
+        }};
+        if (roots.length === 0) {{ resolve(); return; }}
+        let pending = roots.length;
+        const onEnd = (e) => {{
+            if (e.propertyName !== 'opacity' || !roots.includes(e.target)) return;
+            e.target.removeEventListener('transitionend', onEnd);
+            if (--pending <= 0) hardHide();
+        }};
+        for (const r of roots) {{
+            r.addEventListener('transitionend', onEnd);
+            r.style.transition = 'opacity {SCREENSHOT_FADE_MS}ms ease';
+            r.style.opacity = '0';
+        }}
+        setTimeout(hardHide, {SCREENSHOT_FADE_MS} + 80);
+    }});
 }}"""
 
 
-# Keep the full-viewport overlay layers mounted during capture.
-# In headed Chromium, toggling display on these layers can trigger
-# a visible compositor snap even though the page viewport is unchanged.
-_HIDE_BOTH_JS = _toggle_both_roots_js(visibility="hidden", opacity="0")
-_RESTORE_PERSISTENT_JS = f"""() => {{
+# Restore only the persistent root (cursor/badge/thought); the transient root
+# stays hidden and the next preview_action re-shows it. Fade the persistent root
+# back in (opacity 0→1). This runs AFTER the capture, so it never touches the
+# evidence image and is not awaited for completion — the flash it removes is
+# purely cosmetic.
+_FADE_IN_PERSISTENT_JS = f"""() => {{
     const persistent = document.getElementById('{PERSISTENT_ROOT_ID}');
-    if (persistent) {{
-        {_set_visibility_opacity_js("persistent", visibility="visible", opacity="1")}
-    }}
+    if (!persistent) return;
+    persistent.style.visibility = 'visible';
+    persistent.style.transition = 'opacity {SCREENSHOT_FADE_MS}ms ease';
+    void persistent.offsetHeight;   // commit opacity:0 before →1 so it animates
+    persistent.style.opacity = '1';
 }}"""
 
 
@@ -989,12 +1026,12 @@ class OverlayController:
     async def before_screenshot(self) -> None:
         if not self._active:
             return
-        await self._eval(_HIDE_BOTH_JS)
+        await self._eval(_FADE_OUT_AND_HIDE_JS)
 
     async def after_screenshot(self) -> None:
         if not self._active:
             return
-        await self._eval(_RESTORE_PERSISTENT_JS)
+        await self._eval(_FADE_IN_PERSISTENT_JS)
         # Leave the transient root hidden; the next preview_action call re-shows it.
 
 

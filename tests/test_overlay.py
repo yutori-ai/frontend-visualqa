@@ -480,6 +480,12 @@ class TestOverlayScreenshotBoundary:
         assert "__n1TransientRoot" in script
         assert "visibility = 'hidden'" in script
         assert "opacity = '0'" in script
+        # The hide is preceded by an awaited opacity fade that waits on the real
+        # transitionend, with a fallback timer so it can't hang (see
+        # _FADE_OUT_AND_HIDE_JS). The hard-hide above stays the capture backstop.
+        assert "transition = 'opacity" in script
+        assert "transitionend" in script
+        assert "setTimeout" in script
 
     @pytest.mark.asyncio
     async def test_after_screenshot_restores_persistent_root_only(self) -> None:
@@ -492,6 +498,8 @@ class TestOverlayScreenshotBoundary:
         assert "__n1TransientRoot" not in script
         assert "visibility = 'visible'" in script
         assert "opacity = '1'" in script
+        # Persistent root fades back in (opacity 0→1) rather than snapping.
+        assert "transition = 'opacity" in script
 
     @pytest.mark.asyncio
     async def test_follow_up_effect_restores_transient_root_visibility_after_screenshot(self) -> None:
