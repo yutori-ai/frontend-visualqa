@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -63,6 +64,20 @@ async def _started_controller(
     await controller.claim_started()
     page.evaluate.reset_mock()
     return page, controller
+
+
+@pytest.fixture
+def patched_sleep() -> Iterator[AsyncMock]:
+    """Patch out ``overlay.asyncio.sleep`` so preview_action's real-time holds don't slow tests.
+
+    13 test bodies each wrapped their `preview_action`/`_move_cursor` calls in an identical
+    ``with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):`` block,
+    one of which also captured the mock to assert a sleep duration. This is the shared fixture
+    they request instead. (``test_teleport_when_offscreen_transition_when_onscreen`` keeps its
+    own two local patches since it needs two independent mock instances, one per branch.)
+    """
+    with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+        yield mock_sleep
 
 
 class TestOverlayControllerLifecycle:
@@ -232,7 +247,7 @@ class TestOverlayInformationalCards:
         assert call.args[1]["cy"] == 780
 
     @pytest.mark.asyncio
-    async def test_preview_click_holds_until_thought_settles(self) -> None:
+    async def test_preview_click_holds_until_thought_settles(self, patched_sleep: AsyncMock) -> None:
         # A click after a *replacing* thought is held until the pill finishes its
         # shrink→expand, so a navigating click's reasoning is fully visible on the
         # pre-nav page instead of expanding on the destination. The hold is a
@@ -240,14 +255,13 @@ class TestOverlayInformationalCards:
         page, controller = await _started_controller()
         await controller.show_thought("First reasoning.")
         await controller.show_thought("Second, replacing reasoning.")
-        with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock) as sleep_mock:
-            await controller.preview_action("left_click", x=100, y=200)
+        await controller.preview_action("left_click", x=100, y=200)
 
-        sleeps = [call.args[0] for call in sleep_mock.call_args_list if call.args]
+        sleeps = [call.args[0] for call in patched_sleep.call_args_list if call.args]
         assert any(s >= 0.5 for s in sleeps), f"expected a settle-hold sleep, got {sleeps}"
 
     @pytest.mark.asyncio
-    async def test_preview_action_preserves_existing_thought_card(self) -> None:
+    async def test_preview_action_preserves_existing_thought_card(self, patched_sleep: AsyncMock) -> None:
         # The reasoning capsule is shown synced with its action (by claim_verifier,
         # before the action runs), so preview_action must NOT clear it — it stays
         # through the cursor move/morph and is hidden only by the evidence
@@ -259,8 +273,7 @@ class TestOverlayInformationalCards:
         await controller.show_thought("Inspect the form before deciding.")
         page.evaluate.reset_mock()
 
-        with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
-            await controller.preview_action("left_click", x=100, y=200)
+        await controller.preview_action("left_click", x=100, y=200)
 
         scripts = _evaluated_scripts(page)
         assert not any("vp.remove()" in script for script in scripts)
@@ -300,11 +313,13 @@ class TestOverlayInformationalCards:
         assert not any("__n1ThoughtCard" in script and "current.remove()" in script for script in scripts)
 
     @pytest.mark.asyncio
-    async def test_preview_action_uses_transient_layer_without_touching_status_chip(self) -> None:
+    async def test_preview_action_uses_transient_layer_without_touching_status_chip(
+        self, patched_sleep: AsyncMock
+    ) -> None:
+        del patched_sleep  # patched only so preview_action's internal sleep doesn't run for real
         page, controller = await _started_controller()
 
-        with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
-            await controller.preview_action("double_click", x=100, y=200, num_clicks=2)
+        await controller.preview_action("double_click", x=100, y=200, num_clicks=2)
 
         assert controller._current_status == "Analyzing"
         scripts = _evaluated_scripts(page)
@@ -316,11 +331,11 @@ class TestOverlayInformationalCards:
 
 class TestOverlayPreviewAction:
     @pytest.mark.asyncio
-    async def test_click_effect_uses_coordinates(self) -> None:
+    async def test_click_effect_uses_coordinates(self, patched_sleep: AsyncMock) -> None:
+        del patched_sleep  # patched only so preview_action's internal sleep doesn't run for real
         page, controller = await _started_controller()
 
-        with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
-            await controller.preview_action("double_click", x=100, y=200, num_clicks=2)
+        await controller.preview_action("double_click", x=100, y=200, num_clicks=2)
 
         # preview_action does not update persistent status
         assert controller._current_status == "Analyzing"
@@ -338,13 +353,13 @@ class TestOverlayPreviewAction:
         assert any("left:100px" in script and "top:200px" in script for script in scripts)
 
     @pytest.mark.asyncio
-    async def test_scroll_effect_morphs_badge_to_chevron(self) -> None:
+    async def test_scroll_effect_morphs_badge_to_chevron(self, patched_sleep: AsyncMock) -> None:
         # Scroll now morphs the cursor badge into a chevron glyph (down = no
         # rotation); the separate transient scroll box was retired in the redesign.
+        del patched_sleep  # patched only so preview_action's internal sleep doesn't run for real
         page, controller = await _started_controller()
 
-        with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
-            await controller.preview_action("scroll", x=640, y=400, direction="down")
+        await controller.preview_action("scroll", x=640, y=400, direction="down")
 
         scripts = _evaluated_scripts(page)
         # Cursor leads to the scroll target
@@ -354,22 +369,22 @@ class TestOverlayPreviewAction:
         assert any("6 10 12 16 18 10" in script for script in scripts)
 
     @pytest.mark.asyncio
-    async def test_scroll_effect_rotates_badge_for_up_direction(self) -> None:
+    async def test_scroll_effect_rotates_badge_for_up_direction(self, patched_sleep: AsyncMock) -> None:
+        del patched_sleep  # patched only so preview_action's internal sleep doesn't run for real
         page, controller = await _started_controller()
 
-        with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
-            await controller.preview_action("scroll", x=100, y=200, direction="up")
+        await controller.preview_action("scroll", x=100, y=200, direction="up")
 
         scripts = _evaluated_scripts(page)
         # Up rotates the chevron glyph 180deg inside the badge.
         assert any("__n1BadgeGlyph" in script and "rotate(180deg)" in script for script in scripts)
 
     @pytest.mark.asyncio
-    async def test_type_morphs_badge_at_focused_element(self) -> None:
+    async def test_type_morphs_badge_at_focused_element(self, patched_sleep: AsyncMock) -> None:
+        del patched_sleep  # patched only so preview_action's internal sleep doesn't run for real
         page, controller = await _started_controller(focused_center={"x": 200, "y": 150})
 
-        with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
-            await controller.preview_action("type")
+        await controller.preview_action("type")
 
         scripts = _evaluated_scripts(page)
         assert any("document.activeElement" in script for script in scripts)
@@ -379,11 +394,11 @@ class TestOverlayPreviewAction:
         assert any("__n1Cursor" in script and "200px" in script and "150px" in script for script in scripts)
 
     @pytest.mark.asyncio
-    async def test_type_morphs_badge_even_without_focused_element(self) -> None:
+    async def test_type_morphs_badge_even_without_focused_element(self, patched_sleep: AsyncMock) -> None:
+        del patched_sleep  # patched only so preview_action's internal sleep doesn't run for real
         page, controller = await _started_controller(focused_center=None)
 
-        with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
-            await controller.preview_action("type")
+        await controller.preview_action("type")
 
         scripts = _evaluated_scripts(page)
         # No focused element to move to, but the badge still morphs to the type glyph.
@@ -392,11 +407,11 @@ class TestOverlayPreviewAction:
         assert not any("cursor.style.left = '" in script for script in scripts)
 
     @pytest.mark.asyncio
-    async def test_hover_action_moves_cursor(self) -> None:
+    async def test_hover_action_moves_cursor(self, patched_sleep: AsyncMock) -> None:
+        del patched_sleep  # patched only so preview_action's internal sleep doesn't run for real
         page, controller = await _started_controller()
 
-        with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
-            await controller.preview_action("hover", x=300, y=400)
+        await controller.preview_action("hover", x=300, y=400)
 
         # preview_action does not update persistent status
         assert controller._current_status == "Analyzing"
@@ -407,11 +422,11 @@ class TestOverlayPreviewAction:
         assert not any("__n1StatusChip" in script and "Hovering" in script for script in scripts)
 
     @pytest.mark.asyncio
-    async def test_drag_action_shows_trail_and_moves_cursor(self) -> None:
+    async def test_drag_action_shows_trail_and_moves_cursor(self, patched_sleep: AsyncMock) -> None:
+        del patched_sleep  # patched only so preview_action's internal sleep doesn't run for real
         page, controller = await _started_controller()
 
-        with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
-            await controller.preview_action("drag", x=500, y=600, start_x=100, start_y=200)
+        await controller.preview_action("drag", x=500, y=600, start_x=100, start_y=200)
 
         scripts = _evaluated_scripts(page)
         # Cursor moved to start point first
@@ -426,11 +441,11 @@ class TestOverlayPreviewAction:
         assert not any("500px" in s and "600px" in s for s in cursor_scripts)
 
     @pytest.mark.asyncio
-    async def test_unknown_action_returns_none(self) -> None:
+    async def test_unknown_action_returns_none(self, patched_sleep: AsyncMock) -> None:
+        del patched_sleep  # patched only so preview_action's internal sleep doesn't run for real
         page, controller = await _started_controller()
 
-        with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
-            await controller.preview_action("unknown_action_xyz", x=10, y=20)
+        await controller.preview_action("unknown_action_xyz", x=10, y=20)
 
         # Cursor still moves for unknown actions (since x/y are provided)
         scripts = _evaluated_scripts(page)
@@ -504,8 +519,11 @@ class TestOverlayScreenshotBoundary:
         assert "opacity = '1'" in script
 
     @pytest.mark.asyncio
-    async def test_follow_up_effect_restores_transient_root_visibility_after_screenshot(self) -> None:
+    async def test_follow_up_effect_restores_transient_root_visibility_after_screenshot(
+        self, patched_sleep: AsyncMock
+    ) -> None:
         """Transient root stays hidden after capture and is re-shown when the next preview starts."""
+        del patched_sleep  # patched only so preview_action's internal sleep doesn't run for real
         page = _make_mock_page()
         controller = OverlayController(page)
 
@@ -514,8 +532,7 @@ class TestOverlayScreenshotBoundary:
         await controller.after_screenshot()
         page.evaluate.reset_mock()
 
-        with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
-            await controller.preview_action("left_click", x=100, y=200)
+        await controller.preview_action("left_click", x=100, y=200)
 
         scripts = _evaluated_scripts(page)
         assert any(
@@ -544,7 +561,8 @@ class TestOverlayScreenshotBoundary:
 
 class TestOverlayBestEffort:
     @pytest.mark.asyncio
-    async def test_overlay_methods_swallow_evaluate_failures(self) -> None:
+    async def test_overlay_methods_swallow_evaluate_failures(self, patched_sleep: AsyncMock) -> None:
+        del patched_sleep  # patched only so preview_action's internal sleep doesn't run for real
         page = _make_mock_page(evaluate_side_effect=RuntimeError("page crashed"))
         controller = OverlayController(page)
 
@@ -552,12 +570,11 @@ class TestOverlayBestEffort:
         await controller.set_status("Analyzing")
         await controller.show_thought("test thought")
         await controller.clear_thought()
-        with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
-            await controller.preview_action("left_click", x=100, y=100)
-            await controller.preview_action("scroll", x=100, y=100, direction="down")
-            await controller.preview_action("type")
-            await controller.preview_action("hover", x=10, y=20)
-            await controller.preview_action("drag", x=200, y=200, start_x=100, start_y=100)
+        await controller.preview_action("left_click", x=100, y=100)
+        await controller.preview_action("scroll", x=100, y=100, direction="down")
+        await controller.preview_action("type")
+        await controller.preview_action("hover", x=10, y=20)
+        await controller.preview_action("drag", x=200, y=200, start_x=100, start_y=100)
         await controller.before_screenshot()
         await controller.after_screenshot()
         await controller.claim_ended()
