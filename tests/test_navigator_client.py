@@ -30,14 +30,21 @@ class FakeCompletions:
         return response
 
 
-class FakeClient:
-    def __init__(self, responses: list[Any]) -> None:
-        self.completions = FakeCompletions(responses)
-        self.chat = SimpleNamespace(completions=self.completions)
+class _FakeSDKClient:
+    """Shared shape for the fake SDK clients below: wrap a completions fake in a `.chat` namespace."""
+
+    def __init__(self, completions: Any) -> None:
+        self.completions = completions
+        self.chat = SimpleNamespace(completions=completions)
         self.closed = False
 
     async def close(self) -> None:
         self.closed = True
+
+
+class FakeClient(_FakeSDKClient):
+    def __init__(self, responses: list[Any]) -> None:
+        super().__init__(FakeCompletions(responses))
 
 
 class SleepyCompletions:
@@ -62,14 +69,9 @@ class SleepyCompletions:
         return outcome
 
 
-class SleepyClient:
+class SleepyClient(_FakeSDKClient):
     def __init__(self, behaviors: list[tuple[float, Any]]) -> None:
-        self.completions = SleepyCompletions(behaviors)
-        self.chat = SimpleNamespace(completions=self.completions)
-        self.closed = False
-
-    async def close(self) -> None:
-        self.closed = True
+        super().__init__(SleepyCompletions(behaviors))
 
 
 def _make_response() -> SimpleNamespace:
