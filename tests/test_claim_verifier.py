@@ -55,10 +55,18 @@ class FakePage:
     url: str
 
 
+_EMPTY_VISUAL_STATE: dict[str, Any] = {
+    "visibleHeadings": [],
+    "visibleButtons": [],
+    "buttonStates": [],
+    "dialogTitles": [],
+}
+
+
 class EvaluatingPage(FakePage):
-    def __init__(self, url: str, visual_state: dict[str, Any]) -> None:
+    def __init__(self, url: str, visual_state: dict[str, Any] | None = None) -> None:
         super().__init__(url=url)
-        self.visual_state = visual_state
+        self.visual_state = visual_state if visual_state is not None else dict(_EMPTY_VISUAL_STATE)
 
     async def evaluate(self, _: str) -> dict[str, Any]:
         return self.visual_state
@@ -889,12 +897,6 @@ async def test_claim_verifier_downgrades_pass_when_finding_contradicts_verdict(t
         verifier,
         page=EvaluatingPage(
             url="http://fixture.local/cart",
-            visual_state={
-                "visibleHeadings": [],
-                "visibleButtons": [],
-                "buttonStates": [],
-                "dialogTitles": [],
-            },
         ),
         viewport=ViewportConfig(),
         claim="The cart subtotal is correct",
@@ -924,12 +926,6 @@ async def test_claim_verifier_downgrades_pass_to_inconclusive_when_finding_is_un
         verifier,
         page=EvaluatingPage(
             url="http://fixture.local/page",
-            visual_state={
-                "visibleHeadings": [],
-                "visibleButtons": [],
-                "buttonStates": [],
-                "dialogTitles": [],
-            },
         ),
         viewport=ViewportConfig(),
         claim="The chart is visible",
@@ -956,12 +952,6 @@ async def test_claim_verifier_preserves_pass_for_negative_claims_with_negative_f
         verifier,
         page=EvaluatingPage(
             url="http://fixture.local/page",
-            visual_state={
-                "visibleHeadings": [],
-                "visibleButtons": [],
-                "buttonStates": [],
-                "dialogTitles": [],
-            },
         ),
         viewport=ViewportConfig(),
         claim="The Save button is not visible",
@@ -991,12 +981,6 @@ async def test_claim_verifier_preserves_pass_for_incorrect_claims_with_confirmin
         verifier,
         page=EvaluatingPage(
             url="http://fixture.local/cart",
-            visual_state={
-                "visibleHeadings": [],
-                "visibleButtons": [],
-                "buttonStates": [],
-                "dialogTitles": [],
-            },
         ),
         viewport=ViewportConfig(),
         claim="The price is incorrect",
@@ -1025,12 +1009,6 @@ async def test_claim_verifier_still_downgrades_positive_error_state_claims_when_
         verifier,
         page=EvaluatingPage(
             url="http://fixture.local/login",
-            visual_state={
-                "visibleHeadings": [],
-                "visibleButtons": [],
-                "buttonStates": [],
-                "dialogTitles": [],
-            },
         ),
         viewport=ViewportConfig(),
         claim="The error message is visible",
@@ -1060,12 +1038,6 @@ async def test_claim_verifier_does_not_treat_ambiguous_ui_copy_as_inconclusive_e
         verifier,
         page=EvaluatingPage(
             url="http://fixture.local/checkout",
-            visual_state={
-                "visibleHeadings": [],
-                "visibleButtons": [],
-                "buttonStates": [],
-                "dialogTitles": [],
-            },
         ),
         viewport=ViewportConfig(),
         claim='The label reads "Total"',
@@ -1203,12 +1175,6 @@ async def test_claim_verifier_skips_grounding_for_compound_claims(tmp_path: Path
         verifier,
         page=EvaluatingPage(
             url="http://fixture.local/page",
-            visual_state={
-                "visibleHeadings": [],
-                "visibleButtons": [],
-                "buttonStates": [],
-                "dialogTitles": [],
-            },
         ),
         viewport=ViewportConfig(width=375, height=812, device_scale_factor=1),
         claim="The sidebar is hidden and a hamburger menu button is visible",
