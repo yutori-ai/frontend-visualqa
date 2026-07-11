@@ -406,16 +406,11 @@ def _check_button_match(
     # still visible. The stricter clipped-check belongs to the separate
     # "is fully visible" pattern (_check_button_fully_visible).
     matched_states = _matching_button_states(grounding_state, groups["label"])
-    if matched_states:
-        candidate = matched_states[0].get("text", groups["label"])
-        return "passed", f"Visible button label matched {groups['label']!r}: {candidate!r}."
+    if not matched_states:
+        return _no_visible_button_failure(grounding_state, groups["label"])
 
-    matches = _make_label_matcher(groups["label"])
-    visible_buttons = grounding_state.get("visibleButtons", [])
-    for candidate in visible_buttons:
-        if matches(candidate):
-            return "passed", f"Visible button label matched {groups['label']!r}: {candidate!r}."
-    return _no_visible_button_failure(grounding_state, groups["label"])
+    candidate = matched_states[0].get("text", groups["label"])
+    return "passed", f"Visible button label matched {groups['label']!r}: {candidate!r}."
 
 
 def _check_button_fully_visible(
