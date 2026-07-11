@@ -15,7 +15,7 @@ def _import_reporters_module():
 
 
 def _sample_run_result(artifacts_dir: str) -> RunResult:
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1.0)
+    viewport = ViewportConfig()
     return RunResult(
         overall_status="completed",
         session_key="default",
@@ -73,7 +73,7 @@ def _sample_run_result(artifacts_dir: str) -> RunResult:
 
 
 def _duplicate_claim_run_result(artifacts_dir: str) -> RunResult:
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1.0)
+    viewport = ViewportConfig()
     return RunResult(
         overall_status="completed",
         session_key="default",
@@ -246,7 +246,7 @@ def test_ctrf_reporter_uses_real_timing_when_available(tmp_path: Path) -> None:
 def test_ctrf_reporter_maps_inconclusive_and_not_testable(tmp_path: Path) -> None:
     module = _import_reporters_module()
     reporter = module.CTRFReporter()
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1.0)
+    viewport = ViewportConfig()
     run_result = RunResult(
         overall_status="completed",
         session_key="default",
@@ -339,7 +339,7 @@ def test_markdown_reporter_name() -> None:
 def test_markdown_reporter_annotates_source_markdown_and_preserves_non_claim_lines(tmp_path: Path) -> None:
     module = _import_reporters_module()
     reporter = module.MarkdownReporter()
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1.0)
+    viewport = ViewportConfig()
     run_result = _duplicate_claim_run_result(str(tmp_path))
     source = ParsedClaimsFile(
         source_path=tmp_path / "claims.md",
@@ -381,7 +381,7 @@ def test_markdown_reporter_annotates_source_markdown_and_preserves_non_claim_lin
 def test_markdown_reporter_preserves_navigation_hint_metadata_when_reannotated(tmp_path: Path) -> None:
     module = _import_reporters_module()
     reporter = module.MarkdownReporter()
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1.0)
+    viewport = ViewportConfig()
     run_result = RunResult(
         overall_status="completed",
         session_key="default",
@@ -462,7 +462,7 @@ def test_markdown_reporter_re_annotation_strips_stale_details_and_summary(tmp_pa
     """Re-annotating an already-annotated file should not accumulate stale detail lines or duplicate summaries."""
     module = _import_reporters_module()
     reporter = module.MarkdownReporter()
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1.0)
+    viewport = ViewportConfig()
 
     # First run: one claim fails
     run1_result = RunResult(
@@ -534,7 +534,7 @@ def test_markdown_reporter_re_annotation_strips_stale_details_and_summary(tmp_pa
 def test_markdown_reporter_strips_legacy_unmarked_annotations_on_rerun(tmp_path: Path) -> None:
     module = _import_reporters_module()
     reporter = module.MarkdownReporter()
-    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1.0)
+    viewport = ViewportConfig()
     legacy_report = tmp_path / "legacy-report.md"
     legacy_report.write_text(
         (
