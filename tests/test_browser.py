@@ -118,6 +118,26 @@ class _FakeCdpSessionBase:
         self.detach_calls += 1
 
 
+def _build_cdp_capture_fixture(
+    cdp_session: object,
+    *,
+    viewport: ViewportConfig | None = None,
+    headless: bool = False,
+) -> tuple[_FakeCdpContext, _FakeScreenshotPage, BrowserSession, BrowserManager]:
+    """Wire up the context/page/session/manager quartet shared by the CDP-fallback screenshot tests."""
+
+    context = _FakeCdpContext(cdp_session)
+    page = _FakeScreenshotPage()
+    session = BrowserSession(
+        session_key="default",
+        context=context,  # type: ignore[arg-type]
+        page=page,  # type: ignore[arg-type]
+        viewport=viewport or ViewportConfig(),
+    )
+    manager = BrowserManager(config=BrowserConfig(headless=headless))
+    return context, page, session, manager
+
+
 @pytest.fixture()
 def example_url() -> str:
     for base_url in serve_static_directory(PACKAGE_ROOT / "examples"):
@@ -159,15 +179,10 @@ async def test_browser_manager_capture_screenshot_prefers_cdp_in_headed_mode() -
 
     png_payload = _png_bytes(size=(640, 400))
     cdp_session = FakeCDPSession(png_payload)
-    context = _FakeCdpContext(cdp_session)
-    page = _FakeScreenshotPage()
-    session = BrowserSession(
-        session_key="default",
-        context=context,  # type: ignore[arg-type]
-        page=page,  # type: ignore[arg-type]
+    context, page, session, manager = _build_cdp_capture_fixture(
+        cdp_session,
         viewport=ViewportConfig(width=320, height=200, device_scale_factor=1),
     )
-    manager = BrowserManager(config=BrowserConfig(headless=False))
 
     screenshot = await manager.capture_screenshot(session)
 
@@ -204,15 +219,7 @@ async def test_browser_manager_capture_screenshot_falls_back_to_playwright_in_he
             raise RuntimeError("capture failed")
 
     cdp_session = FakeCDPSession()
-    context = _FakeCdpContext(cdp_session)
-    page = _FakeScreenshotPage()
-    session = BrowserSession(
-        session_key="default",
-        context=context,  # type: ignore[arg-type]
-        page=page,  # type: ignore[arg-type]
-        viewport=ViewportConfig(),
-    )
-    manager = BrowserManager(config=BrowserConfig(headless=False))
+    _, page, session, manager = _build_cdp_capture_fixture(cdp_session)
 
     screenshot = await manager.capture_screenshot(session)
 
@@ -235,15 +242,7 @@ async def test_browser_manager_capture_screenshot_times_out_stuck_cdp_and_falls_
             return {"data": ""}
 
     cdp_session = FakeCDPSession()
-    context = _FakeCdpContext(cdp_session)
-    page = _FakeScreenshotPage()
-    session = BrowserSession(
-        session_key="default",
-        context=context,  # type: ignore[arg-type]
-        page=page,  # type: ignore[arg-type]
-        viewport=ViewportConfig(),
-    )
-    manager = BrowserManager(config=BrowserConfig(headless=True))
+    _, page, session, manager = _build_cdp_capture_fixture(cdp_session, headless=True)
 
     screenshot = await manager.capture_screenshot(session)
 
@@ -583,15 +582,7 @@ async def test_browser_manager_capture_screenshot_times_out_stuck_layout_metrics
             return {"data": ""}
 
     cdp_session = FakeCDPSession()
-    context = _FakeCdpContext(cdp_session)
-    page = _FakeScreenshotPage()
-    session = BrowserSession(
-        session_key="default",
-        context=context,  # type: ignore[arg-type]
-        page=page,  # type: ignore[arg-type]
-        viewport=ViewportConfig(),
-    )
-    manager = BrowserManager(config=BrowserConfig(headless=True))
+    _, page, session, manager = _build_cdp_capture_fixture(cdp_session, headless=True)
 
     screenshot = await manager.capture_screenshot(session)
 
