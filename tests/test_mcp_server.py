@@ -198,12 +198,12 @@ async def test_mcp_server_verify_visual_claims_delegates_to_runner(monkeypatch: 
     }
     result = await _call_tool(module, "verify_visual_claims", payload)
 
-    assert fake_runner.run_request_calls
-    forwarded = fake_runner.run_request_calls[0]
-    assert forwarded.url == payload["url"]
-    assert forwarded.claims == payload["claims"]
-    assert forwarded.run_name == "auth-ci"
-    assert forwarded.visualize is True
+    assert fake_runner.run_calls
+    forwarded = fake_runner.run_calls[0]
+    assert forwarded["url"] == payload["url"]
+    assert forwarded["claims"] == payload["claims"]
+    assert forwarded["run_name"] == "auth-ci"
+    assert forwarded["visualize"] is True
     assert result["overall_status"] == "completed"
     assert result["runner_version"] == __version__
     assert result["run_name"] == "auth-ci"
@@ -241,7 +241,7 @@ async def test_mcp_server_helpers_delegate_to_runner(monkeypatch: pytest.MonkeyP
     )
 
     assert fake_runner.screenshot_calls
-    assert fake_runner.browser_request_calls
+    assert fake_runner.browser_calls
     assert screenshot_result["final_url"] == "http://localhost:3000/tasks/123"
     assert screenshot_result["run_name"] == "mobile-home"
     assert browser_result["browser_running"] is True
@@ -263,11 +263,11 @@ async def test_mcp_server_manage_browser_login_passes_url_to_runner(monkeypatch:
         },
     )
 
-    assert len(fake_runner.browser_request_calls) == 1
-    request = fake_runner.browser_request_calls[0]
-    assert request.action == "login"
-    assert request.session_key == "auth"
-    assert request.url == "http://localhost:3000/sign-in"
+    assert len(fake_runner.browser_calls) == 1
+    request = fake_runner.browser_calls[0]
+    assert request["action"] == "login"
+    assert request["session_key"] == "auth"
+    assert request["url"] == "http://localhost:3000/sign-in"
 
 
 def test_close_runners_sync_closes_cached_runners(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -11,11 +11,7 @@ from mcp.server.fastmcp import FastMCP
 from frontend_visualqa.serialization import serialize_result
 from frontend_visualqa.schemas import (
     BrowserConfig,
-    ManageBrowserInput,
-    VerifyVisualClaimsInput,
     ViewportConfig,
-    coerce_optional_viewport,
-    coerce_viewport,
     validate_url,
 )
 
@@ -168,10 +164,10 @@ async def verify_visual_claims(
     """Run the shared visual QA runner over one or more claims."""
 
     runner = await _get_runner()
-    request = VerifyVisualClaimsInput(
+    result = await runner.run(
         url=validate_url(url),
         claims=claims,
-        viewport=coerce_viewport(viewport),
+        viewport=viewport,
         session_key=session_key,
         run_name=run_name,
         reuse_session=reuse_session,
@@ -182,7 +178,7 @@ async def verify_visual_claims(
         run_timeout_seconds=run_timeout_seconds,
         navigation_hint=navigation_hint,
     )
-    return serialize_result(await runner.run_request(request))
+    return serialize_result(result)
 
 
 @mcp.tool(
@@ -201,7 +197,7 @@ async def take_screenshot(
     runner = await _get_runner()
     result = await runner.take_screenshot(
         url=validate_url(url),
-        viewport=coerce_viewport(viewport),
+        viewport=viewport,
         session_key=session_key,
         run_name=run_name,
         reuse_session=reuse_session,
@@ -234,13 +230,13 @@ async def manage_browser(
     """
 
     runner = await _get_runner()
-    request = ManageBrowserInput(
+    result = await runner.manage_browser(
         action=action,
         session_key=session_key,
-        viewport=coerce_optional_viewport(viewport),
+        viewport=viewport,
         url=url,
     )
-    return serialize_result(await runner.manage_browser_request(request))
+    return serialize_result(result)
 
 
 def main() -> None:
