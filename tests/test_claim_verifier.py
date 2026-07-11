@@ -63,6 +63,11 @@ _EMPTY_VISUAL_STATE: dict[str, Any] = {
 }
 
 
+def _visual_state(**overrides: Any) -> dict[str, Any]:
+    """Build a visual_state dict, defaulting unset keys to _EMPTY_VISUAL_STATE."""
+    return {**_EMPTY_VISUAL_STATE, **overrides}
+
+
 class EvaluatingPage(FakePage):
     def __init__(self, url: str, visual_state: dict[str, Any] | None = None) -> None:
         super().__init__(url=url)
@@ -859,15 +864,14 @@ async def test_claim_verifier_downgrades_pass_when_button_grounding_disagrees(tm
         verifier,
         page=EvaluatingPage(
             url="http://fixture.local/page",
-            visual_state={
-                "visibleHeadings": ["Frontend Visual QA Playground"],
-                "visibleButtons": ["Open Edit Task Modal", "Show Save Confirmation"],
-                "buttonStates": [
+            visual_state=_visual_state(
+                visibleHeadings=["Frontend Visual QA Playground"],
+                visibleButtons=["Open Edit Task Modal", "Show Save Confirmation"],
+                buttonStates=[
                     {"text": "Open Edit Task Modal", "fullyVisible": True},
                     {"text": "Show Save Confirmation", "fullyVisible": True},
                 ],
-                "dialogTitles": [],
-            },
+            ),
         ),
         viewport=ViewportConfig(),
         claim="The Save button is visible without scrolling",
@@ -1067,13 +1071,9 @@ async def test_claim_verifier_downgrades_partially_filled_progress_bar_claim(tmp
         verifier,
         page=EvaluatingPage(
             url="http://fixture.local/dashboard",
-            visual_state={
-                "visibleHeadings": [],
-                "visibleButtons": [],
-                "buttonStates": [],
-                "dialogTitles": [],
-                "progressBars": [{"label": "Monthly Quota", "fillRatio": 0.65}],
-            },
+            visual_state=_visual_state(
+                progressBars=[{"label": "Monthly Quota", "fillRatio": 0.65}],
+            ),
         ),
         viewport=ViewportConfig(),
         claim="The Monthly Quota progress bar is completely filled",
@@ -1109,12 +1109,11 @@ async def test_claim_verifier_converts_inconclusive_full_visibility_button_claim
         verifier,
         page=EvaluatingPage(
             url="http://fixture.local/settings",
-            visual_state={
-                "visibleHeadings": ["Workspace Settings"],
-                "visibleButtons": ["Save"],
-                "buttonStates": [{"text": "Save", "fullyVisible": False}],
-                "dialogTitles": [],
-            },
+            visual_state=_visual_state(
+                visibleHeadings=["Workspace Settings"],
+                visibleButtons=["Save"],
+                buttonStates=[{"text": "Save", "fullyVisible": False}],
+            ),
         ),
         viewport=ViewportConfig(),
         claim="The Save button is fully visible within its container",
@@ -1142,12 +1141,11 @@ async def test_claim_verifier_fuzzy_matches_button_with_decorative_chars_and_quo
         verifier,
         page=EvaluatingPage(
             url="http://fixture.local/page",
-            visual_state={
-                "visibleHeadings": ["Page Title"],
-                "visibleButtons": ["Select Priority \u25bc"],
-                "buttonStates": [{"text": "Select Priority \u25bc", "fullyVisible": True}],
-                "dialogTitles": [],
-            },
+            visual_state=_visual_state(
+                visibleHeadings=["Page Title"],
+                visibleButtons=["Select Priority \u25bc"],
+                buttonStates=[{"text": "Select Priority \u25bc", "fullyVisible": True}],
+            ),
         ),
         viewport=ViewportConfig(),
         claim="The 'Select Priority' dropdown button is visible",
@@ -1797,14 +1795,12 @@ async def test_claim_verifier_grounding_never_upgrades_failed_verdict_to_passed(
         verifier,
         page=EvaluatingPage(
             url="http://fixture.local/page",
-            visual_state={
-                "visibleHeadings": [],
+            visual_state=_visual_state(
                 # DOM-visible, but the model judged the pixels and failed the
                 # claim (e.g. the button is covered by an overlay).
-                "visibleButtons": ["Save"],
-                "buttonStates": [{"text": "Save", "fullyVisible": True}],
-                "dialogTitles": [],
-            },
+                visibleButtons=["Save"],
+                buttonStates=[{"text": "Save", "fullyVisible": True}],
+            ),
         ),
         viewport=ViewportConfig(),
         claim="The Save button is visible",
@@ -1831,14 +1827,12 @@ async def test_claim_verifier_visible_claim_passes_for_partially_clipped_button(
         verifier,
         page=EvaluatingPage(
             url="http://fixture.local/page",
-            visual_state={
-                "visibleHeadings": [],
-                "visibleButtons": ["Save"],
+            visual_state=_visual_state(
+                visibleButtons=["Save"],
                 # Partially clipped is still visible; only the separate
                 # "fully visible" pattern demands fullyVisible=True.
-                "buttonStates": [{"text": "Save", "fullyVisible": False}],
-                "dialogTitles": [],
-            },
+                buttonStates=[{"text": "Save", "fullyVisible": False}],
+            ),
         ),
         viewport=ViewportConfig(),
         claim="The Save button is visible",
