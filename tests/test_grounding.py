@@ -72,6 +72,7 @@ def test_heading_reads_claim_passes_on_exact_match() -> None:
         grounding_state=state,
     )
     assert status == "passed"
+    assert "Analytics Dashboard" in finding
 
 
 def test_progress_bar_completely_filled_fails_when_partial() -> None:
