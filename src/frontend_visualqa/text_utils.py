@@ -8,12 +8,16 @@ def collapse_whitespace(text: str) -> str:
     return " ".join(text.split())
 
 
-def clip_text(text: str, limit: int, *, ellipsis: str = "...") -> str:
-    """Collapse whitespace then truncate to *limit* characters with an ellipsis suffix."""
-    normalized = collapse_whitespace(text)
+def _truncate_with_ellipsis(normalized: str, limit: int, ellipsis: str) -> str:
+    """Truncate an already-normalized string to *limit* characters, appending *ellipsis* if clipped."""
     if len(normalized) <= limit:
         return normalized
     return normalized[: max(limit - len(ellipsis), 0)].rstrip() + ellipsis
+
+
+def clip_text(text: str, limit: int, *, ellipsis: str = "...") -> str:
+    """Collapse whitespace then truncate to *limit* characters with an ellipsis suffix."""
+    return _truncate_with_ellipsis(collapse_whitespace(text), limit, ellipsis)
 
 
 def clip_text_preserving_lines(text: str, limit: int, *, ellipsis: str = "...") -> str:
@@ -24,6 +28,4 @@ def clip_text_preserving_lines(text: str, limit: int, *, ellipsis: str = "...") 
     blocks are all anchored on line starts.
     """
     normalized = text.replace("\r\n", "\n").replace("\r", "\n").strip()
-    if len(normalized) <= limit:
-        return normalized
-    return normalized[: max(limit - len(ellipsis), 0)].rstrip() + ellipsis
+    return _truncate_with_ellipsis(normalized, limit, ellipsis)
