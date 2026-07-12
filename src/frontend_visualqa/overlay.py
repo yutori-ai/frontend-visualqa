@@ -41,6 +41,13 @@ CLICK_DURATION_MS = 250
 DRAG_DURATION_MS = 200
 CURSOR_TRANSITION_MS = 350
 THOUGHT_DURATION_MS = 2000
+# Shared by the cursor's default style (persistent-root mount) and its two
+# teleport-reset paths (_restore_cursor_position, _move_cursor), which each
+# reapply this same transition after a `transition:none` reflow trick. Centralized
+# so the three previously hand-typed copies of this string cannot drift apart.
+_CURSOR_TRANSITION_CSS = (
+    f"left {CURSOR_TRANSITION_MS}ms ease-in-out,top {CURSOR_TRANSITION_MS}ms ease-in-out,opacity 200ms ease-in-out"
+)
 # Thought capsule shrink→expand on a new reasoning: collapse to the 48px badge
 # (THOUGHT_COLLAPSE_MS), then the badge width transition expands it to fit
 # (THOUGHT_EXPAND_MS — must match the badge CSS width transition). Used to hold a
@@ -408,7 +415,7 @@ _PERSISTENT_ROOT_JS = f"""() => {{
     if (!document.getElementById('{CURSOR_ID}')) {{
         const cursor = document.createElement('div');
         cursor.id = '{CURSOR_ID}';
-        cursor.style.cssText = 'position:fixed;left:-200px;top:-200px;width:110px;height:130px;pointer-events:none;z-index:{Z_INDEX + 2};transition:left {CURSOR_TRANSITION_MS}ms ease-in-out,top {CURSOR_TRANSITION_MS}ms ease-in-out,opacity 200ms ease-in-out;transform:translate(-18.33px,-3.45px);';
+        cursor.style.cssText = 'position:fixed;left:-200px;top:-200px;width:110px;height:130px;pointer-events:none;z-index:{Z_INDEX + 2};transition:{_CURSOR_TRANSITION_CSS};transform:translate(-18.33px,-3.45px);';
         // The badge is a live element carrying the full Figma treatment (fill
         // gradient, gradient rim, two white inner shadows, teal drop shadows).
         // The thought capsule stretches THIS element, so expanded and idle
@@ -857,7 +864,7 @@ class OverlayController:
                 // Force reflow so the transition reset takes effect before
                 // we restore the transition for subsequent moves.
                 cursor.offsetHeight;
-                cursor.style.transition = 'left {CURSOR_TRANSITION_MS}ms ease-in-out,top {CURSOR_TRANSITION_MS}ms ease-in-out,opacity 200ms ease-in-out';
+                cursor.style.transition = '{_CURSOR_TRANSITION_CSS}';
             }}"""
         )
 
@@ -1049,7 +1056,7 @@ class OverlayController:
                     cursor.style.left = '{x}px';
                     cursor.style.top = '{y}px';
                     cursor.offsetHeight;
-                    cursor.style.transition = 'left {CURSOR_TRANSITION_MS}ms ease-in-out,top {CURSOR_TRANSITION_MS}ms ease-in-out,opacity 200ms ease-in-out';
+                    cursor.style.transition = '{_CURSOR_TRANSITION_CSS}';
                     return true;
                 }}
                 cursor.style.left = '{x}px';
