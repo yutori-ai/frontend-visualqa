@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, get_args
 
+from frontend_visualqa.schemas import ClaimStatus
 
 
 VERDICT_JSON_SCHEMA: dict[str, Any] = {
@@ -11,7 +12,7 @@ VERDICT_JSON_SCHEMA: dict[str, Any] = {
     "properties": {
         "status": {
             "type": "string",
-            "enum": ["passed", "failed", "inconclusive", "not_testable"],
+            "enum": list(get_args(ClaimStatus)),
         },
         "finding": {
             "type": "string",

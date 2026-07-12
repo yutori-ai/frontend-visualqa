@@ -7,7 +7,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass, replace
-from typing import Any, TYPE_CHECKING
+from typing import Any, TYPE_CHECKING, get_args
 
 from frontend_visualqa.actions import (
     REDACTED_TYPE_TEXT,
@@ -800,7 +800,7 @@ class ClaimVerifier:
             return None
         status = str(parsed.get("status", "")).strip()
         finding = str(parsed.get("finding", "")).strip() or "No finding provided."
-        if status in {"passed", "failed", "inconclusive", "not_testable"}:
+        if status in set(get_args(ClaimStatus)):
             return status, finding
         return None
 
