@@ -9,10 +9,10 @@ import logging
 import os
 import sys
 import threading
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 from pydantic import ValidationError
 
@@ -32,6 +32,8 @@ from frontend_visualqa.schemas import (
 from frontend_visualqa.text_utils import clip_text
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -373,8 +375,9 @@ async def _run_verify(args: argparse.Namespace) -> dict[str, Any]:
 
     # Validate the request before the auth preflight so bad CLI input fails
     # fast with a clean message instead of hitting auth/network first.
-    try:
-        request = VerifyVisualClaimsInput(
+    request = _validate_or_raise(
+        "verify",
+        lambda: VerifyVisualClaimsInput(
             url=args.url,
             claims=claims,
             claim_navigation_hints=claim_navigation_hints,
@@ -387,9 +390,8 @@ async def _run_verify(args: argparse.Namespace) -> dict[str, Any]:
             claim_timeout_seconds=args.claim_timeout_seconds,
             run_timeout_seconds=args.run_timeout_seconds,
             navigation_hint=args.navigation_hint,
-        )
-    except ValidationError as exc:
-        raise ConfigurationError(_format_validation_error("verify", exc)) from exc
+        ),
+    )
 
     await _preflight_verify_auth()
 
@@ -425,12 +427,17 @@ def _format_validation_error(command: str, exc: ValidationError) -> str:
     return f"Invalid {command} options — {issues}"
 
 
-def _validated_viewport(args: argparse.Namespace, command: str) -> ViewportConfig:
-    """Build the viewport from CLI args, converting validation errors to clean output."""
+def _validate_or_raise(command: str, factory: Callable[[], T]) -> T:
+    """Call factory(), converting any pydantic ValidationError into a clean ConfigurationError."""
     try:
-        return _build_viewport(args)
+        return factory()
     except ValidationError as exc:
         raise ConfigurationError(_format_validation_error(command, exc)) from exc
+
+
+def _validated_viewport(args: argparse.Namespace, command: str) -> ViewportConfig:
+    """Build the viewport from CLI args, converting validation errors to clean output."""
+    return _validate_or_raise(command, lambda: _build_viewport(args))
 
 
 async def _preflight_verify_auth() -> None:
