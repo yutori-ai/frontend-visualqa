@@ -4,7 +4,7 @@ import logging
 
 import pytest
 
-from frontend_visualqa.text_utils import clip_text_preserving_lines
+from frontend_visualqa.text_utils import clip_text, clip_text_preserving_lines, collapse_whitespace
 from frontend_visualqa.utils import (
     safe_async_method_call,
     safe_callback_call,
@@ -236,6 +236,24 @@ def test_safe_callback_call_uses_caller_logger_when_supplied(
     matching = [r for r in caplog.records if "Claim callback" in r.message]
     assert matching, "expected a log record under the caller-supplied logger"
     assert all(r.name == "frontend_visualqa.runner" for r in matching)
+
+
+def test_collapse_whitespace_normalizes_runs_of_whitespace() -> None:
+    assert collapse_whitespace("  a\n\nb\t\tc  ") == "a b c"
+
+
+def test_clip_text_returns_unchanged_when_under_limit() -> None:
+    assert clip_text("hello   world", 50) == "hello world"
+
+
+def test_clip_text_collapses_whitespace_before_truncating() -> None:
+    text = "line one\nline two\n" + "x" * 600
+    clipped = clip_text(text, 50, ellipsis="…")
+
+    assert "\n" not in clipped
+    assert clipped.startswith("line one line two")
+    assert clipped.endswith("…")
+    assert len(clipped) <= 50
 
 
 def test_clip_text_preserving_lines_keeps_line_structure() -> None:
