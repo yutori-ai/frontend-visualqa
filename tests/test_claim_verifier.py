@@ -71,7 +71,7 @@ def _visual_state(**overrides: Any) -> dict[str, Any]:
 class EvaluatingPage(FakePage):
     def __init__(self, url: str, visual_state: dict[str, Any] | None = None) -> None:
         super().__init__(url=url)
-        self.visual_state = visual_state if visual_state is not None else dict(_EMPTY_VISUAL_STATE)
+        self.visual_state = visual_state if visual_state is not None else _visual_state()
 
     async def evaluate(self, _: str) -> dict[str, Any]:
         return self.visual_state
