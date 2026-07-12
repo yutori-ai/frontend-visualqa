@@ -289,14 +289,3 @@ class ManageBrowserInput(FrontendVisualQABaseModel):
         if self.action == "login" and self.url is None:
             raise ValueError("url is required when action is 'login'")
         return self
-
-
-class RunArtifactsSummary(FrontendVisualQABaseModel):
-    """Serializable description of the files generated for a run."""
-
-    run_id: str
-    run_dir: str
-
-    @classmethod
-    def from_path(cls, run_id: str, path: Path) -> "RunArtifactsSummary":
-        return cls(run_id=run_id, run_dir=str(path))
