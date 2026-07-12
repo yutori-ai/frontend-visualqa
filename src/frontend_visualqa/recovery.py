@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit
 
 
 def wrong_page_recovered(
@@ -60,21 +60,19 @@ def _strip_trailing_hash(url: str) -> str:
 
 def _base_url(url: str) -> str:
     p = urlsplit(_strip_trailing_hash(url))
-    q = f"?{p.query}" if p.query else ""
-    return f"{p.scheme}://{p.netloc}{p.path or '/'}{q}"
+    return urlunsplit((p.scheme, p.netloc, p.path or "/", p.query, ""))
 
 
 def _parse(url: str, *, shell: bool = False) -> _Location:
     p = urlsplit(_strip_trailing_hash(url))
     path = p.path or "/"
-    q = f"?{p.query}" if p.query else ""
     has_hash_route = p.fragment.startswith("/")
 
     if has_hash_route or path.endswith(".html") or shell:
-        context = f"{p.scheme}://{p.netloc}{path}{q}"
+        context = urlunsplit((p.scheme, p.netloc, path, p.query, ""))
         route_src = p.fragment if has_hash_route else ""
     else:
-        context = f"{p.scheme}://{p.netloc}"
+        context = urlunsplit((p.scheme, p.netloc, "", "", ""))
         route_src = path
 
     return _Location(context=context, route=_split_route(route_src))
