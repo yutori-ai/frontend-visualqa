@@ -18,7 +18,12 @@ from frontend_visualqa.actions import (
     tool_counts_as_interaction,
 )
 from frontend_visualqa.artifacts import ArtifactManager, RunArtifacts
-from frontend_visualqa.browser import BrowserManager, BrowserSession, image_bytes_to_data_url
+from frontend_visualqa.browser import (
+    DEFAULT_NAVIGATION_TIMEOUT_MS,
+    BrowserManager,
+    BrowserSession,
+    image_bytes_to_data_url,
+)
 from frontend_visualqa.errors import BrowserActionError, NavigatorClientError
 from frontend_visualqa.grounding import capture_grounding_state, ground_claim_verdict
 from frontend_visualqa.hook_adapter import VisualQAHookAdapter
@@ -138,7 +143,7 @@ class ClaimVerifier:
         self.artifact_manager = artifact_manager
         self.navigator_client = navigator_client
         self.action_executor = action_executor or ActionExecutor(
-            navigation_timeout_ms=getattr(browser_manager, "navigation_timeout_ms", 20_000)
+            navigation_timeout_ms=getattr(browser_manager, "navigation_timeout_ms", DEFAULT_NAVIGATION_TIMEOUT_MS)
         )
         self._visualize = visualize
         self._overlay: Any | None = None
@@ -152,7 +157,9 @@ class ClaimVerifier:
         """
 
         self.browser_manager = browser_manager
-        self.action_executor.navigation_timeout_ms = getattr(browser_manager, "navigation_timeout_ms", 20_000)
+        self.action_executor.navigation_timeout_ms = getattr(
+            browser_manager, "navigation_timeout_ms", DEFAULT_NAVIGATION_TIMEOUT_MS
+        )
         self.action_executor.overlay = None
         self._overlay = None
         self._hook = None
