@@ -16,6 +16,8 @@ OverallStatus = Literal["completed", "not_testable"]
 ScreenshotStatus = Literal["completed", "not_testable"]
 BrowserAction = Literal["status", "restart", "close", "set_viewport", "login"]
 DEFAULT_PERSISTENT_USER_DATA_DIR = Path("~/.cache/frontend-visualqa/browser-profile").expanduser()
+DEFAULT_NAVIGATION_TIMEOUT_MS = 20_000
+DEFAULT_SETTLE_DELAY_SECONDS = 1.0
 
 
 def validate_url(url: str) -> str:
@@ -133,8 +135,8 @@ class BrowserConfig(FrontendVisualQABaseModel):
     user_data_dir: str | None = None
     headless: bool = True
     visualize: bool = False
-    navigation_timeout_ms: int = Field(default=20_000, ge=1)
-    settle_delay_seconds: float = Field(default=1.0, ge=0, le=60)
+    navigation_timeout_ms: int = Field(default=DEFAULT_NAVIGATION_TIMEOUT_MS, ge=1)
+    settle_delay_seconds: float = Field(default=DEFAULT_SETTLE_DELAY_SECONDS, ge=0, le=60)
     # When True, Playwright records a video of every browser context for the
     # run. The runner derives the destination directory from the run's
     # artifacts dir and passes it to BrowserManager.get_session at session

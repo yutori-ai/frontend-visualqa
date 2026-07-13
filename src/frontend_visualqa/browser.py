@@ -16,6 +16,8 @@ from playwright.async_api import Browser, BrowserContext, Error as PlaywrightErr
 from yutori.navigator.page_ready import PageReadyChecker
 
 from frontend_visualqa.schemas import (
+    DEFAULT_NAVIGATION_TIMEOUT_MS,
+    DEFAULT_SETTLE_DELAY_SECONDS,
     BrowserConfig,
     BrowserMode,
     BrowserSessionStatus,
@@ -24,8 +26,6 @@ from frontend_visualqa.schemas import (
 )
 
 
-DEFAULT_NAVIGATION_TIMEOUT_MS = 20_000
-DEFAULT_SETTLE_DELAY_SECONDS = 1.0
 # Must exceed the SDK's PageReadyChecker.initial_wait (2.0s, hardcoded) by
 # enough margin for at least a few polling cycles, otherwise the outer
 # asyncio.wait_for fires before the first is_ready() check ever runs and we
