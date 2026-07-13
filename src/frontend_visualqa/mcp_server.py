@@ -11,7 +11,9 @@ from mcp.server.fastmcp import FastMCP
 from frontend_visualqa.serialization import serialize_result
 from frontend_visualqa.schemas import (
     BrowserConfig,
+    VerifyVisualClaimsInput,
     ViewportConfig,
+    _pydantic_field_default,
     validate_url,
 )
 
@@ -156,9 +158,9 @@ async def verify_visual_claims(
     reuse_session: bool = True,
     reset_between_claims: bool = True,
     visualize: bool | None = None,
-    max_steps_per_claim: int = 12,
-    claim_timeout_seconds: float | None = 120.0,
-    run_timeout_seconds: float | None = 300.0,
+    max_steps_per_claim: int = _pydantic_field_default(VerifyVisualClaimsInput, "max_steps_per_claim"),
+    claim_timeout_seconds: float | None = _pydantic_field_default(VerifyVisualClaimsInput, "claim_timeout_seconds"),
+    run_timeout_seconds: float | None = _pydantic_field_default(VerifyVisualClaimsInput, "run_timeout_seconds"),
     navigation_hint: str | None = None,
 ) -> dict[str, Any]:
     """Run the shared visual QA runner over one or more claims."""
