@@ -74,19 +74,19 @@ def build_parser() -> argparse.ArgumentParser:
     verify_parser.add_argument(
         "--max-steps-per-claim",
         type=int,
-        default=12,
+        default=_pydantic_field_default(VerifyVisualClaimsInput, "max_steps_per_claim"),
         help="Maximum browser actions the runner may take for each claim.",
     )
     verify_parser.add_argument(
         "--claim-timeout-seconds",
         type=float,
-        default=120.0,
+        default=_pydantic_field_default(VerifyVisualClaimsInput, "claim_timeout_seconds"),
         help="Maximum wall-clock time for an individual claim before it is marked inconclusive.",
     )
     verify_parser.add_argument(
         "--run-timeout-seconds",
         type=float,
-        default=300.0,
+        default=_pydantic_field_default(VerifyVisualClaimsInput, "run_timeout_seconds"),
         help="Maximum wall-clock time for the whole run before remaining claims are marked inconclusive.",
     )
     verify_parser.add_argument(
@@ -173,13 +173,33 @@ def _add_session_args(parser: argparse.ArgumentParser, *, run_name_help: str) ->
     )
 
 
+def _pydantic_field_default(model: type[Any], field_name: str) -> Any:
+    """Return a pydantic model field's declared default.
+
+    Sourcing argparse defaults from here instead of copying them as bare
+    literals keeps the CLI from silently drifting out of sync if a schema's
+    ``Field(default=...)`` ever changes.
+    """
+    return model.model_fields[field_name].default
+
+
 def _add_viewport_args(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--width", type=int, default=1280, help="Viewport width in CSS pixels.")
-    parser.add_argument("--height", type=int, default=800, help="Viewport height in CSS pixels.")
+    parser.add_argument(
+        "--width",
+        type=int,
+        default=_pydantic_field_default(ViewportConfig, "width"),
+        help="Viewport width in CSS pixels.",
+    )
+    parser.add_argument(
+        "--height",
+        type=int,
+        default=_pydantic_field_default(ViewportConfig, "height"),
+        help="Viewport height in CSS pixels.",
+    )
     parser.add_argument(
         "--device-scale-factor",
         type=float,
-        default=1.0,
+        default=_pydantic_field_default(ViewportConfig, "device_scale_factor"),
         help="Device scale factor. Keep this at 1 unless you explicitly need another DPR.",
     )
 
