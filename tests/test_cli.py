@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from fakes import assert_claim_result_payload_shape, make_claim_result, noop_sleep
+from fakes import assert_claim_result_payload_shape, make_claim_result, noop_sleep, simple_proof
 import frontend_visualqa.cli as cli
 from frontend_visualqa import __version__
 from frontend_visualqa.errors import ConfigurationError
@@ -20,13 +20,7 @@ def _sample_claim_result(*, url: str, viewport: ViewportConfig, claim: str = "Th
         finding=f"{claim}.",
         url=url,
         viewport=viewport,
-        proof={
-            "screenshot_path": "artifacts/run-fake/claim-01/step-00.webp",
-            "step": 0,
-            "after_action": None,
-            "text": None,
-            "text_path": None,
-        },
+        proof=simple_proof("artifacts/run-fake/claim-01/step-00.webp"),
         trace={
             "steps_taken": 0,
             "wrong_page_recovered": False,

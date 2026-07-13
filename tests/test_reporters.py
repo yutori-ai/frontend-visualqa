@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from fakes import assert_claim_result_payload_shape, import_or_skip, make_claim_result
+from fakes import assert_claim_result_payload_shape, import_or_skip, make_claim_result, simple_proof
 from frontend_visualqa.claim_parser import ParsedClaimLine, ParsedClaimsFile, parse_claims_file
 from frontend_visualqa.schemas import RunResult, ViewportConfig
 
@@ -27,13 +27,7 @@ def _sample_run_result(artifacts_dir: str) -> RunResult:
                 finding="Visible heading matched 'Dashboard'.",
                 url="http://localhost:3000/dashboard",
                 viewport=viewport,
-                proof={
-                    "screenshot_path": "artifacts/run-001/claim-01/step-00.webp",
-                    "step": 0,
-                    "after_action": None,
-                    "text": None,
-                    "text_path": None,
-                },
+                proof=simple_proof("artifacts/run-001/claim-01/step-00.webp"),
                 trace={
                     "steps_taken": 0,
                     "wrong_page_recovered": False,
@@ -85,13 +79,7 @@ def _duplicate_claim_run_result(artifacts_dir: str) -> RunResult:
                 finding="Visible heading matched 'Dashboard'.",
                 url="http://localhost:3000/dashboard",
                 viewport=viewport,
-                proof={
-                    "screenshot_path": "artifacts/run-002/claim-01/step-00.webp",
-                    "step": 0,
-                    "after_action": None,
-                    "text": None,
-                    "text_path": None,
-                },
+                proof=simple_proof("artifacts/run-002/claim-01/step-00.webp"),
                 trace={
                     "steps_taken": 0,
                     "wrong_page_recovered": False,
@@ -106,13 +94,7 @@ def _duplicate_claim_run_result(artifacts_dir: str) -> RunResult:
                 finding="The second heading is missing.",
                 url="http://localhost:3000/dashboard",
                 viewport=viewport,
-                proof={
-                    "screenshot_path": "artifacts/run-002/claim-02/step-01.webp",
-                    "step": 1,
-                    "after_action": None,
-                    "text": None,
-                    "text_path": None,
-                },
+                proof=simple_proof("artifacts/run-002/claim-02/step-01.webp", step=1),
                 trace={
                     "steps_taken": 1,
                     "wrong_page_recovered": False,
