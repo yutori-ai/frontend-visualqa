@@ -25,6 +25,18 @@ def validate_url(url: str) -> str:
     return url
 
 
+def _pydantic_field_default(model: type[Any], field_name: str) -> Any:
+    """Return a pydantic model field's declared default.
+
+    Centralizes what was previously a CLI-only helper so the MCP tool
+    signatures and the runner's programmatic API can also source their
+    parameter defaults from here instead of copying them as bare literals,
+    which keeps them from silently drifting out of sync if a schema's
+    ``Field(default=...)`` ever changes.
+    """
+    return model.model_fields[field_name].default
+
+
 class BrowserMode(str, Enum):
     """Supported Playwright session ownership strategies."""
 
