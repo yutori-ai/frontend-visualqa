@@ -27,6 +27,7 @@ from frontend_visualqa.schemas import (
     BrowserMode,
     VerifyVisualClaimsInput,
     ViewportConfig,
+    _pydantic_field_default,
     validate_url,
 )
 from frontend_visualqa.text_utils import clip_text
@@ -171,16 +172,6 @@ def _add_session_args(parser: argparse.ArgumentParser, *, run_name_help: str) ->
         default=True,
         help="Reuse the named browser session if it already exists.",
     )
-
-
-def _pydantic_field_default(model: type[Any], field_name: str) -> Any:
-    """Return a pydantic model field's declared default.
-
-    Sourcing argparse defaults from here instead of copying them as bare
-    literals keeps the CLI from silently drifting out of sync if a schema's
-    ``Field(default=...)`` ever changes.
-    """
-    return model.model_fields[field_name].default
 
 
 def _add_viewport_args(parser: argparse.ArgumentParser) -> None:
