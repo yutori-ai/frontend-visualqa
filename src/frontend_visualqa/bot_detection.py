@@ -201,7 +201,14 @@ def classify_block(
     are corroboration surfaced via :meth:`BrowserActivityMonitor.summary`, not a
     trigger.
     """
-    if monitor.main_document_failure:
+    # A recorded main-document failure only blocks when the latest main-document
+    # load did not itself succeed. On a reused session, reset(keep_navigation=True)
+    # carries a prior claim's transient main-document failure forward; if this
+    # claim's landing navigation then loaded cleanly (status < 400), that success
+    # is the authoritative signal and the stale failure must not short-circuit an
+    # otherwise usable page as not_testable.
+    main_document_loaded_ok = monitor.last_main_status is not None and monitor.last_main_status < 400
+    if monitor.main_document_failure and not main_document_loaded_ok:
         return (
             f"the page did not load — main-document navigation failed "
             f"({monitor.main_document_failure}), which usually indicates a network "

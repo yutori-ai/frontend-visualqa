@@ -83,6 +83,15 @@ def test_failed_main_navigation_blocks():
     assert reason and "did not load" in reason
 
 
+def test_stale_failure_does_not_block_when_main_document_loaded_ok():
+    """A transient failure carried forward (keep_navigation) must not poison a
+    reused session whose landing navigation loaded cleanly (status 200)."""
+    m = BrowserActivityMonitor()
+    m.last_main_status = 200
+    m.main_document_failure = "net::ERR_ABORTED"
+    assert classify_block(m, page_title="Product", page_text="Add to Cart") is None
+
+
 def test_gdpr_cookie_banner_does_not_trigger_block():
     """"please enable cookies" wording on a normal 200 page must not stop the run."""
     banner = "We value your privacy. Please enable cookies to continue using our site."
