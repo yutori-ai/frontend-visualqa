@@ -22,6 +22,7 @@ from fakes import (
     instantiate_with_aliased_attrs,
     is_bootstrap_step_artifact,
     make_claim_result,
+    simple_proof,
 )
 
 from frontend_visualqa.schemas import (
@@ -1415,13 +1416,7 @@ async def test_runner_uses_partial_claim_result_when_timeout_interrupts_verifier
         finding="Claim verification timed out after 1s before a verdict was recorded.",
         url="http://fixture.local/page",
         viewport=viewport,
-        proof={
-            "screenshot_path": "artifacts/run-001/claim-01/step-00.webp",
-            "step": 0,
-            "after_action": None,
-            "text": None,
-            "text_path": None,
-        },
+        proof=simple_proof("artifacts/run-001/claim-01/step-00.webp"),
         trace={
             "steps_taken": 1,
             "wrong_page_recovered": False,

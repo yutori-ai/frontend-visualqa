@@ -123,6 +123,22 @@ _EMPTY_CLAIM_TRACE: dict[str, Any] = {
 }
 
 
+def simple_proof(screenshot_path: str, step: int = 0) -> dict[str, Any]:
+    """Build a ``ClaimProof``-shaped dict for a bare screenshot with no action/text evidence.
+
+    ``test_cli.py``, ``test_reporters.py`` (x3), and ``test_runner.py`` each hand-built this
+    same ``screenshot_path``/``step`` pair with ``after_action``/``text``/``text_path`` all
+    ``None``. This is the shared constructor they delegate to now.
+    """
+    return {
+        "screenshot_path": screenshot_path,
+        "step": step,
+        "after_action": None,
+        "text": None,
+        "text_path": None,
+    }
+
+
 def make_claim_result(
     *,
     claim: str,
