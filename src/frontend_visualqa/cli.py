@@ -9,7 +9,7 @@ import logging
 import os
 import sys
 import threading
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Coroutine
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, TypeVar
@@ -337,25 +337,36 @@ def _fail(message: str) -> int:
     return 1
 
 
-def _handle_verify(args: argparse.Namespace) -> int:
-    _configure_verify_logging(getattr(args, "verbose", 0))
+def _run_cli_async(coro: Coroutine[Any, Any, dict[str, Any]]) -> dict[str, Any] | int:
+    """Run *coro* to completion, converting a ``ConfigurationError`` into a failure exit code.
+
+    Returns the coroutine's result dict on success, or an ``int`` exit code (from
+    :func:`_fail`) if a ``ConfigurationError`` was raised. Callers should check
+    ``isinstance(outcome, int)`` before treating the outcome as a result dict.
+    """
     try:
-        result = asyncio.run(_run_verify(args))
+        return asyncio.run(coro)
     except ConfigurationError as exc:
         return _fail(str(exc))
-    _emit_json(result)
-    exit_code = _verify_exit_code(result)
-    _print_run_summary(result, all_passed=exit_code == 0)
+
+
+def _handle_verify(args: argparse.Namespace) -> int:
+    _configure_verify_logging(getattr(args, "verbose", 0))
+    outcome = _run_cli_async(_run_verify(args))
+    if isinstance(outcome, int):
+        return outcome
+    _emit_json(outcome)
+    exit_code = _verify_exit_code(outcome)
+    _print_run_summary(outcome, all_passed=exit_code == 0)
     return exit_code
 
 
 def _handle_screenshot(args: argparse.Namespace) -> int:
-    try:
-        result = asyncio.run(_run_screenshot(args))
-    except ConfigurationError as exc:
-        return _fail(str(exc))
-    _emit_json(result)
-    return 0 if result.get("status") == "completed" else 1
+    outcome = _run_cli_async(_run_screenshot(args))
+    if isinstance(outcome, int):
+        return outcome
+    _emit_json(outcome)
+    return 0 if outcome.get("status") == "completed" else 1
 
 
 def _handle_login(args: argparse.Namespace) -> int:
