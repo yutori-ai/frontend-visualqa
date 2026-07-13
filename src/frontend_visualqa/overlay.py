@@ -1026,6 +1026,15 @@ class OverlayController:
     async def before_screenshot(self) -> None:
         if not self._active:
             return
+        # Hold the capture until the thought capsule finishes its collapse→expand
+        # so the evidence fade never lands mid-expand — otherwise the animation is
+        # truncated and the pill visibly finishes growing on fade-in. Reuses the
+        # same _thought_settle_at the navigating click-hold waits on, now applied at
+        # the screenshot boundary so every action type (not just clicks) lets the
+        # pill settle first. Visualize-only pacing, like the cursor glide: no-op
+        # when nothing is settling, and never runs in production (before_screenshot
+        # is only reached with a live overlay), so the evidence image is unchanged.
+        await self._await_thought_settled()
         await self._eval(_FADE_OUT_AND_HIDE_JS)
 
     async def after_screenshot(self) -> None:
