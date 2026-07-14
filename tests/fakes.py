@@ -115,24 +115,24 @@ def assert_claim_result_payload_shape(result: dict[str, Any]) -> None:
     assert set(trace) == {"steps_taken", "wrong_page_recovered", "screenshot_paths", "actions", "trace_path"}
 
 
-_DEFAULT_GROUNDING_STATE: GroundingState = {
-    "visibleHeadings": [],
-    "visibleButtons": [],
-    "buttonStates": [],
-    "dialogTitles": [],
-    "progressBars": [],
-}
-
-
 def default_grounding_state(**overrides: Any) -> GroundingState:
-    """Build a ``GroundingState`` dict, defaulting unset keys to ``_DEFAULT_GROUNDING_STATE``.
+    """Build a ``GroundingState`` dict with every key defaulted to a fresh empty list.
 
     ``test_grounding.py``'s ``_state()`` and ``test_claim_verifier.py``'s ``_visual_state()``
     each independently hand-built this same empty-grounding-state-plus-overrides shape (the
     latter omitting the newer ``progressBars`` key, which its one call site that needs it
     already supplies via override). This is the shared constructor they delegate to now.
+
+    Each call builds brand-new list objects (rather than copying a shared module-level
+    default) so mutating one test's returned state can never leak into another test.
     """
-    state: GroundingState = dict(_DEFAULT_GROUNDING_STATE)  # type: ignore[assignment]
+    state: GroundingState = {
+        "visibleHeadings": [],
+        "visibleButtons": [],
+        "buttonStates": [],
+        "dialogTitles": [],
+        "progressBars": [],
+    }
     state.update(overrides)  # type: ignore[typeddict-item]
     return state
 
