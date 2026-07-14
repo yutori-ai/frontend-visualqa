@@ -465,6 +465,54 @@ async def test_execute_action_hover_previews_before_mouse_move() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(("action_name", "press_or_release"), [("mouse_down", "down"), ("mouse_up", "up")])
+async def test_execute_action_mouse_down_and_up_preview_then_press_release(
+    action_name: str, press_or_release: str
+) -> None:
+    """Characterizes the pre-refactor mouse_down/mouse_up branches: like ``hover``, both
+    resolve coordinates and preview through ``_hover_at_resolved_coordinates`` (preview_action
+    with their own canonical action_type, then mouse.move) before pressing or releasing the
+    button. Pins the exact call order so the branch-merging refactor can be checked against it.
+    """
+    module = _import_actions_module()
+    call_order: list[tuple[Any, ...]] = []
+    page = _make_overlay_enabled_page(call_order)
+
+    async def _move(x: int, y: int, *, steps: int | None = None) -> None:
+        call_order.append(("move", x, y))
+
+    async def _down() -> None:
+        call_order.append(("down",))
+
+    async def _up() -> None:
+        call_order.append(("up",))
+
+    page.mouse.move = AsyncMock(side_effect=_move)
+    page.mouse.down = AsyncMock(side_effect=_down)
+    page.mouse.up = AsyncMock(side_effect=_up)
+
+    overlay = MagicMock()
+
+    async def _preview_action(action_type: str, **kwargs: Any) -> None:
+        call_order.append(("preview_action", action_type, kwargs))
+
+    overlay.preview_action = AsyncMock(side_effect=_preview_action)
+
+    executor = _build_action_executor(module)
+    executor.overlay = overlay
+
+    viewport = ViewportConfig()
+    await _call_execute_action(executor, page, action_name, {"coordinates": [250, 500]}, viewport)
+
+    assert call_order[:3] == [
+        ("preview_action", action_name, {"x": 320, "y": 400}),
+        ("move", 320, 400),
+        (press_or_release,),
+    ]
+    overlay.preview_action.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_execute_action_key_press_shows_copy_paste_glyph_only_for_bare_chords() -> None:
     module = _import_actions_module()
 
