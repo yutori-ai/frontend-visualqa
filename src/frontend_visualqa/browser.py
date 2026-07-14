@@ -305,9 +305,7 @@ class BrowserManager:
         # dimensions, so we must resize back to CSS viewport size to keep
         # coordinates aligned.
         css_size = (session.viewport.width, session.viewport.height)
-        if image.size != css_size:
-            image = image.resize(css_size, resample=Image.Resampling.LANCZOS)
-        return image
+        return self._resize_to(image, css_size)
 
     async def _capture_screenshot_image_via_cdp(self, session: BrowserSession) -> Image.Image | None:
         cdp_session = None
@@ -375,13 +373,15 @@ class BrowserManager:
         )
 
     @staticmethod
+    def _resize_to(image: Image.Image, size: tuple[int, int]) -> Image.Image:
+        """Resize *image* to *size* with LANCZOS, unless it is already that size."""
+        return image if image.size == size else image.resize(size, resample=Image.Resampling.LANCZOS)
+
+    @staticmethod
     def _normalize_cdp_capture_image(image: Image.Image, target_size: tuple[int, int] | None) -> Image.Image:
         if target_size is None:
             return image
-        if image.size == target_size:
-            return image
-
-        return image.resize(target_size, resample=Image.Resampling.LANCZOS)
+        return BrowserManager._resize_to(image, target_size)
 
     @staticmethod
     def _image_from_bytes(image_bytes: bytes) -> Image.Image:
