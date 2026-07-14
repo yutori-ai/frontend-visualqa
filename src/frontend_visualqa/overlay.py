@@ -557,8 +557,10 @@ _YUTORI_LOGOTYPE_SVG = '<svg width="248" height="63" viewBox="0 0 248 63" fill="
 def _markdown_card_css(card_id: str) -> str:
     """Return markdown-rendering CSS rules scoped to a single card element id.
 
-    Shared by the thought card and the full-screen result card so both render
-    n1renderMarkdown output identically (bold/italic/links/code/lists/headers).
+    Used by the full-screen result card (``_RESULT_STYLE_CSS``). The thought card
+    deliberately keeps its own tighter, bullet-less rules inline in
+    ``_THOUGHT_STYLE_CSS`` rather than reusing this, so the compact reasoning pill
+    and the roomier verdict card can style lists/headers independently.
     """
     return (
         f"#{card_id} strong{{font-weight:700}}"
@@ -740,11 +742,20 @@ _RESULT_CARD_JS = f"""(args) => {{
     const claim = args.claim;
     const finding = args.finding;
 
+    // Hide the branded cursor + badge (nested inside CURSOR_ID) so the verdict
+    // card is the only thing on the final recorded frame. Both the z-index bump
+    // below and this hide matter: the cursor sits at Z_INDEX + 2, and the
+    // backdrop's radial gradient is only ~86% opaque at its center, so a bright
+    // cursor could otherwise ghost through even once the card paints above it.
+    const priorCursor = document.getElementById('{CURSOR_ID}');
+    if (priorCursor) priorCursor.style.display = 'none';
+
     // Full-viewport backdrop — covers the whole screen so this frame reads as
-    // the definitive end-of-run state on the recorded video.
+    // the definitive end-of-run state on the recorded video. z-index sits above
+    // the cursor (Z_INDEX + 2) so the card is unambiguously the topmost layer.
     const backdrop = document.createElement('div');
     backdrop.id = '{RESULT_CARD_ID}';
-    backdrop.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:{Z_INDEX + 1};box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:6vh 6vw;background:radial-gradient(120% 120% at 50% 30%,rgba(6,12,16,0.86),rgba(4,8,11,0.97));backdrop-filter:blur(14px);animation:n1resultFade 400ms ease-out both;color:#eef6f3;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;text-align:center;';
+    backdrop.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:{Z_INDEX + 3};box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:6vh 6vw;background:radial-gradient(120% 120% at 50% 30%,rgba(6,12,16,0.86),rgba(4,8,11,0.97));backdrop-filter:blur(14px);animation:n1resultFade 400ms ease-out both;color:#eef6f3;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;text-align:center;';
 
     // Yutori wordmark above the verdict. Inline SVG so currentColor resolves.
     const brand = document.createElement('div');

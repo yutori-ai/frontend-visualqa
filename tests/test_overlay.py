@@ -314,6 +314,7 @@ class TestOverlayInformationalCards:
 
     @pytest.mark.asyncio
     async def test_show_result_injects_fullscreen_verdict_card(self) -> None:
+        from frontend_visualqa import overlay as overlay_module
         from frontend_visualqa.overlay import OverlayController
 
         page = _make_mock_page()
@@ -328,6 +329,10 @@ class TestOverlayInformationalCards:
         card_call = next(call for call in page.evaluate.call_args_list if "__n1ResultCard" in str(call.args[0]))
         card_script = str(card_call.args[0])
         assert "position:fixed;inset:0" in card_script
+        # The card must be the topmost layer and the cursor hidden, so the last
+        # recorded frame is a clean verdict (the cursor sits at Z_INDEX + 2).
+        assert f"z-index:{overlay_module.Z_INDEX + 3}" in card_script
+        assert overlay_module.CURSOR_ID in card_script and "display = 'none'" in card_script
         arg = card_call.args[1]
         assert arg["status_label"] == "Failed"
         assert arg["accent"] == "#FF5A5F"
