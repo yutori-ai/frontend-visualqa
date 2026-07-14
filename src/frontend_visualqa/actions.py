@@ -56,6 +56,9 @@ CLICK_ACTIONS = {
     "right_click",
 }
 MOVE_ACTIONS = {"hover", "mouse_move"}
+# mouse_down/mouse_up first hover to the resolved coordinates exactly like MOVE_ACTIONS,
+# then additionally press/release the button — see the merged branch in execute_action.
+HOVER_RESOLVED_ACTIONS = MOVE_ACTIONS | {"mouse_down", "mouse_up"}
 
 ACTION_DELAY_SECONDS: dict[str, float] = {
     "left_click": 0.25,
@@ -370,7 +373,7 @@ class ActionExecutor:
         needs_domcontentloaded_wait = canonical_name not in {"screenshot", "wait"}
 
         try:
-            if canonical_name in MOVE_ACTIONS:
+            if canonical_name in HOVER_RESOLVED_ACTIONS:
                 await self._hover_at_resolved_coordinates(
                     page,
                     raw_arguments,
@@ -378,6 +381,10 @@ class ActionExecutor:
                     height=height,
                     canonical_name=canonical_name,
                 )
+                if canonical_name == "mouse_down":
+                    await page.mouse.down()
+                elif canonical_name == "mouse_up":
+                    await page.mouse.up()
 
             elif canonical_name in CLICK_ACTIONS:
                 x, y = await self._resolve_coordinates(
@@ -418,26 +425,6 @@ class ActionExecutor:
                 await page.mouse.move(start_x, start_y)
                 await page.mouse.down()
                 await page.mouse.move(end_x, end_y, steps=10)
-                await page.mouse.up()
-
-            elif canonical_name == "mouse_down":
-                await self._hover_at_resolved_coordinates(
-                    page,
-                    raw_arguments,
-                    width=width,
-                    height=height,
-                    canonical_name=canonical_name,
-                )
-                await page.mouse.down()
-
-            elif canonical_name == "mouse_up":
-                await self._hover_at_resolved_coordinates(
-                    page,
-                    raw_arguments,
-                    width=width,
-                    height=height,
-                    canonical_name=canonical_name,
-                )
                 await page.mouse.up()
 
             elif canonical_name == "scroll":
