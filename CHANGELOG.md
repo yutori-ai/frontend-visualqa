@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - The Navigator request now defaults to the expanded tool set (`browser_tools_expanded-20260403`) instead of core, matching the Navigator browser extension's default. n1.5+ models are now offered the `extract_elements`, `find`, `set_element_value`, and `execute_js` DOM tools (the executor already handled them). Override with `NavigatorClient(tool_set=...)`; legacy `n1`/`n1-experimental` models still omit `tool_set` entirely.
+- Headed (`--visualize`) overlay hide/restore around evidence screenshots is now an awaited fade (~200ms) instead of an instant hide, and waits for any in-progress thought-card expand/collapse to settle first — smooths the flash seen in `--headed` recordings/videos at the cost of a small added delay per screenshot. No effect on headless/production runs, where the overlay is never rendered.
 
 ## [0.8.4] - 2026-06-10
 

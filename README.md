@@ -477,7 +477,7 @@ frontend-visualqa verify http://localhost:3000 \
 
 The MCP tool `verify_visual_claims` accepts a per-call `visualize` parameter to control this independently of the server's default.
 
-Overlay elements are hidden for every evidence screenshot, and action replays are injected only after capture so no visualization appears before the screenshot sent to the model or saved to artifacts.
+Overlay elements fade out before every evidence screenshot (waiting for any in-progress thought card to settle, then a short opacity transition) rather than hiding instantly, and action replays are injected only after capture so no visualization appears in the screenshot sent to the model or saved to artifacts.
 
 </details>
 
