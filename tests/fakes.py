@@ -17,6 +17,7 @@ from typing import Any
 import pytest
 
 from frontend_visualqa.artifacts import RunArtifacts, claim_dir_path
+from frontend_visualqa.grounding import GroundingState
 from frontend_visualqa.schemas import ClaimResult, ViewportConfig
 
 
@@ -112,6 +113,28 @@ def assert_claim_result_payload_shape(result: dict[str, Any]) -> None:
     trace = result["trace"]
     assert isinstance(trace, dict)
     assert set(trace) == {"steps_taken", "wrong_page_recovered", "screenshot_paths", "actions", "trace_path"}
+
+
+_DEFAULT_GROUNDING_STATE: GroundingState = {
+    "visibleHeadings": [],
+    "visibleButtons": [],
+    "buttonStates": [],
+    "dialogTitles": [],
+    "progressBars": [],
+}
+
+
+def default_grounding_state(**overrides: Any) -> GroundingState:
+    """Build a ``GroundingState`` dict, defaulting unset keys to ``_DEFAULT_GROUNDING_STATE``.
+
+    ``test_grounding.py``'s ``_state()`` and ``test_claim_verifier.py``'s ``_visual_state()``
+    each independently hand-built this same empty-grounding-state-plus-overrides shape (the
+    latter omitting the newer ``progressBars`` key, which its one call site that needs it
+    already supplies via override). This is the shared constructor they delegate to now.
+    """
+    state: GroundingState = dict(_DEFAULT_GROUNDING_STATE)  # type: ignore[assignment]
+    state.update(overrides)  # type: ignore[typeddict-item]
+    return state
 
 
 _EMPTY_CLAIM_TRACE: dict[str, Any] = {

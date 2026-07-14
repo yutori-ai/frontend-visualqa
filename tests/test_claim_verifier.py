@@ -22,6 +22,7 @@ from fakes import (
     FakeResponse,
     FakeToolCall,
     RecordingFakeOverlay,
+    default_grounding_state,
     import_or_skip,
     instantiate_with_aliased_attrs,
     tool_call_message,
@@ -55,23 +56,10 @@ class FakePage:
     url: str
 
 
-_EMPTY_VISUAL_STATE: dict[str, Any] = {
-    "visibleHeadings": [],
-    "visibleButtons": [],
-    "buttonStates": [],
-    "dialogTitles": [],
-}
-
-
-def _visual_state(**overrides: Any) -> dict[str, Any]:
-    """Build a visual_state dict, defaulting unset keys to _EMPTY_VISUAL_STATE."""
-    return {**_EMPTY_VISUAL_STATE, **overrides}
-
-
 class EvaluatingPage(FakePage):
     def __init__(self, url: str, visual_state: dict[str, Any] | None = None) -> None:
         super().__init__(url=url)
-        self.visual_state = visual_state if visual_state is not None else _visual_state()
+        self.visual_state = visual_state if visual_state is not None else default_grounding_state()
 
     async def evaluate(self, _: str) -> dict[str, Any]:
         return self.visual_state
@@ -864,7 +852,7 @@ async def test_claim_verifier_downgrades_pass_when_button_grounding_disagrees(tm
         verifier,
         page=EvaluatingPage(
             url="http://fixture.local/page",
-            visual_state=_visual_state(
+            visual_state=default_grounding_state(
                 visibleHeadings=["Frontend Visual QA Playground"],
                 visibleButtons=["Open Edit Task Modal", "Show Save Confirmation"],
                 buttonStates=[
@@ -1071,7 +1059,7 @@ async def test_claim_verifier_downgrades_partially_filled_progress_bar_claim(tmp
         verifier,
         page=EvaluatingPage(
             url="http://fixture.local/dashboard",
-            visual_state=_visual_state(
+            visual_state=default_grounding_state(
                 progressBars=[{"label": "Monthly Quota", "fillRatio": 0.65}],
             ),
         ),
@@ -1109,7 +1097,7 @@ async def test_claim_verifier_converts_inconclusive_full_visibility_button_claim
         verifier,
         page=EvaluatingPage(
             url="http://fixture.local/settings",
-            visual_state=_visual_state(
+            visual_state=default_grounding_state(
                 visibleHeadings=["Workspace Settings"],
                 visibleButtons=["Save"],
                 buttonStates=[{"text": "Save", "fullyVisible": False}],
@@ -1141,7 +1129,7 @@ async def test_claim_verifier_fuzzy_matches_button_with_decorative_chars_and_quo
         verifier,
         page=EvaluatingPage(
             url="http://fixture.local/page",
-            visual_state=_visual_state(
+            visual_state=default_grounding_state(
                 visibleHeadings=["Page Title"],
                 visibleButtons=["Select Priority \u25bc"],
                 buttonStates=[{"text": "Select Priority \u25bc", "fullyVisible": True}],
@@ -1795,7 +1783,7 @@ async def test_claim_verifier_grounding_never_upgrades_failed_verdict_to_passed(
         verifier,
         page=EvaluatingPage(
             url="http://fixture.local/page",
-            visual_state=_visual_state(
+            visual_state=default_grounding_state(
                 # DOM-visible, but the model judged the pixels and failed the
                 # claim (e.g. the button is covered by an overlay).
                 visibleButtons=["Save"],
@@ -1827,7 +1815,7 @@ async def test_claim_verifier_visible_claim_passes_for_partially_clipped_button(
         verifier,
         page=EvaluatingPage(
             url="http://fixture.local/page",
-            visual_state=_visual_state(
+            visual_state=default_grounding_state(
                 visibleButtons=["Save"],
                 # Partially clipped is still visible; only the separate
                 # "fully visible" pattern demands fullyVisible=True.
