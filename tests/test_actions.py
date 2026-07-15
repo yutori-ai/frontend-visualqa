@@ -31,6 +31,20 @@ def _build_action_executor(module: Any) -> Any:
     )
 
 
+def _build_default_action_fixtures(module: Any) -> tuple[Any, FakePage, ViewportConfig]:
+    """Build the default ActionExecutor, FakePage, and ViewportConfig used by most tests here.
+
+    15 tests each repeated this identical arrange block (an ``ActionExecutor`` via
+    ``_build_action_executor``, a plain ``FakePage()``, and a default ``ViewportConfig()``) for
+    actions that don't need overlay wiring or a pre-seeded page. This is the shared helper they
+    delegate to now.
+    """
+    executor = _build_action_executor(module)
+    page = FakePage()
+    viewport = ViewportConfig()
+    return executor, page, viewport
+
+
 async def _call_execute_action(
     executor: Any,
     page: Any,
@@ -238,9 +252,7 @@ def test_tool_counts_as_interaction_marks_read_only_expanded_tools_non_interacti
 @pytest.mark.asyncio
 async def test_execute_action_left_click_scales_coordinates_before_dispatch() -> None:
     module = _import_actions_module()
-    executor = _build_action_executor(module)
-    page = FakePage()
-    viewport = ViewportConfig()
+    executor, page, viewport = _build_default_action_fixtures(module)
 
     await _call_execute_action(executor, page, "left_click", {"coordinates": [500, 250]}, viewport)
 
@@ -262,9 +274,7 @@ async def test_navigation_actions_wait_for_domcontentloaded(
     expected_url_attr: str,
 ) -> None:
     module = _import_actions_module()
-    executor = _build_action_executor(module)
-    page = FakePage()
-    viewport = ViewportConfig()
+    executor, page, viewport = _build_default_action_fixtures(module)
 
     await _call_execute_action(executor, page, action_name, arguments, viewport)
 
@@ -276,9 +286,7 @@ async def test_navigation_actions_wait_for_domcontentloaded(
 @pytest.mark.asyncio
 async def test_execute_action_type_and_scroll_use_keyboard_and_mouse_inputs() -> None:
     module = _import_actions_module()
-    executor = _build_action_executor(module)
-    page = FakePage()
-    viewport = ViewportConfig()
+    executor, page, viewport = _build_default_action_fixtures(module)
 
     await _call_execute_action(
         executor,
@@ -304,9 +312,7 @@ async def test_execute_action_type_and_scroll_use_keyboard_and_mouse_inputs() ->
 @pytest.mark.asyncio
 async def test_execute_action_supports_hover_drag_and_multi_click_variants() -> None:
     module = _import_actions_module()
-    executor = _build_action_executor(module)
-    page = FakePage()
-    viewport = ViewportConfig()
+    executor, page, viewport = _build_default_action_fixtures(module)
 
     await _call_execute_action(executor, page, "hover", {"coordinates": [250, 500]}, viewport)
     await _call_execute_action(
@@ -562,9 +568,7 @@ async def test_execute_action_mouse_move_and_ref_resolution_use_sdk_tool_helpers
 @pytest.mark.asyncio
 async def test_execute_action_click_modifier_holds_and_releases_keys() -> None:
     module = _import_actions_module()
-    executor = _build_action_executor(module)
-    page = FakePage()
-    viewport = ViewportConfig()
+    executor, page, viewport = _build_default_action_fixtures(module)
 
     trace = await _call_execute_action(
         executor,
@@ -630,9 +634,7 @@ async def test_execute_action_drag_previews_before_drag_motion() -> None:
 @pytest.mark.asyncio
 async def test_execute_action_key_press_supports_shortcuts_and_semantic_navigation() -> None:
     module = _import_actions_module()
-    executor = _build_action_executor(module)
-    page = FakePage()
-    viewport = ViewportConfig()
+    executor, page, viewport = _build_default_action_fixtures(module)
 
     await _call_execute_action(executor, page, "key_press", {"key": "ctrl+a"}, viewport)
     await _call_execute_action(executor, page, "key_press", {"key_comb": "F5"}, viewport)
@@ -647,9 +649,7 @@ async def test_execute_action_key_press_supports_shortcuts_and_semantic_navigati
 @pytest.mark.asyncio
 async def test_execute_action_key_press_supports_repeated_key_sequences() -> None:
     module = _import_actions_module()
-    executor = _build_action_executor(module)
-    page = FakePage()
-    viewport = ViewportConfig()
+    executor, page, viewport = _build_default_action_fixtures(module)
 
     trace = await _call_execute_action(executor, page, "key_press", {"key": "down down enter"}, viewport)
 
@@ -660,9 +660,7 @@ async def test_execute_action_key_press_supports_repeated_key_sequences() -> Non
 @pytest.mark.asyncio
 async def test_execute_action_key_press_ignores_zoom_shortcuts() -> None:
     module = _import_actions_module()
-    executor = _build_action_executor(module)
-    page = FakePage()
-    viewport = ViewportConfig()
+    executor, page, viewport = _build_default_action_fixtures(module)
 
     trace = await _call_execute_action(executor, page, "key_press", {"key": "ctrl+minus"}, viewport)
 
@@ -673,9 +671,7 @@ async def test_execute_action_key_press_ignores_zoom_shortcuts() -> None:
 @pytest.mark.asyncio
 async def test_execute_action_hold_key_supports_duration_and_fallback_press(monkeypatch: pytest.MonkeyPatch) -> None:
     module = _import_actions_module()
-    executor = _build_action_executor(module)
-    page = FakePage()
-    viewport = ViewportConfig()
+    executor, page, viewport = _build_default_action_fixtures(module)
 
     monkeypatch.setattr(module.asyncio, "sleep", noop_sleep)
 
@@ -692,9 +688,7 @@ async def test_execute_action_hold_key_supports_duration_and_fallback_press(monk
 @pytest.mark.asyncio
 async def test_execute_action_screenshot_is_a_no_op_for_n1_default_tool_calls() -> None:
     module = _import_actions_module()
-    executor = _build_action_executor(module)
-    page = FakePage()
-    viewport = ViewportConfig()
+    executor, page, viewport = _build_default_action_fixtures(module)
 
     trace = await _call_execute_action(executor, page, "screenshot", {}, viewport)
 
@@ -706,9 +700,7 @@ async def test_execute_action_screenshot_is_a_no_op_for_n1_default_tool_calls() 
 @pytest.mark.asyncio
 async def test_execute_action_rejects_invalid_scroll_direction() -> None:
     module = _import_actions_module()
-    executor = _build_action_executor(module)
-    page = FakePage()
-    viewport = ViewportConfig()
+    executor, page, viewport = _build_default_action_fixtures(module)
 
     with pytest.raises(module.BrowserActionError, match="unsupported scroll direction"):
         await _call_execute_action(
@@ -723,9 +715,7 @@ async def test_execute_action_rejects_invalid_scroll_direction() -> None:
 @pytest.mark.asyncio
 async def test_execute_tool_call_runs_find_without_counting_as_interaction(monkeypatch: pytest.MonkeyPatch) -> None:
     module = _import_actions_module()
-    executor = _build_action_executor(module)
-    page = FakePage()
-    viewport = ViewportConfig()
+    executor, page, viewport = _build_default_action_fixtures(module)
 
     async def _fake_evaluate_tool_script(page_arg: Any, script: str, text: str) -> dict[str, Any]:
         assert page_arg is page
@@ -750,9 +740,7 @@ async def test_execute_tool_call_runs_find_without_counting_as_interaction(monke
 async def test_execute_action_click_modifier_released_on_failure() -> None:
     """Modifier keys must be released even when the click raises."""
     module = _import_actions_module()
-    executor = _build_action_executor(module)
-    page = FakePage()
-    viewport = ViewportConfig()
+    executor, page, viewport = _build_default_action_fixtures(module)
 
     async def _failing_click(*_args: Any, **_kwargs: Any) -> None:
         raise RuntimeError("click exploded")
@@ -847,9 +835,7 @@ async def test_execute_action_type_keeps_text_for_non_password_fields() -> None:
 @pytest.mark.asyncio
 async def test_execute_tool_call_set_element_value_masks_password_values(monkeypatch: pytest.MonkeyPatch) -> None:
     module = _import_actions_module()
-    executor = _build_action_executor(module)
-    page = FakePage()
-    viewport = ViewportConfig()
+    executor, page, viewport = _build_default_action_fixtures(module)
 
     async def _is_password(page_arg: Any, ref: str) -> bool:
         assert page_arg is page
@@ -883,9 +869,7 @@ async def test_execute_tool_call_set_element_value_masks_password_values(monkeyp
 @pytest.mark.asyncio
 async def test_execute_action_wait_caps_model_requested_duration(monkeypatch: pytest.MonkeyPatch) -> None:
     module = _import_actions_module()
-    executor = _build_action_executor(module)
-    page = FakePage()
-    viewport = ViewportConfig()
+    executor, page, viewport = _build_default_action_fixtures(module)
     sleeps: list[float] = []
     real_sleep = asyncio.sleep
 
