@@ -89,6 +89,16 @@ def import_or_skip(module_path: str) -> ModuleType:
         raise
 
 
+def result_statuses(result: Any) -> list[str]:
+    """Return the list of claim statuses from a ``RunResult``.
+
+    ``test_runner.py`` (14x) and ``test_live_runner.py`` (4x) each repeated the identical
+    ``[item.status for item in result.results]`` comprehension to assert the overall shape of a
+    run's outcomes. This is the shared accessor they delegate to now.
+    """
+    return [item.status for item in result.results]
+
+
 def assert_claim_result_payload_shape(result: dict[str, Any]) -> None:
     """Assert a serialized ``ClaimResult`` dict has the expected top-level and nested keys.
 

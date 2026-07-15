@@ -13,7 +13,14 @@ from frontend_visualqa.claim_verifier import ClaimVerifier
 from frontend_visualqa.runner import VisualQARunner
 from frontend_visualqa.schemas import ViewportConfig
 
-from fakes import FakeNavigatorClient, FakeResponse, import_or_skip, serve_static_directory, tool_call_message
+from fakes import (
+    FakeNavigatorClient,
+    FakeResponse,
+    import_or_skip,
+    result_statuses,
+    serve_static_directory,
+    tool_call_message,
+)
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
@@ -159,7 +166,7 @@ async def test_live_runner_executes_real_browser_flow_and_passes_modal_claim(
         await runner.close()
 
     assert result.overall_status == "completed"
-    assert [item.status for item in result.results] == ["passed"]
+    assert result_statuses(result) == ["passed"]
     assert "Visible dialog title matched" in result.results[0].finding
     assert result.results[0].trace.actions == ["left_click([420, 348])"]
     assert result.results[0].trace.steps_taken == 1
@@ -199,7 +206,7 @@ async def test_live_runner_downgrades_false_positive_button_claim_with_grounding
         await runner.close()
 
     assert result.overall_status == "completed"
-    assert [item.status for item in result.results] == ["failed"]
+    assert result_statuses(result) == ["failed"]
     assert "No visible button label matched" in result.results[0].finding
 
 
@@ -229,7 +236,7 @@ async def test_live_runner_headed_overlay_hides_restores_and_cleans_up(
 
     async with instrumented_overlay_lifecycle(runner, OverlayController, run_kwargs) as (result, lifecycle_samples):
         assert result.overall_status == "completed"
-        assert [item.status for item in result.results] == ["passed"]
+        assert result_statuses(result) == ["passed"]
         assert "Visible dialog title matched" in result.results[0].finding
         assert result.results[0].trace.actions == ["left_click([420, 348])"]
         assert result.results[0].trace.steps_taken == 1
@@ -330,7 +337,7 @@ async def test_live_runner_headed_overlay_zero_action_path_skips_hide_restore(
 
     async with instrumented_overlay_lifecycle(runner, OverlayController, run_kwargs) as (result, lifecycle_samples):
         assert result.overall_status == "completed"
-        assert [item.status for item in result.results] == ["passed"]
+        assert result_statuses(result) == ["passed"]
         assert result.results[0].trace.actions == []
         assert result.results[0].trace.steps_taken == 0
         assert len(result.results[0].trace.screenshot_paths) == 1
