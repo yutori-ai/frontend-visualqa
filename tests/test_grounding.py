@@ -7,19 +7,9 @@ observable pass/fail behavior of the DOM-backed grounding checks.
 
 from __future__ import annotations
 
-from frontend_visualqa.grounding import GroundingState, ground_claim_verdict
+from frontend_visualqa.grounding import ground_claim_verdict
 
-
-def _state(**overrides: object) -> GroundingState:
-    base: GroundingState = {
-        "visibleHeadings": [],
-        "visibleButtons": [],
-        "buttonStates": [],
-        "dialogTitles": [],
-        "progressBars": [],
-    }
-    base.update(overrides)  # type: ignore[typeddict-item]
-    return base
+from fakes import default_grounding_state as _state
 
 
 def test_button_visible_claim_passes_when_button_state_matches() -> None:
