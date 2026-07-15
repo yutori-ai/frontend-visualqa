@@ -22,6 +22,7 @@ from fakes import (
     instantiate_with_aliased_attrs,
     is_bootstrap_step_artifact,
     make_claim_result,
+    result_statuses,
     simple_proof,
 )
 
@@ -434,7 +435,7 @@ async def test_runner_run_aggregates_claim_results_and_resets_between_claims(
     assert result.overall_status == "completed"
     assert result.session_key == "qa-session"
     assert result.run_name == "auth-ci"
-    assert [item.status for item in result.results] == ["passed", "failed"]
+    assert result_statuses(result) == ["passed", "failed"]
     assert result.artifacts_dir
     assert result.summary
     assert result.results[0].finding == "Claim one: passed"
@@ -476,7 +477,7 @@ async def test_runner_run_uses_per_claim_navigation_hints_and_falls_back_to_glob
         navigation_hint="Open the login page if needed.",
     )
 
-    assert [item.status for item in result.results] == ["passed", "passed"]
+    assert result_statuses(result) == ["passed", "passed"]
     assert verifier.calls[0]["navigation_hint"] == "Open the modal first."
     assert verifier.calls[1]["navigation_hint"] == "Open the login page if needed."
 
@@ -508,7 +509,7 @@ async def test_runner_run_uses_second_claim_navigation_hint_override(
         navigation_hint="Open the login page if needed.",
     )
 
-    assert [item.status for item in result.results] == ["passed", "passed"]
+    assert result_statuses(result) == ["passed", "passed"]
     assert verifier.calls[0]["navigation_hint"] == "Open the login page if needed."
     assert verifier.calls[1]["navigation_hint"] == "Scroll to the quota card before judging."
 
@@ -544,7 +545,7 @@ async def test_runner_run_request_reuses_prevalidated_input(
 
     assert result.overall_status == "completed"
     assert result.run_name == "modal-check"
-    assert [item.status for item in result.results] == ["passed"]
+    assert result_statuses(result) == ["passed"]
     assert browser.goto_calls[0] == ("qa-session", "http://fixture.local/page")
     assert verifier.calls[0]["navigation_hint"] == "Open the modal if needed."
     assert verifier.calls[0]["visualize"] is True
@@ -687,7 +688,7 @@ async def test_runner_ignores_callback_exceptions(
         on_claim_complete=_boom,
     )
 
-    assert [item.status for item in result.results] == ["passed"]
+    assert result_statuses(result) == ["passed"]
 
 
 def test_runner_parses_claims_file_and_ignores_nested_or_fenced_content(tmp_path: Path) -> None:
@@ -1248,7 +1249,7 @@ async def test_runner_marks_claim_not_testable_when_reset_between_claims_fails(
         on_claim_complete=on_claim_complete,
     )
 
-    assert [item.status for item in result.results] == ["passed", "not_testable"]
+    assert result_statuses(result) == ["passed", "not_testable"]
     assert "Could not prepare browser state" in result.results[1].finding
     assert len(verifier.calls) == 1
     assert events == [
@@ -1289,7 +1290,7 @@ async def test_runner_marks_claim_not_testable_when_verifier_raises(
         on_claim_complete=on_claim_complete,
     )
 
-    assert [item.status for item in result.results] == ["inconclusive"]
+    assert result_statuses(result) == ["inconclusive"]
     assert "Verification crashed unexpectedly before returning a verdict" in result.results[0].finding
     assert exploding_verifier.calls
     assert events == [
@@ -1356,7 +1357,7 @@ async def test_runner_marks_claim_inconclusive_when_claim_timeout_expires(
         on_claim_complete=on_claim_complete,
     )
 
-    assert [item.status for item in result.results] == ["inconclusive"]
+    assert result_statuses(result) == ["inconclusive"]
     assert "Claim verification timed out" in result.results[0].finding
     assert events == [
         ("start", 1, "Claim one", None),
@@ -1395,7 +1396,7 @@ async def test_runner_handles_timeout_error_when_claim_timeout_is_disabled(
         on_claim_complete=on_claim_complete,
     )
 
-    assert [item.status for item in result.results] == ["inconclusive"]
+    assert result_statuses(result) == ["inconclusive"]
     assert result.results[0].finding == "Claim verification timed out before a verdict was recorded."
     assert events == [
         ("start", 1, "Claim one", None),
@@ -1449,7 +1450,7 @@ async def test_runner_uses_partial_claim_result_when_timeout_interrupts_verifier
         on_claim_complete=on_claim_complete,
     )
 
-    assert [item.status for item in result.results] == ["inconclusive"]
+    assert result_statuses(result) == ["inconclusive"]
     assert result.results[0].proof is not None
     assert is_bootstrap_step_artifact(result.results[0].proof.screenshot_path)
     assert result.results[0].trace.steps_taken == 1
@@ -1500,7 +1501,7 @@ async def test_runner_uses_partial_claim_result_when_verifier_crashes(
         on_claim_complete=on_claim_complete,
     )
 
-    assert [item.status for item in result.results] == ["inconclusive"]
+    assert result_statuses(result) == ["inconclusive"]
     assert result.results[0].proof is not None
     assert result.results[0].proof.after_action == 'goto_url("http://fixture.local/dashboard")'
     assert result.results[0].trace.trace_path == "artifacts/run-001/claim-01/trace.json"
@@ -1542,7 +1543,7 @@ async def test_runner_marks_remaining_claims_inconclusive_when_run_timeout_expir
         on_claim_complete=on_claim_complete,
     )
 
-    assert [item.status for item in result.results] == ["inconclusive", "inconclusive"]
+    assert result_statuses(result) == ["inconclusive", "inconclusive"]
     assert all("Run timed out" in item.finding for item in result.results)
     assert events == [
         ("start", 1, "Claim one", None),
@@ -1593,7 +1594,7 @@ async def test_runner_preserves_partial_claim_result_when_run_timeout_interrupts
         on_claim_complete=on_claim_complete,
     )
 
-    assert [item.status for item in result.results] == ["inconclusive", "inconclusive"]
+    assert result_statuses(result) == ["inconclusive", "inconclusive"]
     assert result.results[0].proof is not None
     assert result.results[0].proof.after_action == 'goto_url("http://fixture.local/dashboard")'
     assert result.results[0].trace.steps_taken == 1
@@ -1747,7 +1748,7 @@ async def test_runner_preserves_injected_claim_verifier_visualize_default(
         reset_between_claims=True,
     )
 
-    assert [item.status for item in result.results] == ["passed"]
+    assert result_statuses(result) == ["passed"]
     assert verifier.calls[0]["visualize"] is True
 
 
