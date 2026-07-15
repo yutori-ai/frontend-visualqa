@@ -37,6 +37,7 @@ from frontend_visualqa.prompts import (
     build_verification_task,
 )
 from frontend_visualqa.schemas import ClaimPage, ClaimProof, ClaimResult, ClaimStatus, ClaimTrace
+from frontend_visualqa.serialization import dump_or_pass_through
 from frontend_visualqa.text_utils import clip_text
 from frontend_visualqa.tool_arguments import parse_tool_arguments, tool_call_arguments_as_text, tool_call_name
 from frontend_visualqa.utils import safe_async_method_call, safe_method_call
@@ -673,11 +674,7 @@ class ClaimVerifier:
 
     @staticmethod
     def _message_to_dict(message: Any) -> dict[str, Any]:
-        if hasattr(message, "model_dump"):
-            return message.model_dump(exclude_none=True)
-        if isinstance(message, dict):
-            return message
-        raise TypeError(f"Unsupported assistant message type: {type(message)!r}")
+        return dump_or_pass_through(message, model_dump_kwargs={"exclude_none": True}, type_label="assistant message")
 
     async def _sanitize_tool_arguments(
         self,
