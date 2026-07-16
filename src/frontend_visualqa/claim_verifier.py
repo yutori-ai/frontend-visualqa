@@ -15,7 +15,6 @@ from frontend_visualqa.actions import (
     ToolExecutionResult,
     focused_element_is_password,
     referenced_element_is_password,
-    tool_counts_as_interaction,
 )
 from frontend_visualqa.artifacts import ArtifactManager, RunArtifacts
 from frontend_visualqa.browser import (
@@ -823,13 +822,6 @@ class ClaimVerifier:
                 current_url=session.page.url,
                 counts_as_interaction=False,
                 action_failed=True,
-            )
-        if isinstance(result, str):
-            return ToolExecutionResult(
-                trace=result,
-                output_text=None,
-                current_url=session.page.url,
-                counts_as_interaction=tool_counts_as_interaction(tool_name),
             )
         return ToolExecutionResult(
             trace=getattr(result, "trace", str(result)),

@@ -343,15 +343,20 @@ class ActionExecutor:
     def overlay(self, value: OverlayController | None) -> None:
         self._overlay = value
 
-    async def execute_tool_call(self, session: BrowserSession, tool_call: Any) -> ToolExecutionResult | str:
+    async def execute_tool_call(self, session: BrowserSession, tool_call: Any) -> ToolExecutionResult:
         """Execute a tool call object with ``function.name`` and JSON arguments."""
 
         action_name = tool_call_name(tool_call)
-        if action_name in EXPANDED_TOOL_NAMES:
-            arguments = parse_tool_arguments(tool_call)
-            return await self._execute_expanded_tool(session, action_name, arguments)
         arguments = parse_tool_arguments(tool_call)
-        return await self.execute_action(session=session, action_name=action_name, arguments=arguments)
+        if action_name in EXPANDED_TOOL_NAMES:
+            return await self._execute_expanded_tool(session, action_name, arguments)
+        trace = await self.execute_action(session=session, action_name=action_name, arguments=arguments)
+        return ToolExecutionResult(
+            trace=trace,
+            output_text=None,
+            current_url=session.page.url,
+            counts_as_interaction=tool_counts_as_interaction(action_name),
+        )
 
     async def execute_action(
         self,
