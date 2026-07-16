@@ -15,6 +15,7 @@ from PIL import Image
 from playwright.async_api import Browser, BrowserContext, Error as PlaywrightError, Page, Playwright, async_playwright
 from yutori.navigator.page_ready import PageReadyChecker
 
+from frontend_visualqa.bot_detection import BrowserActivityMonitor
 from frontend_visualqa.schemas import (
     DEFAULT_NAVIGATION_TIMEOUT_MS,
     DEFAULT_SETTLE_DELAY_SECONDS,
@@ -51,6 +52,7 @@ class BrowserSession:
     context: BrowserContext
     page: Page
     viewport: ViewportConfig
+    activity: BrowserActivityMonitor | None = None
 
 
 def image_bytes_to_data_url(image_bytes: bytes, mime_type: str = "image/webp") -> str:
@@ -509,7 +511,14 @@ class BrowserManager:
             context = await browser.new_context(**context_kwargs)
             self._configure_context(context)
             page = await context.new_page()
-        return BrowserSession(session_key=session_key, context=context, page=page, viewport=viewport)
+        activity = BrowserActivityMonitor()
+        try:
+            activity.attach(page)
+        except Exception:
+            logger.debug("Failed to attach browser activity monitor", exc_info=True)
+        return BrowserSession(
+            session_key=session_key, context=context, page=page, viewport=viewport, activity=activity
+        )
 
     async def _ensure_viewport(self, session: BrowserSession, desired: ViewportConfig) -> BrowserSession:
         if session.viewport == desired:

@@ -218,6 +218,13 @@ def _add_browser_args(parser: argparse.ArgumentParser) -> None:
         default=None,
         help="Show in-browser action visualization. Defaults to on when --headed is set.",
     )
+    parser.add_argument(
+        "--detect-bot-block",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Stop a claim early (not_testable) when the page shows high-confidence "
+        "bot-block signals (challenge page, blocking HTTP status, or failed main-doc load).",
+    )
 
 
 def _build_viewport(args: argparse.Namespace) -> ViewportConfig:
@@ -244,6 +251,7 @@ def _build_browser_config(
         headless=not headed,
         visualize=visualize,
         record_video=bool(getattr(args, "video", False)),
+        detect_bot_block=bool(getattr(args, "detect_bot_block", True)),
     )
 
 

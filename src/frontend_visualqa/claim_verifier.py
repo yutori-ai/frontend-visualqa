@@ -18,6 +18,7 @@ from frontend_visualqa.actions import (
     tool_counts_as_interaction,
 )
 from frontend_visualqa.artifacts import ArtifactManager, RunArtifacts
+from frontend_visualqa.bot_detection import classify_block
 from frontend_visualqa.browser import (
     DEFAULT_NAVIGATION_TIMEOUT_MS,
     BrowserManager,
@@ -88,6 +89,12 @@ MAX_INLINE_PROOF_TEXT_LINES = 6
 VERDICT_SOURCE_JSON = "json_schema"
 VERDICT_SOURCE_FORCE_STOP = "force_stop"
 
+# How long the full-screen verdict card is held on screen at the end of a claim
+# so it is captured as the final frame(s) of the session video. Only applied in
+# visualize mode (when an overlay is active); no-op otherwise, so headless runs
+# incur no latency.
+FINAL_RESULT_HOLD_SECONDS = 4.0
+
 # Tool-call argument that may carry a credential, per tool name.
 _SENSITIVE_TOOL_ARGUMENTS = {"type": "text", "set_element_value": "value"}
 
@@ -150,6 +157,10 @@ class ClaimVerifier:
         self._overlay: Any | None = None
         self._hook: VisualQAHookAdapter | None = None
         self._partial_progress: _VerificationProgress | None = None
+        # The already-finalized result, stashed before the cosmetic end-of-run
+        # hold so a claim-timeout cancellation during that hold surfaces the real
+        # verdict (via consume_partial_result) instead of a generic timeout.
+        self._final_result: ClaimResult | None = None
 
     def set_browser_manager(self, browser_manager: BrowserManager, *, visualize: bool | None = None) -> None:
         """Rebind long-lived browser dependencies after the runner reconfigures the browser.
@@ -165,6 +176,7 @@ class ClaimVerifier:
         self._overlay = None
         self._hook = None
         self._partial_progress = None
+        self._final_result = None
         if visualize is not None:
             self._visualize = visualize
 
@@ -198,12 +210,18 @@ class ClaimVerifier:
             url_history=[session.page.url or url],
         )
         self._partial_progress = progress
+        self._final_result = None
         preserve_partial_progress = False
 
         try:
             self.action_executor.overlay = None
             self._overlay = None
             self._hook = None
+            activity = getattr(session, "activity", None)
+            if activity is not None:
+                # Clear a prior claim's console/network noise on reused sessions;
+                # keep the landing navigation status the runner just produced.
+                activity.reset(keep_navigation=True)
 
             initial_bytes, initial_path = await self._capture_evidence_screenshot(
                 session=session,
@@ -237,6 +255,10 @@ class ClaimVerifier:
             await self._safe_hook_call("on_agent_start", messages=messages)
 
             while progress.step_count < max_steps:
+                bot_block_result = await self._maybe_bot_block_result(session=session, progress=progress)
+                if bot_block_result is not None:
+                    return await self._complete_result(bot_block_result)
+
                 response, messages = await self._invoke_navigator_turn(messages)
                 assistant_message = response.choices[0].message
 
@@ -513,9 +535,77 @@ class ClaimVerifier:
 
         await safe_async_method_call(self._hook, method_name, log_label="Hook", **kwargs)
 
+    async def _maybe_bot_block_result(
+        self, *, session: BrowserSession, progress: _VerificationProgress
+    ) -> ClaimResult | None:
+        """Return a not_testable result if the page is bot-blocking, else None.
+
+        Conservative: only high-confidence signals (challenge markers, blocking
+        HTTP status on the main document, or a failed main-document navigation)
+        stop the run. Console/CDN errors are captured for the finding but never
+        trigger a stop on their own.
+        """
+        config = getattr(self.browser_manager, "config", None)
+        if not getattr(config, "detect_bot_block", True):
+            return None
+        monitor = getattr(session, "activity", None)
+        if monitor is None:
+            return None
+
+        url, title, text = await self._probe_page_for_block(session)
+        reason = classify_block(monitor, page_url=url, page_title=title, page_text=text)
+        if reason is None:
+            return None
+
+        logger.warning("Bot-block detected for claim %r: %s", progress.claim, reason)
+        finding = (
+            f"Stopped early — the site appears to be blocking automated access: {reason}. "
+            f"Signals: {monitor.summary()}."
+        )
+        return self._build_result(progress=progress, status="not_testable", finding=finding)
+
+    async def _probe_page_for_block(
+        self, session: BrowserSession
+    ) -> tuple[str | None, str | None, str | None]:
+        """Best-effort snapshot of (url, title, visible text) for block detection."""
+        url = None
+        try:
+            url = session.page.url
+        except Exception:
+            logger.debug("Reading page.url for block probe failed (best-effort)", exc_info=True)
+        try:
+            data = await session.page.evaluate(
+                "() => ({title: document.title || '',"
+                " text: (document.body && document.body.innerText || '').slice(0, 4000)})"
+            )
+            return url, data.get("title"), data.get("text")
+        except Exception:
+            logger.debug("Page block probe failed (best-effort)", exc_info=True)
+            return url, None, None
+
     async def _complete_result(self, result: ClaimResult) -> ClaimResult:
         await self._safe_hook_call("on_agent_end", output=result)
+        await self._show_final_result(result)
         return result
+
+    async def _show_final_result(self, result: ClaimResult) -> None:
+        """Display the verdict full-screen and hold it as the final video frame.
+
+        No-op when no overlay is active (headless / non-visualize runs), so it
+        adds no latency there. The subsequent ``claim_ended`` in ``verify``'s
+        finally block tears the card down.
+        """
+        if self._overlay is None:
+            return
+        # Stash the finalized verdict first: this hold runs inside the runner's
+        # per-claim asyncio.timeout, so a deadline that lands mid-hold cancels
+        # verify() and the return value is lost. consume_partial_result then
+        # surfaces this stashed result instead of a generic "timed out" finding.
+        self._final_result = result
+        await self._best_effort_overlay_call(
+            "show_result", result.status, result.finding, claim=result.claim
+        )
+        await asyncio.sleep(FINAL_RESULT_HOLD_SECONDS)
 
     def _build_result(
         self,
@@ -563,6 +653,15 @@ class ClaimVerifier:
         )
 
     def consume_partial_result(self, *, status: ClaimStatus, finding: str) -> ClaimResult | None:
+        # If the verdict was already finalized and only the cosmetic end-of-run
+        # hold got cancelled (e.g. the claim deadline landed during it), return
+        # the real result rather than overwriting it with a timeout finding.
+        if self._final_result is not None:
+            result = self._final_result
+            self._final_result = None
+            self._partial_progress = None
+            self._hook = None
+            return result
         progress = self._partial_progress
         self._partial_progress = None
         if progress is None:

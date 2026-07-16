@@ -274,6 +274,63 @@ async def test_execute_action_left_click_scales_coordinates_before_dispatch() ->
 
 
 @pytest.mark.asyncio
+async def test_execute_tool_call_bounds_a_wedged_action() -> None:
+    """A driver call that never returns is aborted and surfaced as an error."""
+    module = _import_actions_module()
+    executor = instantiate_with_supported_kwargs(
+        module.ActionExecutor,
+        navigation_timeout_ms=1_000,
+        settle_delay_seconds=0,
+        action_timeout_ms=50,  # 50ms hard ceiling for the test
+    )
+    page = FakePage()
+
+    hang_started = asyncio.Event()
+
+    async def _never_returns(*_args: Any, **_kwargs: Any) -> None:
+        hang_started.set()
+        await asyncio.Event().wait()  # blocks forever until cancelled
+
+    page.mouse.click = AsyncMock(side_effect=_never_returns)
+    viewport = ViewportConfig(width=1280, height=800, device_scale_factor=1)
+
+    with pytest.raises(module.BrowserActionError) as excinfo:
+        await asyncio.wait_for(
+            _call_execute_tool_call(executor, page, "left_click", {"coordinates": [500, 250]}, viewport),
+            timeout=5,  # outer guard so a regression fails fast instead of hanging the suite
+        )
+
+    assert hang_started.is_set()
+    assert "did not complete" in str(excinfo.value)
+
+
+def test_action_timeout_ms_clears_longest_legit_action_and_tracks_rebind() -> None:
+    module = _import_actions_module()
+
+    # Default floor must exceed hold_key's max dwell (100s) plus settle, so a
+    # legitimate long hold_key isn't aborted as a false timeout.
+    executor = instantiate_with_supported_kwargs(module.ActionExecutor, navigation_timeout_ms=20_000)
+    assert executor.action_timeout_ms >= int(module.MAX_HOLD_KEY_SECONDS * 1000)
+    assert executor.action_timeout_ms >= module.DEFAULT_ACTION_TIMEOUT_MS
+
+    # Property tracks a later navigation_timeout_ms change (rebind path) instead
+    # of staying frozen at its constructor value.
+    executor.navigation_timeout_ms = 120_000
+    assert executor.action_timeout_ms == max(
+        module.DEFAULT_ACTION_TIMEOUT_MS,
+        120_000 * 3 + int(max(module.MAX_WAIT_ACTION_SECONDS, module.MAX_HOLD_KEY_SECONDS) * 1000),
+    )
+
+    # An explicit override wins and is not overridden by navigation changes.
+    overridden = instantiate_with_supported_kwargs(
+        module.ActionExecutor, navigation_timeout_ms=20_000, action_timeout_ms=5_000
+    )
+    assert overridden.action_timeout_ms == 5_000
+    overridden.navigation_timeout_ms = 999_000
+    assert overridden.action_timeout_ms == 5_000
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("action_name", "arguments", "expected_url_attr"),
     [

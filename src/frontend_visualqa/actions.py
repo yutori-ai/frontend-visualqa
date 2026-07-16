@@ -40,10 +40,29 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 DEFAULT_WAIT_SECONDS = 1.0
+
+# Hard ceiling on a single tool call. A wedged Playwright driver call — e.g. a
+# click that opens a modal/native dialog the page never resolves — has no
+# timeout of its own and can freeze the entire run indefinitely (observed on
+# uline.com add-to-cart: a click blocked for minutes, uncancellable via SIGINT).
+# Bounding the whole dispatch converts that hang into a BrowserActionError, which
+# the verifier feeds back to the model and, after repeated failures, force-stops
+# gracefully (rendering the final verdict + finalizing the video) instead of
+# hanging forever. Must sit comfortably above the longest legitimate single
+# action: settle waits (domcontentloaded ~navigation_timeout_ms + page_ready ~8s)
+# plus the longest intentional in-action sleep, which is ``hold_key``'s 100s cap
+# (MAX_HOLD_KEY_SECONDS) — larger than the ``wait`` action's MAX_WAIT_ACTION_SECONDS.
+DEFAULT_ACTION_TIMEOUT_MS = 150_000
 # Hard cap on a single model-requested wait. Claim timeouts usually bound this
 # anyway, but library/MCP callers can pass claim_timeout_seconds=None, and a
 # runaway wait(600) must not stall the loop indefinitely.
 MAX_WAIT_ACTION_SECONDS = 30.0
+# Hard cap on ``hold_key``'s dwell. This is the longest a single non-wedged
+# action can legitimately block, so the per-action hang guard must exceed it.
+MAX_HOLD_KEY_SECONDS = 100.0
+# Upper bound on releasing held modifier keys during cleanup, so a wedged page
+# can't stall the per-action hang guard from inside a finally block.
+MODIFIER_RELEASE_TIMEOUT_SECONDS = 5.0
 REDACTED_TYPE_TEXT = "[redacted]"
 EXPANDED_TOOL_NAMES = {"extract_elements", "find", "set_element_value", "execute_js"}
 READ_ONLY_EXPANDED_TOOL_NAMES = {"extract_elements", "find"}
@@ -329,11 +348,33 @@ class ActionExecutor:
         navigation_timeout_ms: int = BROWSER_NAVIGATION_TIMEOUT_MS,
         settle_delay_seconds: float | None = None,
         page_ready_checker: PageReadyChecker | None = None,
+        action_timeout_ms: int | None = None,
     ) -> None:
         self.navigation_timeout_ms = navigation_timeout_ms
+        # Explicit override (if any); otherwise action_timeout_ms is derived
+        # lazily from the *current* navigation_timeout_ms via the property below,
+        # so a later rebind (set_browser_manager) that changes the navigation
+        # budget also moves the hang guard instead of leaving it stale.
+        self._action_timeout_override = action_timeout_ms
         self.settle_delay_seconds = settle_delay_seconds
         self.page_ready_checker = page_ready_checker or build_page_ready_checker(navigation_timeout_ms)
         self._overlay: OverlayController | None = None
+
+    @property
+    def action_timeout_ms(self) -> int:
+        """Per-action hard ceiling (ms).
+
+        Honors an explicit constructor override; otherwise derived from the
+        *current* navigation_timeout_ms and floored at DEFAULT_ACTION_TIMEOUT_MS
+        so it always clears the longest legitimate single action (settle waits +
+        the longest in-action sleep, hold_key's MAX_HOLD_KEY_SECONDS). Computed
+        as a property so a rebind that changes navigation_timeout_ms tracks
+        automatically.
+        """
+        if self._action_timeout_override is not None:
+            return self._action_timeout_override
+        longest_action_sleep_ms = int(max(MAX_WAIT_ACTION_SECONDS, MAX_HOLD_KEY_SECONDS) * 1000)
+        return max(DEFAULT_ACTION_TIMEOUT_MS, self.navigation_timeout_ms * 3 + longest_action_sleep_ms)
 
     @property
     def overlay(self) -> OverlayController | None:
@@ -344,9 +385,30 @@ class ActionExecutor:
         self._overlay = value
 
     async def execute_tool_call(self, session: BrowserSession, tool_call: Any) -> ToolExecutionResult | str:
-        """Execute a tool call object with ``function.name`` and JSON arguments."""
+        """Execute a tool call object with ``function.name`` and JSON arguments.
+
+        The dispatch is wrapped in a hard timeout so a wedged Playwright driver
+        call cannot freeze the run. On timeout the pending call is cancelled and
+        a BrowserActionError is raised, which the verifier surfaces to the model
+        and treats as an action failure.
+        """
 
         action_name = tool_call_name(tool_call)
+        try:
+            return await asyncio.wait_for(
+                self._dispatch_tool_call(session, tool_call, action_name),
+                timeout=self.action_timeout_ms / 1000,
+            )
+        except (asyncio.TimeoutError, TimeoutError) as exc:
+            raise BrowserActionError(
+                f"action '{action_name}' did not complete within "
+                f"{self.action_timeout_ms // 1000}s and was aborted — the page may "
+                f"have opened a blocking dialog or stopped responding"
+            ) from exc
+
+    async def _dispatch_tool_call(
+        self, session: BrowserSession, tool_call: Any, action_name: str
+    ) -> ToolExecutionResult | str:
         if action_name in EXPANDED_TOOL_NAMES:
             arguments = parse_tool_arguments(tool_call)
             return await self._execute_expanded_tool(session, action_name, arguments)
@@ -523,7 +585,7 @@ class ActionExecutor:
                     else:
                         await self._best_effort_overlay_set_status("Holding key")
                         async with self._held_modifier_keys(page, key_text):
-                            await asyncio.sleep(min(float(hold_duration), 100.0))
+                            await asyncio.sleep(min(float(hold_duration), MAX_HOLD_KEY_SECONDS))
                 else:
                     await self._press_keys_skipping_zoom_shortcuts(page, _mapped_key_presses(key_text))
 
@@ -765,7 +827,19 @@ class ActionExecutor:
         try:
             yield
         finally:
-            await self._release_modifier_keys(page, modifier_keys)
+            # Bound + best-effort: this finally runs during cancellation when the
+            # per-action hang guard fires. If the page is wedged, keyboard.up can
+            # hang too — asyncio.wait_for waits for finally-block cleanup, so an
+            # unbounded release here would defeat the guard. Cap it and swallow
+            # failures; a stuck modifier on an already-wedged page is moot.
+            if modifier_keys:
+                try:
+                    await asyncio.wait_for(
+                        self._release_modifier_keys(page, modifier_keys),
+                        timeout=MODIFIER_RELEASE_TIMEOUT_SECONDS,
+                    )
+                except Exception:
+                    logger.debug("Modifier release timed out or failed (best-effort)", exc_info=True)
 
     async def _best_effort_overlay_preview_action(self, **kwargs: Any) -> None:
         """Preview an action on the overlay without breaking the main flow."""

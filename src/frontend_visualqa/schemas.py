@@ -143,6 +143,11 @@ class BrowserConfig(FrontendVisualQABaseModel):
     # creation time. Each Playwright Page produces one .webm; finalized when
     # the context closes.
     record_video: bool = False
+    # When True, the verifier watches the page for high-confidence bot-block
+    # signals (challenge-page markers, blocking HTTP status on the main
+    # document, or a failed main-document navigation) and stops the claim early
+    # with a not_testable verdict instead of flailing until the step limit.
+    detect_bot_block: bool = True
 
     @field_validator("user_data_dir")
     @classmethod
