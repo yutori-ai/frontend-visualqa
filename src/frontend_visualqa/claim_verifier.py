@@ -35,7 +35,7 @@ from frontend_visualqa.prompts import (
     build_take_action_prompt,
     build_verification_task,
 )
-from frontend_visualqa.schemas import ClaimPage, ClaimProof, ClaimResult, ClaimStatus, ClaimTrace
+from frontend_visualqa.schemas import ClaimPage, ClaimProof, ClaimResult, ClaimStatus, ClaimTrace, VerdictSource
 from frontend_visualqa.serialization import dump_or_pass_through
 from frontend_visualqa.text_utils import clip_text
 from frontend_visualqa.tool_arguments import parse_tool_arguments, tool_call_arguments_as_text, tool_call_name
@@ -84,8 +84,7 @@ MAX_CONSECUTIVE_ACTION_FAILURES = 3
 MAX_INLINE_PROOF_TEXT_CHARS = 280
 MAX_INLINE_PROOF_TEXT_LINES = 6
 
-VERDICT_SOURCE_JSON = "json_schema"
-VERDICT_SOURCE_FORCE_STOP = "force_stop"
+VERDICT_SOURCE_JSON, VERDICT_SOURCE_FORCE_STOP = get_args(VerdictSource)
 
 # Tool-call argument that may carry a credential, per tool name.
 _SENSITIVE_TOOL_ARGUMENTS = {"type": "text", "set_element_value": "value"}
