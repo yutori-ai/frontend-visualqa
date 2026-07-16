@@ -45,6 +45,20 @@ def _build_default_action_fixtures(module: Any) -> tuple[Any, FakePage, Viewport
     return executor, page, viewport
 
 
+def _build_overlay_action_fixtures(module: Any, overlay: Any) -> tuple[Any, ViewportConfig]:
+    """Build an ActionExecutor wired to ``overlay``, plus a default ViewportConfig.
+
+    6 tests each repeated this identical arrange block (an ``ActionExecutor`` via
+    ``_build_action_executor`` with its ``.overlay`` set to a pre-built double, and a default
+    ``ViewportConfig()``) for actions that preview through an overlay double but use a custom,
+    call-order-tracking page. This is the shared helper they delegate to now.
+    """
+    executor = _build_action_executor(module)
+    executor.overlay = overlay
+    viewport = ViewportConfig()
+    return executor, viewport
+
+
 async def _call_execute_action(
     executor: Any,
     page: Any,
@@ -354,10 +368,7 @@ async def test_execute_action_left_click_previews_before_dispatch_and_waits_for_
 
     overlay.preview_action = AsyncMock(side_effect=_preview_action)
 
-    executor = _build_action_executor(module)
-    executor.overlay = overlay
-
-    viewport = ViewportConfig()
+    executor, viewport = _build_overlay_action_fixtures(module, overlay)
     task = asyncio.create_task(
         _call_execute_action(executor, page, "left_click", {"coordinates": [500, 250]}, viewport)
     )
@@ -395,10 +406,7 @@ async def test_execute_action_navigation_shows_status_before_dispatch() -> None:
 
     overlay.set_status = AsyncMock(side_effect=_set_status)
 
-    executor = _build_action_executor(module)
-    executor.overlay = overlay
-
-    viewport = ViewportConfig()
+    executor, viewport = _build_overlay_action_fixtures(module, overlay)
     trace = await _call_execute_action(
         executor,
         page,
@@ -428,10 +436,7 @@ async def test_execute_action_semantic_key_shortcut_uses_single_overlay_footer()
 
     overlay.set_status = AsyncMock(side_effect=_set_status)
 
-    executor = _build_action_executor(module)
-    executor.overlay = overlay
-
-    viewport = ViewportConfig()
+    executor, viewport = _build_overlay_action_fixtures(module, overlay)
     trace = await _call_execute_action(executor, page, "key_press", {"key_comb": "F5"}, viewport)
 
     assert trace == "key_press(F5)"
@@ -458,10 +463,7 @@ async def test_execute_action_hover_previews_before_mouse_move() -> None:
 
     overlay.preview_action = AsyncMock(side_effect=_preview_action)
 
-    executor = _build_action_executor(module)
-    executor.overlay = overlay
-
-    viewport = ViewportConfig()
+    executor, viewport = _build_overlay_action_fixtures(module, overlay)
     trace = await _call_execute_action(executor, page, "hover", {"coordinates": [250, 500]}, viewport)
 
     assert trace == "hover([320, 400])"
@@ -504,10 +506,7 @@ async def test_execute_action_mouse_down_and_up_preview_then_press_release(
 
     overlay.preview_action = AsyncMock(side_effect=_preview_action)
 
-    executor = _build_action_executor(module)
-    executor.overlay = overlay
-
-    viewport = ViewportConfig()
+    executor, viewport = _build_overlay_action_fixtures(module, overlay)
     await _call_execute_action(executor, page, action_name, {"coordinates": [250, 500]}, viewport)
 
     assert call_order[:3] == [
@@ -610,10 +609,7 @@ async def test_execute_action_drag_previews_before_drag_motion() -> None:
 
     overlay.preview_action = AsyncMock(side_effect=_preview_action)
 
-    executor = _build_action_executor(module)
-    executor.overlay = overlay
-
-    viewport = ViewportConfig()
+    executor, viewport = _build_overlay_action_fixtures(module, overlay)
     trace = await _call_execute_action(
         executor,
         page,
