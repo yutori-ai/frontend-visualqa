@@ -60,6 +60,21 @@ def _cursor_moved_to(scripts: list[str], x: int, y: int) -> bool:
     return any("__n1Cursor" in script and f"Math.min({x}" in script and f"Math.min({y}" in script for script in scripts)
 
 
+def _new_controller(
+    *,
+    focused_center: dict[str, int] | None = None,
+    evaluate_side_effect: Exception | None = None,
+) -> tuple[MagicMock, OverlayController]:
+    """Build a page + OverlayController pair without starting a claim.
+
+    14 test bodies each repeated this identical ``page = _make_mock_page(...)`` /
+    ``controller = OverlayController(page)`` pair. This is the shared helper they delegate to now.
+    """
+    page = _make_mock_page(focused_center=focused_center, evaluate_side_effect=evaluate_side_effect)
+    controller = OverlayController(page)
+    return page, controller
+
+
 async def _started_controller(
     *, focused_center: dict[str, int] | None = None
 ) -> tuple[MagicMock, OverlayController]:
@@ -68,8 +83,7 @@ async def _started_controller(
     Most preview/status tests only care about evaluate() calls made by the action
     under test, not the roots/styles claim_started() injects on the way in.
     """
-    page = _make_mock_page(focused_center=focused_center)
-    controller = OverlayController(page)
+    page, controller = _new_controller(focused_center=focused_center)
     await controller.claim_started()
     page.evaluate.reset_mock()
     return page, controller
@@ -92,8 +106,7 @@ def patched_sleep() -> Iterator[AsyncMock]:
 class TestOverlayControllerLifecycle:
     @pytest.mark.asyncio
     async def test_claim_started_injects_persistent_and_transient_roots(self) -> None:
-        page = _make_mock_page()
-        controller = OverlayController(page)
+        page, controller = _new_controller()
 
         await controller.claim_started()
 
@@ -138,8 +151,7 @@ class TestOverlayCursor:
     async def test_persistent_root_creates_cursor_img(self) -> None:
         # The cursor lives in the persistent root so it survives navigations
         # and screenshot hide/restore cycles. See OverlayController._restore_cursor_position.
-        page = _make_mock_page()
-        controller = OverlayController(page)
+        page, controller = _new_controller()
 
         await controller.claim_started()
 
@@ -148,8 +160,7 @@ class TestOverlayCursor:
 
     @pytest.mark.asyncio
     async def test_move_cursor_updates_position(self) -> None:
-        page = _make_mock_page()
-        controller = OverlayController(page)
+        page, controller = _new_controller()
         controller._active = True
 
         await controller._move_cursor(150, 250)
@@ -168,8 +179,7 @@ class TestOverlayCursor:
         # The pill's left/right flip is chosen at show_thought time from the
         # previous cursor position; _move_cursor must recompute it for the new
         # position so the capsule can't run off-screen after the cursor moves.
-        page = _make_mock_page()
-        controller = OverlayController(page)
+        page, controller = _new_controller()
         controller._active = True
 
         await controller._move_cursor(1200, 250)
@@ -184,8 +194,7 @@ class TestOverlayCursor:
         # Reasoning is shown before the action; a navigation rebuilds the overlay
         # DOM and must replay the current thought so it doesn't vanish for the
         # rest of the turn. "n1renderMarkdown" is unique to the show_thought card.
-        page = _make_mock_page()
-        controller = OverlayController(page)
+        page, controller = _new_controller()
         controller._active = True
         controller._thought_text = "Now let me click the Login button."
         page.evaluate.reset_mock()
@@ -197,8 +206,7 @@ class TestOverlayCursor:
 
     @pytest.mark.asyncio
     async def test_reinject_after_navigation_shows_no_thought_when_none(self) -> None:
-        page = _make_mock_page()
-        controller = OverlayController(page)
+        page, controller = _new_controller()
         controller._active = True
         controller._thought_text = None
         page.evaluate.reset_mock()
@@ -280,8 +288,7 @@ class TestOverlayInformationalCards:
         # before the action runs), so preview_action must NOT clear it — it stays
         # through the cursor move/morph and is hidden only by the evidence
         # screenshot. clear_thought's signature is `vp.remove()`.
-        page = _make_mock_page()
-        controller = OverlayController(page)
+        page, controller = _new_controller()
 
         await controller.claim_started()
         await controller.show_thought("Inspect the form before deciding.")
@@ -297,8 +304,7 @@ class TestOverlayInformationalCards:
     async def test_set_status_non_analyzing_preserves_existing_thought_card(self) -> None:
         # A status change no longer clears the thought (see set_status): the synced
         # reasoning must survive the status label changing to "Navigating"/"Running …".
-        page = _make_mock_page()
-        controller = OverlayController(page)
+        page, controller = _new_controller()
 
         await controller.claim_started()
         await controller.show_thought("Inspect the form before deciding.")
@@ -312,8 +318,7 @@ class TestOverlayInformationalCards:
 
     @pytest.mark.asyncio
     async def test_set_status_analyzing_preserves_existing_thought_card(self) -> None:
-        page = _make_mock_page()
-        controller = OverlayController(page)
+        page, controller = _new_controller()
 
         await controller.claim_started()
         await controller.show_thought("Inspect the form before deciding.")
@@ -467,8 +472,7 @@ class TestOverlayPreviewAction:
     @pytest.mark.asyncio
     async def test_teleport_when_offscreen_transition_when_onscreen(self) -> None:
         """Teleport (short sleep) when cursor is off-screen, full transition otherwise."""
-        page = _make_mock_page()
-        controller = OverlayController(page)
+        _, controller = _new_controller()
         await controller.claim_started()
 
         # _move_cursor returns True (off-screen → teleported) → short sleep
@@ -544,8 +548,7 @@ class TestOverlayScreenshotBoundary:
     ) -> None:
         """Transient root stays hidden after capture and is re-shown when the next preview starts."""
         del patched_sleep  # patched only so preview_action's internal sleep doesn't run for real
-        page = _make_mock_page()
-        controller = OverlayController(page)
+        page, controller = _new_controller()
 
         await controller.claim_started()
         await controller.before_screenshot()
@@ -562,8 +565,7 @@ class TestOverlayScreenshotBoundary:
 
     @pytest.mark.asyncio
     async def test_clear_thought_is_noop_when_inactive(self) -> None:
-        page = _make_mock_page()
-        controller = OverlayController(page)
+        page, controller = _new_controller()
 
         await controller.clear_thought()
 
@@ -571,8 +573,7 @@ class TestOverlayScreenshotBoundary:
 
     @pytest.mark.asyncio
     async def test_after_screenshot_is_noop_when_inactive(self) -> None:
-        page = _make_mock_page()
-        controller = OverlayController(page)
+        page, controller = _new_controller()
 
         await controller.after_screenshot()
 
@@ -583,8 +584,7 @@ class TestOverlayBestEffort:
     @pytest.mark.asyncio
     async def test_overlay_methods_swallow_evaluate_failures(self, patched_sleep: AsyncMock) -> None:
         del patched_sleep  # patched only so preview_action's internal sleep doesn't run for real
-        page = _make_mock_page(evaluate_side_effect=RuntimeError("page crashed"))
-        controller = OverlayController(page)
+        _, controller = _new_controller(evaluate_side_effect=RuntimeError("page crashed"))
 
         await controller.claim_started()
         await controller.set_status("Analyzing")
