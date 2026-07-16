@@ -553,13 +553,16 @@ _THOUGHT_STYLE_CSS = (
     f"#{THOUGHT_CARD_ID} pre{{background:rgba(0,0,0,0.32);border-radius:8px;padding:10px 12px;"
     "overflow-x:auto;margin:8px 0}"
     f"#{THOUGHT_CARD_ID} pre code{{background:transparent;padding:0;font-size:0.9em}}"
-    f"#{THOUGHT_CARD_ID} ul{{padding-left:0;margin:0;list-style:none}}"
-    f"#{THOUGHT_CARD_ID} li{{margin:0;padding:0}}"
-    f"#{THOUGHT_CARD_ID} h2,#{THOUGHT_CARD_ID} h3,#{THOUGHT_CARD_ID} h4{{"
-    "margin:0;font-weight:700;line-height:1.3}"
-    f"#{THOUGHT_CARD_ID} h2{{font-size:1.18em}}"
-    f"#{THOUGHT_CARD_ID} h3{{font-size:1.08em}}"
-    f"#{THOUGHT_CARD_ID} h4{{font-size:1em;opacity:0.9}}"
+    # The capsule flows block markdown INLINE: short reasoning then stays on one
+    # line instead of being split by list/paragraph breaks (no half-empty lines),
+    # longer reasoning fills both clamped lines, and -webkit-line-clamp can add an
+    # ellipsis without the block-child centering it causes for real block layout.
+    # Separators keep run-together items readable ("intro: item item next…").
+    f"#{THOUGHT_CARD_ID} ul{{display:inline;padding:0;margin:0;list-style:none}}"
+    f"#{THOUGHT_CARD_ID} li{{display:inline}}"
+    f"#{THOUGHT_CARD_ID} p{{display:inline;margin:0}}"
+    f"#{THOUGHT_CARD_ID} li::after,#{THOUGHT_CARD_ID} p::after,#{THOUGHT_CARD_ID} ul::before{{content:'\\00a0'}}"
+    f"#{THOUGHT_CARD_ID} h2,#{THOUGHT_CARD_ID} h3,#{THOUGHT_CARD_ID} h4{{display:inline;font-weight:700}}"
 )
 
 
@@ -618,6 +621,12 @@ _THOUGHT_CARD_JS = f"""(args) => {{
     // showing raw syntax — matching the pre-redesign card.
     inner.style.cssText = 'display:inline-block;white-space:nowrap;text-align:left;background:linear-gradient(180deg,#C6FAFB 0%,#A4FBFC 55%,#9DFBFC 100%);-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent;font-size:12px;line-height:' + LH + 'px;font-weight:500;letter-spacing:0.1px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;';
     inner.innerHTML = n1renderMarkdown(text);
+    // Flow hard line breaks into running text so the two-line capsule fills its
+    // lines instead of stranding a lone ellipsis on a blank second line: the
+    // renderer emits <br><br> for blank lines, which would break a short intro
+    // ("…now:") onto line one and leave only "…" on line two. Lists already flow
+    // via inline display (see _THOUGHT_STYLE_CSS); this handles paragraph breaks.
+    inner.querySelectorAll('br').forEach(el => el.replaceWith(' '));
     vp.appendChild(inner);
     badge.appendChild(vp);
 
@@ -628,16 +637,18 @@ _THOUGHT_CARD_JS = f"""(args) => {{
             const oneLine = (B + GAP + singleW + END) <= MAXW;
             const width = oneLine ? (B + GAP + singleW + END) : MAXW;
             if (!oneLine) {{
-                // Cap at two lines via a block container + max-height, NOT
-                // -webkit-line-clamp's -webkit-box: markdown block content (lists,
-                // headers) lays out and clips LEFT-aligned here, whereas -webkit-box
-                // only positions inline text and shoves block children toward center
-                // (the "centered pill" bug). text-align:left guards page inheritance.
+                // Cap at two lines WITH a trailing ellipsis via -webkit-line-clamp.
+                // Safe here because _THOUGHT_STYLE_CSS flows the capsule's block
+                // markdown (lists/headers/paragraphs) INLINE, so -webkit-box lays it
+                // out as left-aligned running text — it only centered/added bullets
+                // back when real block children were present (the old "centered pill"
+                // bug). text-align:left guards against page inheritance.
                 inner.style.whiteSpace = 'normal';
                 inner.style.width = (width - (B + GAP) - END) + 'px';
-                inner.style.display = 'block';
+                inner.style.display = '-webkit-box';
+                inner.style.webkitBoxOrient = 'vertical';
+                inner.style.webkitLineClamp = '2';
                 inner.style.textAlign = 'left';
-                inner.style.maxHeight = (2 * LH) + 'px';
                 inner.style.overflow = 'hidden';
             }}
             badge.style.width = width + 'px';
@@ -1068,14 +1079,22 @@ class OverlayController:
         (page closed, etc.) the saved position is still the right thing
         to restore on the next page.
         """
-        teleported = bool(await self._safe_evaluate(
+        result = await self._safe_evaluate(
             f"""() => {{
                 const cursor = document.getElementById('{CURSOR_ID}');
-                if (!cursor) return true;
+                // Clamp to the viewport so a coordinate outside it — e.g. a scroll
+                // action whose anchor is in scrolled-document space (x can be well
+                // past innerWidth) — can't park the cursor + badge off-screen. M
+                // leaves a little room for the badge chrome. Downstream flip/goLeft
+                // math and the stored position all use the clamped cx/cy.
+                const M = 8;
+                const cx = Math.max(M, Math.min({x}, window.innerWidth - M));
+                const cy = Math.max(M, Math.min({y}, window.innerHeight - M));
+                if (!cursor) return {{teleported: true, cx: cx, cy: cy}};
                 // Flip the 48px badge above the pointer near the bottom edge so it
                 // doesn't clip off-screen (it otherwise hangs ~72px below the tip).
                 const badge = document.getElementById('{BADGE_ID}');
-                if (badge) badge.style.top = ({y} + 72 > window.innerHeight) ? '-68.5px' : '27.37px';
+                if (badge) badge.style.top = (cy + 72 > window.innerHeight) ? '-68.5px' : '27.37px';
                 // The thought pill's horizontal side (left/right of the badge) was
                 // chosen at show_thought time from the *previous* cursor x. Recompute
                 // it for the new x so the capsule can't run off-screen after the cursor
@@ -1085,7 +1104,7 @@ class OverlayController:
                 const slot = document.getElementById('{BADGE_SLOT_ID}');
                 if (card && badge && slot) {{
                     const B = 48, MAXW = 340, GAP = 10, END = 15;
-                    const goLeft = ({x} + (-18.33 + 45.33 + MAXW + 14)) > window.innerWidth;
+                    const goLeft = (cx + (-18.33 + 45.33 + MAXW + 14)) > window.innerWidth;
                     if (goLeft) {{
                         badge.style.left = 'auto'; badge.style.right = '16.67px';
                         slot.style.left = 'auto'; slot.style.right = '0';
@@ -1099,21 +1118,26 @@ class OverlayController:
                 const offScreen = cursor.style.left === '-200px';
                 if (offScreen) {{
                     cursor.style.transition = 'none';
-                    cursor.style.left = '{x}px';
-                    cursor.style.top = '{y}px';
+                    cursor.style.left = cx + 'px';
+                    cursor.style.top = cy + 'px';
                     cursor.offsetHeight;
                     cursor.style.transition = '{_CURSOR_TRANSITION_CSS}';
-                    return true;
+                    return {{teleported: true, cx: cx, cy: cy}};
                 }}
-                cursor.style.left = '{x}px';
-                cursor.style.top = '{y}px';
-                return false;
+                cursor.style.left = cx + 'px';
+                cursor.style.top = cy + 'px';
+                return {{teleported: false, cx: cx, cy: cy}};
             }}""",
-            default=True,
-        ))
+            default=None,
+        )
+        if isinstance(result, dict):
+            self._cursor_x = int(result.get("cx", x))
+            self._cursor_y = int(result.get("cy", y))
+            return bool(result.get("teleported"))
+        # JS eval failed (or no-op mock): keep the requested coords for restore.
         self._cursor_x = x
         self._cursor_y = y
-        return teleported
+        return False
 
     async def _show_click_effect(self, x: int, y: int, num_clicks: int) -> None:
         # Ripple ring + glowing center dot, matching the Navigator browser
