@@ -147,8 +147,12 @@ class TestOverlayCursor:
 
         script = _last_evaluated_script(page)
         assert "__n1Cursor" in script
-        assert "150px" in script
-        assert "250px" in script
+        # Coords are viewport-clamped in JS (Math.min(x, innerWidth-M)), so the
+        # raw values appear inside the clamp rather than as a literal "150px".
+        assert "150" in script
+        assert "250" in script
+        assert controller._cursor_x == 150
+        assert controller._cursor_y == 250
 
     @pytest.mark.asyncio
     async def test_move_cursor_reflows_thought_pill_for_new_position(self) -> None:
@@ -209,7 +213,8 @@ class TestOverlayInformationalCards:
         assert "__n1ThoughtCard" in script
         # The thought is a capsule that stretches the badge and can wrap to two lines.
         assert "badge.style.width" in script
-        assert "maxHeight" in script
+        # Overflow clamps to two lines WITH an ellipsis via -webkit-line-clamp.
+        assert "webkitLineClamp" in script
         arg = call.args[1]
         assert isinstance(arg, dict)
         assert len(arg["text"]) <= 520
@@ -278,7 +283,7 @@ class TestOverlayInformationalCards:
         scripts = _evaluated_scripts(page)
         assert not any("vp.remove()" in script for script in scripts)
         assert any(
-            "__n1Cursor" in script and "100px" in script and "200px" in script for script in scripts
+            "__n1Cursor" in script and "Math.min(100" in script and "Math.min(200" in script for script in scripts
         )
 
     @pytest.mark.asyncio
@@ -324,7 +329,7 @@ class TestOverlayInformationalCards:
         assert controller._current_status == "Analyzing"
         scripts = _evaluated_scripts(page)
         assert any("__n1TransientRoot" in script and "visibility = 'visible'" in script for script in scripts)
-        assert any("__n1Cursor" in script and "100px" in script and "200px" in script for script in scripts)
+        assert any("__n1Cursor" in script and "Math.min(100" in script and "Math.min(200" in script for script in scripts)
         assert any("n1click" in script for script in scripts)
         assert not any("__n1StatusChip" in script and "Clicking" in script for script in scripts)
 
@@ -340,8 +345,8 @@ class TestOverlayPreviewAction:
         # preview_action does not update persistent status
         assert controller._current_status == "Analyzing"
         scripts = _evaluated_scripts(page)
-        # Cursor moved first
-        assert any("__n1Cursor" in script and "100px" in script and "200px" in script for script in scripts)
+        # Cursor moved first (coords are viewport-clamped via Math.min in the JS)
+        assert any("__n1Cursor" in script and "Math.min(100" in script and "Math.min(200" in script for script in scripts)
         # Transient root made visible
         assert any("__n1TransientRoot" in script and "visibility = 'visible'" in script for script in scripts)
         # Ripple loop runs num_clicks times
@@ -362,8 +367,8 @@ class TestOverlayPreviewAction:
         await controller.preview_action("scroll", x=640, y=400, direction="down")
 
         scripts = _evaluated_scripts(page)
-        # Cursor leads to the scroll target
-        assert any("__n1Cursor" in script and "640px" in script and "400px" in script for script in scripts)
+        # Cursor leads to the scroll target (viewport-clamped via Math.min)
+        assert any("__n1Cursor" in script and "Math.min(640" in script and "Math.min(400" in script for script in scripts)
         # Badge morphs to the chevron glyph via the bloom-in keyframes
         assert any("__n1BadgeGlyph" in script and "n1badgeIn" in script for script in scripts)
         assert any("6 10 12 16 18 10" in script for script in scripts)
@@ -390,8 +395,8 @@ class TestOverlayPreviewAction:
         assert any("document.activeElement" in script for script in scripts)
         # Type morphs the badge to the type glyph (the standalone typing pill was retired)
         assert any("__n1BadgeGlyph" in script and "n1badgeIn" in script for script in scripts)
-        # Cursor moved to focused element center
-        assert any("__n1Cursor" in script and "200px" in script and "150px" in script for script in scripts)
+        # Cursor moved to focused element center (viewport-clamped via Math.min)
+        assert any("__n1Cursor" in script and "Math.min(200" in script and "Math.min(150" in script for script in scripts)
 
     @pytest.mark.asyncio
     async def test_type_morphs_badge_even_without_focused_element(self, patched_sleep: AsyncMock) -> None:
@@ -416,8 +421,8 @@ class TestOverlayPreviewAction:
         # preview_action does not update persistent status
         assert controller._current_status == "Analyzing"
         scripts = _evaluated_scripts(page)
-        # Cursor moved to hover target
-        assert any("__n1Cursor" in script and "300px" in script and "400px" in script for script in scripts)
+        # Cursor moved to hover target (viewport-clamped via Math.min)
+        assert any("__n1Cursor" in script and "Math.min(300" in script and "Math.min(400" in script for script in scripts)
         # No chip update from preview_action
         assert not any("__n1StatusChip" in script and "Hovering" in script for script in scripts)
 
@@ -429,8 +434,8 @@ class TestOverlayPreviewAction:
         await controller.preview_action("drag", x=500, y=600, start_x=100, start_y=200)
 
         scripts = _evaluated_scripts(page)
-        # Cursor moved to start point first
-        assert any("__n1Cursor" in script and "100px" in script and "200px" in script for script in scripts)
+        # Cursor moved to start point first (viewport-clamped via Math.min)
+        assert any("__n1Cursor" in script and "Math.min(100" in script and "Math.min(200" in script for script in scripts)
         # Drag style injected with trail keyframes
         assert any("__n1DragStyle" in script for script in scripts)
         assert any("n1dfade" in script and "n1dtrail" in script for script in scripts)
@@ -488,9 +493,9 @@ class TestOverlayPreviewAction:
         assert "cursor.style.transition = 'none'" in js
         assert "cursor.offsetHeight" in js
         assert f"left {CURSOR_TRANSITION_MS}ms ease-in-out" in js
-        # Both code paths return a boolean
-        assert "return true" in js
-        assert "return false" in js
+        # Both code paths return the clamped position + teleport flag
+        assert "teleported: true" in js
+        assert "teleported: false" in js
 
 
 class TestOverlayScreenshotBoundary:
