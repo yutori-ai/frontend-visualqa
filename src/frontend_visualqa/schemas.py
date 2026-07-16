@@ -15,6 +15,11 @@ ClaimStatus = Literal["passed", "failed", "inconclusive", "not_testable"]
 OverallStatus = Literal["completed", "not_testable"]
 ScreenshotStatus = Literal["completed", "not_testable"]
 BrowserAction = Literal["status", "restart", "close", "set_viewport", "login"]
+# Canonical verdict-source values. claim_verifier.py derives its
+# VERDICT_SOURCE_JSON / VERDICT_SOURCE_FORCE_STOP constants from this via
+# typing.get_args() rather than hand-copying the strings (same pattern as
+# ClaimStatus in claim_verifier._extract_json_verdict and prompts.py).
+VerdictSource = Literal["json_schema", "force_stop"]
 DEFAULT_PERSISTENT_USER_DATA_DIR = Path("~/.cache/frontend-visualqa/browser-profile").expanduser()
 DEFAULT_NAVIGATION_TIMEOUT_MS = 20_000
 DEFAULT_SETTLE_DELAY_SECONDS = 1.0
@@ -112,7 +117,7 @@ class TraceEvent(FrontendVisualQABaseModel):
     raw_verdict_status: ClaimStatus | None = None
     raw_finding: str | None = None
     verdict_status: ClaimStatus | None = None
-    verdict_source: Literal["json_schema", "force_stop"] | None = None
+    verdict_source: VerdictSource | None = None
     finding: str | None = None
     timestamp_ms: int = Field(default_factory=lambda: int(time.time() * 1000))
 
