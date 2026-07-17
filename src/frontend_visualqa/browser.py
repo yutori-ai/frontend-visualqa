@@ -344,33 +344,20 @@ class BrowserManager:
         css_viewport = layout_metrics.get("cssVisualViewport") or {}
         css_width = int(round(float(css_viewport.get("clientWidth") or 0)))
         css_height = int(round(float(css_viewport.get("clientHeight") or 0)))
+        params: dict[str, Any] = {"format": "png", "captureBeyondViewport": False, "fromSurface": True}
 
         if css_width > 0 and css_height > 0:
-            return (
-                {
-                    "format": "png",
-                    "captureBeyondViewport": False,
-                    "fromSurface": True,
-                    "clip": {
-                        "x": float(css_viewport.get("pageX") or 0),
-                        "y": float(css_viewport.get("pageY") or 0),
-                        "width": float(css_width),
-                        "height": float(css_height),
-                        "scale": 1.0,
-                    },
-                },
-                (css_width, css_height),
-            )
+            params["clip"] = {
+                "x": float(css_viewport.get("pageX") or 0),
+                "y": float(css_viewport.get("pageY") or 0),
+                "width": float(css_width),
+                "height": float(css_height),
+                "scale": 1.0,
+            }
+            return params, (css_width, css_height)
 
         logger.debug("CDP layout metrics missing CSS viewport sizes; using default screenshot params")
-        return (
-            {
-                "format": "png",
-                "captureBeyondViewport": False,
-                "fromSurface": True,
-            },
-            None,
-        )
+        return params, None
 
     @staticmethod
     def _resize_to(image: Image.Image, size: tuple[int, int]) -> Image.Image:
