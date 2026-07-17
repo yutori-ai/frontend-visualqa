@@ -112,6 +112,8 @@ class _VerificationProgress:
     has_interacted: bool = False
     proof_text: str | None = None
     proof_text_path: str | None = None
+    non_action_reprompts: int = 0
+    consecutive_action_failures: int = 0
 
 
 def _create_overlay_controller(page: Any) -> Any | None:
@@ -181,8 +183,6 @@ class ClaimVerifier:
         """Verify a single claim within an existing browser session."""
 
         messages: list[dict[str, Any]] = []
-        non_action_reprompts = 0
-        consecutive_action_failures = 0
         should_visualize = self._visualize if visualize is None else visualize
         progress = _VerificationProgress(
             claim=claim,
@@ -241,158 +241,34 @@ class ClaimVerifier:
                 # --- Check for structured JSON verdict (parsed_json) ---
                 json_verdict = self._extract_json_verdict(response)
                 if json_verdict is not None:
-                    reprompt_text: str | None = None
-                    force_stop_finding: str | None = None
-                    if (
-                        not progress.has_interacted
-                        and json_verdict[0] == "inconclusive"
-                        and self._finding_says_action_is_needed(json_verdict[1])
-                    ):
-                        reprompt_text = build_take_action_prompt(claim)
-                        force_stop_finding = "The model kept saying more interaction was needed without taking the next browser action."
-                    elif navigation_hint and not progress.has_interacted and json_verdict[0] != "not_testable":
-                        reprompt_text = build_follow_navigation_hint_prompt(claim, navigation_hint)
-                        force_stop_finding = (
-                            "The model tried to render a verdict before following the navigation hint."
-                        )
-                    if reprompt_text is not None:
-                        if non_action_reprompts < MAX_NON_ACTION_REPROMPTS:
-                            non_action_reprompts += 1
-                            messages.append(_user_text_message(reprompt_text))
-                            continue
-                        result = await self._finalize_result(
-                            progress=progress,
-                            verdict=("inconclusive", force_stop_finding or ""),
-                            verdict_source=VERDICT_SOURCE_FORCE_STOP,
-                        )
-                        return await self._complete_result(result)
-                    result = await self._finalize_result(
+                    result = await self._handle_json_verdict(
                         progress=progress,
-                        verdict=json_verdict,
-                        verdict_source=VERDICT_SOURCE_JSON,
+                        json_verdict=json_verdict,
+                        navigation_hint=navigation_hint,
+                        messages=messages,
                     )
-                    return await self._complete_result(result)
+                    if result is not None:
+                        return await self._complete_result(result)
+                    continue
 
                 # --- Check for tool calls (browser actions) ---
                 tool_calls = list(getattr(assistant_message, "tool_calls", []) or [])
                 if not tool_calls:
                     # No JSON verdict and no tool calls — reprompt
-                    if non_action_reprompts < MAX_NON_ACTION_REPROMPTS:
-                        non_action_reprompts += 1
+                    if progress.non_action_reprompts < MAX_NON_ACTION_REPROMPTS:
+                        progress.non_action_reprompts += 1
                         messages.append(_user_text_message(build_action_or_verdict_prompt(claim)))
                         continue
                     break
 
-                had_action_in_turn = False
-                turn_reasoning = self._hook.current_turn_reasoning if self._hook else None
-                reasoning_shown = False
-                # Execute every tool call in the turn even when the step budget
-                # runs out mid-list: each tool_call in the assistant message
-                # must receive a role="tool" reply before the next user message,
-                # otherwise the chat-completions transcript is invalid and the
-                # endpoint rejects the force-stop turn. max_steps is enforced at
-                # turn boundaries by the while condition, so the overshoot is
-                # bounded by a single turn's tool calls.
-                for tool_call in tool_calls:
-                    tool_name = tool_call_name(tool_call)
-                    tool_arguments, sensitive_text = await self._sanitize_tool_arguments(
-                        session=session,
-                        tool_call=tool_call,
-                        tool_name=tool_name,
-                        messages=messages,
-                    )
-                    await self._safe_hook_call("on_tool_start", name=tool_name, arguments=tool_arguments)
-                    # Show this turn's reasoning synced with its FIRST tool — passive
-                    # (extract_elements/find/…) or interactive — so it lands on the
-                    # right page and never trails the action, and BEFORE the evidence
-                    # screenshot, which hides the whole overlay so the model can't read
-                    # its own reasoning off a capture. Gating on the first *interaction*
-                    # tool instead left the previous turn's stale capsule on screen
-                    # through passive-first turns (set_status no longer clears it), and
-                    # showed nothing for all-passive turns. A turn with no narration
-                    # clears any stale prior thought instead.
-                    if not reasoning_shown and self._overlay:
-                        if turn_reasoning:
-                            await self._best_effort_overlay_call("show_thought", turn_reasoning)
-                        else:
-                            await self._best_effort_overlay_call("clear_thought")
-                        reasoning_shown = True
-                    execution = await self._execute_tool_call(session, tool_call)
-                    if sensitive_text is not None:
-                        execution = self._redact_sensitive_execution(execution, sensitive_text)
-                    trace = execution.trace
-                    progress.action_trace.append(trace)
-                    output_text = execution.output_text
-                    await self._safe_hook_call(
-                        "on_tool_end",
-                        name=tool_name,
-                        arguments=tool_arguments,
-                        output=output_text,
-                        trace=trace,
-                    )
-                    current_url = execution.current_url or url
-                    counts_as_interaction = bool(execution.counts_as_interaction)
-                    progress.url_history.append(current_url)
-                    progress.step_count += 1
-                    if counts_as_interaction:
-                        non_action_reprompts = 0
-                        had_action_in_turn = True
-                        progress.has_interacted = True
-                    screenshot_bytes, screenshot_path = await self._capture_evidence_screenshot(
-                        session=session,
-                        run_artifacts=run_artifacts,
-                        claim_index=claim_index,
-                        label=f"step-{progress.step_count:02d}",
-                    )
-                    progress.screenshot_paths.append(screenshot_path)
-                    self._record_action_event(
-                        step=progress.step_count,
-                        action=tool_name,
-                        action_args=tool_arguments,
-                        output_text=output_text,
-                        screenshot_path=screenshot_path,
-                    )
-                    progress.proof_text = str(output_text) if output_text else None
-                    progress.proof_text_path = self._save_proof_text(
-                        run_artifacts=run_artifacts,
-                        claim_index=claim_index,
-                        label=f"step-{progress.step_count:02d}",
-                        proof_text=progress.proof_text,
-                    )
-                    messages.append(
-                        {
-                            "role": "tool",
-                            "tool_call_id": tool_call.id,
-                            "content": [
-                                {
-                                    "type": "text",
-                                    "text": self._build_tool_result_text(
-                                        trace=trace,
-                                        output_text=execution.output_text,
-                                        current_url=current_url,
-                                    ),
-                                },
-                                {
-                                    "type": "image_url",
-                                    "image_url": {"url": image_bytes_to_data_url(screenshot_bytes), "detail": "high"},
-                                },
-                            ],
-                        }
-                    )
-                    if execution.action_failed:
-                        consecutive_action_failures += 1
-                        if consecutive_action_failures >= MAX_CONSECUTIVE_ACTION_FAILURES:
-                            result = self._build_result(
-                                progress=progress,
-                                status="inconclusive",
-                                finding=(
-                                    f"Browser actions failed {consecutive_action_failures} times in a row "
-                                    f"without a verdict. Last error: {execution.output_text or trace}"
-                                ),
-                            )
-                            return await self._complete_result(result)
-                    else:
-                        consecutive_action_failures = 0
+                early_result, had_action_in_turn = await self._execute_turn_tool_calls(
+                    session=session,
+                    tool_calls=tool_calls,
+                    messages=messages,
+                    progress=progress,
+                )
+                if early_result is not None:
+                    return await self._complete_result(early_result)
 
                 await self._show_post_capture_analysis(had_actions=had_action_in_turn)
             result = await self._force_stop(progress=progress, messages=messages)
@@ -424,6 +300,178 @@ class ClaimVerifier:
             finally:
                 self.action_executor.overlay = None
                 self._overlay = None
+
+    async def _handle_json_verdict(
+        self,
+        *,
+        progress: _VerificationProgress,
+        json_verdict: tuple[str, str],
+        navigation_hint: str | None,
+        messages: list[dict[str, Any]],
+    ) -> ClaimResult | None:
+        """Apply reprompt-or-accept policy to a structured JSON verdict from a turn.
+
+        Returns the finalized result when verification should stop (verdict
+        accepted or force-stopped), or ``None`` when a reprompt message was
+        appended to ``messages`` and ``verify()`` should continue its loop.
+        """
+        reprompt_text: str | None = None
+        force_stop_finding: str | None = None
+        if (
+            not progress.has_interacted
+            and json_verdict[0] == "inconclusive"
+            and self._finding_says_action_is_needed(json_verdict[1])
+        ):
+            reprompt_text = build_take_action_prompt(progress.claim)
+            force_stop_finding = "The model kept saying more interaction was needed without taking the next browser action."
+        elif navigation_hint and not progress.has_interacted and json_verdict[0] != "not_testable":
+            reprompt_text = build_follow_navigation_hint_prompt(progress.claim, navigation_hint)
+            force_stop_finding = "The model tried to render a verdict before following the navigation hint."
+
+        if reprompt_text is not None:
+            if progress.non_action_reprompts < MAX_NON_ACTION_REPROMPTS:
+                progress.non_action_reprompts += 1
+                messages.append(_user_text_message(reprompt_text))
+                return None
+            return await self._finalize_result(
+                progress=progress,
+                verdict=("inconclusive", force_stop_finding or ""),
+                verdict_source=VERDICT_SOURCE_FORCE_STOP,
+            )
+
+        return await self._finalize_result(
+            progress=progress,
+            verdict=json_verdict,
+            verdict_source=VERDICT_SOURCE_JSON,
+        )
+
+    async def _execute_turn_tool_calls(
+        self,
+        *,
+        session: BrowserSession,
+        tool_calls: list[Any],
+        messages: list[dict[str, Any]],
+        progress: _VerificationProgress,
+    ) -> tuple[ClaimResult | None, bool]:
+        """Execute every tool call requested in a single Navigator turn.
+
+        Returns ``(early_result, had_action_in_turn)``. ``early_result`` is
+        non-``None`` only when the consecutive-action-failure budget was
+        exhausted mid-turn, in which case ``verify()`` should return it
+        immediately; otherwise ``verify()`` proceeds to the next turn.
+        """
+        had_action_in_turn = False
+        turn_reasoning = self._hook.current_turn_reasoning if self._hook else None
+        reasoning_shown = False
+        # Execute every tool call in the turn even when the step budget
+        # runs out mid-list: each tool_call in the assistant message
+        # must receive a role="tool" reply before the next user message,
+        # otherwise the chat-completions transcript is invalid and the
+        # endpoint rejects the force-stop turn. max_steps is enforced at
+        # turn boundaries by the while condition, so the overshoot is
+        # bounded by a single turn's tool calls.
+        for tool_call in tool_calls:
+            tool_name = tool_call_name(tool_call)
+            tool_arguments, sensitive_text = await self._sanitize_tool_arguments(
+                session=session,
+                tool_call=tool_call,
+                tool_name=tool_name,
+                messages=messages,
+            )
+            await self._safe_hook_call("on_tool_start", name=tool_name, arguments=tool_arguments)
+            # Show this turn's reasoning synced with its FIRST tool — passive
+            # (extract_elements/find/…) or interactive — so it lands on the
+            # right page and never trails the action, and BEFORE the evidence
+            # screenshot, which hides the whole overlay so the model can't read
+            # its own reasoning off a capture. Gating on the first *interaction*
+            # tool instead left the previous turn's stale capsule on screen
+            # through passive-first turns (set_status no longer clears it), and
+            # showed nothing for all-passive turns. A turn with no narration
+            # clears any stale prior thought instead.
+            if not reasoning_shown and self._overlay:
+                if turn_reasoning:
+                    await self._best_effort_overlay_call("show_thought", turn_reasoning)
+                else:
+                    await self._best_effort_overlay_call("clear_thought")
+                reasoning_shown = True
+            execution = await self._execute_tool_call(session, tool_call)
+            if sensitive_text is not None:
+                execution = self._redact_sensitive_execution(execution, sensitive_text)
+            trace = execution.trace
+            progress.action_trace.append(trace)
+            output_text = execution.output_text
+            await self._safe_hook_call(
+                "on_tool_end",
+                name=tool_name,
+                arguments=tool_arguments,
+                output=output_text,
+                trace=trace,
+            )
+            current_url = execution.current_url or progress.url
+            counts_as_interaction = bool(execution.counts_as_interaction)
+            progress.url_history.append(current_url)
+            progress.step_count += 1
+            if counts_as_interaction:
+                progress.non_action_reprompts = 0
+                had_action_in_turn = True
+                progress.has_interacted = True
+            screenshot_bytes, screenshot_path = await self._capture_evidence_screenshot(
+                session=session,
+                run_artifacts=progress.run_artifacts,
+                claim_index=progress.claim_index,
+                label=f"step-{progress.step_count:02d}",
+            )
+            progress.screenshot_paths.append(screenshot_path)
+            self._record_action_event(
+                step=progress.step_count,
+                action=tool_name,
+                action_args=tool_arguments,
+                output_text=output_text,
+                screenshot_path=screenshot_path,
+            )
+            progress.proof_text = str(output_text) if output_text else None
+            progress.proof_text_path = self._save_proof_text(
+                run_artifacts=progress.run_artifacts,
+                claim_index=progress.claim_index,
+                label=f"step-{progress.step_count:02d}",
+                proof_text=progress.proof_text,
+            )
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": self._build_tool_result_text(
+                                trace=trace,
+                                output_text=execution.output_text,
+                                current_url=current_url,
+                            ),
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": image_bytes_to_data_url(screenshot_bytes), "detail": "high"},
+                        },
+                    ],
+                }
+            )
+            if execution.action_failed:
+                progress.consecutive_action_failures += 1
+                if progress.consecutive_action_failures >= MAX_CONSECUTIVE_ACTION_FAILURES:
+                    result = self._build_result(
+                        progress=progress,
+                        status="inconclusive",
+                        finding=(
+                            f"Browser actions failed {progress.consecutive_action_failures} times in a row "
+                            f"without a verdict. Last error: {execution.output_text or trace}"
+                        ),
+                    )
+                    return result, had_action_in_turn
+            else:
+                progress.consecutive_action_failures = 0
+
+        return None, had_action_in_turn
 
     async def _invoke_navigator_turn(
         self, messages: list[dict[str, Any]]
