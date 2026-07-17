@@ -51,6 +51,15 @@ def _last_evaluated_script(page: MagicMock) -> str:
     return str(page.evaluate.call_args.args[0])
 
 
+def _cursor_moved_to(scripts: list[str], x: int, y: int) -> bool:
+    """Return True if scripts contains a cursor-move call clamped to (x, y).
+
+    Coords are viewport-clamped in JS (Math.min(x, innerWidth-M)), so the raw
+    values appear inside the clamp rather than as a literal "100px".
+    """
+    return any("__n1Cursor" in script and f"Math.min({x}" in script and f"Math.min({y}" in script for script in scripts)
+
+
 async def _started_controller(
     *, focused_center: dict[str, int] | None = None
 ) -> tuple[MagicMock, OverlayController]:
@@ -282,9 +291,7 @@ class TestOverlayInformationalCards:
 
         scripts = _evaluated_scripts(page)
         assert not any("vp.remove()" in script for script in scripts)
-        assert any(
-            "__n1Cursor" in script and "Math.min(100" in script and "Math.min(200" in script for script in scripts
-        )
+        assert _cursor_moved_to(scripts, 100, 200)
 
     @pytest.mark.asyncio
     async def test_set_status_non_analyzing_preserves_existing_thought_card(self) -> None:
@@ -329,7 +336,7 @@ class TestOverlayInformationalCards:
         assert controller._current_status == "Analyzing"
         scripts = _evaluated_scripts(page)
         assert any("__n1TransientRoot" in script and "visibility = 'visible'" in script for script in scripts)
-        assert any("__n1Cursor" in script and "Math.min(100" in script and "Math.min(200" in script for script in scripts)
+        assert _cursor_moved_to(scripts, 100, 200)
         assert any("n1click" in script for script in scripts)
         assert not any("__n1StatusChip" in script and "Clicking" in script for script in scripts)
 
@@ -346,7 +353,7 @@ class TestOverlayPreviewAction:
         assert controller._current_status == "Analyzing"
         scripts = _evaluated_scripts(page)
         # Cursor moved first (coords are viewport-clamped via Math.min in the JS)
-        assert any("__n1Cursor" in script and "Math.min(100" in script and "Math.min(200" in script for script in scripts)
+        assert _cursor_moved_to(scripts, 100, 200)
         # Transient root made visible
         assert any("__n1TransientRoot" in script and "visibility = 'visible'" in script for script in scripts)
         # Ripple loop runs num_clicks times
@@ -368,7 +375,7 @@ class TestOverlayPreviewAction:
 
         scripts = _evaluated_scripts(page)
         # Cursor leads to the scroll target (viewport-clamped via Math.min)
-        assert any("__n1Cursor" in script and "Math.min(640" in script and "Math.min(400" in script for script in scripts)
+        assert _cursor_moved_to(scripts, 640, 400)
         # Badge morphs to the chevron glyph via the bloom-in keyframes
         assert any("__n1BadgeGlyph" in script and "n1badgeIn" in script for script in scripts)
         assert any("6 10 12 16 18 10" in script for script in scripts)
@@ -396,7 +403,7 @@ class TestOverlayPreviewAction:
         # Type morphs the badge to the type glyph (the standalone typing pill was retired)
         assert any("__n1BadgeGlyph" in script and "n1badgeIn" in script for script in scripts)
         # Cursor moved to focused element center (viewport-clamped via Math.min)
-        assert any("__n1Cursor" in script and "Math.min(200" in script and "Math.min(150" in script for script in scripts)
+        assert _cursor_moved_to(scripts, 200, 150)
 
     @pytest.mark.asyncio
     async def test_type_morphs_badge_even_without_focused_element(self, patched_sleep: AsyncMock) -> None:
@@ -422,7 +429,7 @@ class TestOverlayPreviewAction:
         assert controller._current_status == "Analyzing"
         scripts = _evaluated_scripts(page)
         # Cursor moved to hover target (viewport-clamped via Math.min)
-        assert any("__n1Cursor" in script and "Math.min(300" in script and "Math.min(400" in script for script in scripts)
+        assert _cursor_moved_to(scripts, 300, 400)
         # No chip update from preview_action
         assert not any("__n1StatusChip" in script and "Hovering" in script for script in scripts)
 
@@ -435,7 +442,7 @@ class TestOverlayPreviewAction:
 
         scripts = _evaluated_scripts(page)
         # Cursor moved to start point first (viewport-clamped via Math.min)
-        assert any("__n1Cursor" in script and "Math.min(100" in script and "Math.min(200" in script for script in scripts)
+        assert _cursor_moved_to(scripts, 100, 200)
         # Drag style injected with trail keyframes
         assert any("__n1DragStyle" in script for script in scripts)
         assert any("n1dfade" in script and "n1dtrail" in script for script in scripts)
