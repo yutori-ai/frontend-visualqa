@@ -145,6 +145,18 @@ async def _noop_preflight_verify_auth() -> None:
     return None
 
 
+def _capture_emitted_json(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
+    """Patch ``cli._emit_json`` to append into the returned list.
+
+    Shared by every ``_handle_*`` test that asserts on the JSON payload the
+    CLI would have printed, replacing the repeated
+    ``emitted: list[...] = []`` + ``monkeypatch.setattr(cli, "_emit_json", emitted.append)`` pair.
+    """
+    emitted: list[dict[str, Any]] = []
+    monkeypatch.setattr(cli, "_emit_json", emitted.append)
+    return emitted
+
+
 def _verify_args(**overrides: Any) -> SimpleNamespace:
     """Build the ``SimpleNamespace`` argparse-args shape ``cli._handle_verify`` expects.
 
@@ -210,7 +222,6 @@ def test_build_parser_supports_version_flag_without_subcommand(capsys: pytest.Ca
 
 def test_handle_verify_closes_runner_and_forwards_browser_config(monkeypatch: Any) -> None:
     fake_runner = FakeRunner()
-    emitted: list[dict[str, Any]] = []
     browser_configs: list[BrowserConfig | None] = []
 
     def _fake_new_runner(*, browser_config=None, reporters=None):
@@ -218,7 +229,7 @@ def test_handle_verify_closes_runner_and_forwards_browser_config(monkeypatch: An
         return fake_runner
 
     monkeypatch.setattr(cli, "_new_runner", _fake_new_runner)
-    monkeypatch.setattr(cli, "_emit_json", emitted.append)
+    emitted = _capture_emitted_json(monkeypatch)
     monkeypatch.setattr(cli, "_preflight_verify_auth", _noop_preflight_verify_auth)
 
     exit_code = cli._handle_verify(
@@ -257,7 +268,6 @@ def test_handle_verify_closes_runner_and_forwards_browser_config(monkeypatch: An
 
 def test_handle_screenshot_closes_runner_and_forwards_browser_config(monkeypatch: Any) -> None:
     fake_runner = FakeRunner()
-    emitted: list[dict[str, Any]] = []
     browser_configs: list[BrowserConfig | None] = []
 
     def _fake_new_runner(*, browser_config: BrowserConfig | None = None, reporters: list[str] | None = None) -> FakeRunner:
@@ -265,7 +275,7 @@ def test_handle_screenshot_closes_runner_and_forwards_browser_config(monkeypatch
         return fake_runner
 
     monkeypatch.setattr(cli, "_new_runner", _fake_new_runner)
-    monkeypatch.setattr(cli, "_emit_json", emitted.append)
+    emitted = _capture_emitted_json(monkeypatch)
 
     exit_code = cli._handle_screenshot(
         _screenshot_args(
@@ -287,9 +297,8 @@ def test_handle_screenshot_closes_runner_and_forwards_browser_config(monkeypatch
 
 def test_handle_status_closes_runner(monkeypatch: Any) -> None:
     fake_runner = FakeRunner()
-    emitted: list[dict[str, Any]] = []
     monkeypatch.setattr(cli, "_new_runner", lambda **_: fake_runner)
-    monkeypatch.setattr(cli, "_emit_json", emitted.append)
+    emitted = _capture_emitted_json(monkeypatch)
 
     exit_code = cli._handle_status(SimpleNamespace())
 
@@ -330,7 +339,6 @@ def test_handle_serve_configures_server_and_closes_cached_mcp_runners(monkeypatc
 
 def test_handle_verify_passes_reporters_to_runner(monkeypatch: Any) -> None:
     fake_runner = FakeRunner()
-    emitted: list[dict[str, Any]] = []
     captured_reporters: list[list[str] | None] = []
 
     def _fake_new_runner(*, browser_config=None, reporters=None):
@@ -338,7 +346,7 @@ def test_handle_verify_passes_reporters_to_runner(monkeypatch: Any) -> None:
         return fake_runner
 
     monkeypatch.setattr(cli, "_new_runner", _fake_new_runner)
-    monkeypatch.setattr(cli, "_emit_json", emitted.append)
+    _capture_emitted_json(monkeypatch)
     monkeypatch.setattr(cli, "_preflight_verify_auth", _noop_preflight_verify_auth)
 
     exit_code = cli._handle_verify(_verify_args(reporter=["native", "ctrf"]))
@@ -381,7 +389,6 @@ def test_handle_verify_reads_claims_file_and_emits_progress(
     )
 
     fake_runner = FakeRunner()
-    emitted: list[dict[str, Any]] = []
     captured_reporters: list[list[str] | None] = []
 
     def _fake_new_runner(*, browser_config=None, reporters=None):
@@ -389,7 +396,7 @@ def test_handle_verify_reads_claims_file_and_emits_progress(
         return fake_runner
 
     monkeypatch.setattr(cli, "_new_runner", _fake_new_runner)
-    monkeypatch.setattr(cli, "_emit_json", emitted.append)
+    _capture_emitted_json(monkeypatch)
     monkeypatch.setattr(cli, "_preflight_verify_auth", _noop_preflight_verify_auth)
 
     exit_code = cli._handle_verify(
@@ -434,10 +441,9 @@ def test_handle_verify_reads_claims_file_with_second_claim_navigation_hint(
     )
 
     fake_runner = FakeRunner()
-    emitted: list[dict[str, Any]] = []
 
     monkeypatch.setattr(cli, "_new_runner", lambda **_: fake_runner)
-    monkeypatch.setattr(cli, "_emit_json", emitted.append)
+    emitted = _capture_emitted_json(monkeypatch)
     monkeypatch.setattr(cli, "_preflight_verify_auth", _noop_preflight_verify_auth)
 
     exit_code = cli._handle_verify(
@@ -461,8 +467,7 @@ def test_handle_verify_rejects_missing_claims_file(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    emitted: list[dict[str, Any]] = []
-    monkeypatch.setattr(cli, "_emit_json", emitted.append)
+    emitted = _capture_emitted_json(monkeypatch)
     monkeypatch.setattr(cli, "_preflight_verify_auth", _noop_preflight_verify_auth)
 
     exit_code = cli._handle_verify(_verify_args(claims=None, claims_file=str(tmp_path / "missing.md")))
@@ -477,12 +482,10 @@ def test_handle_verify_checks_claims_file_before_auth_preflight(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    emitted: list[dict[str, Any]] = []
-
     async def _failing_preflight() -> None:
         raise AssertionError("auth preflight should not run for a missing claims file")
 
-    monkeypatch.setattr(cli, "_emit_json", emitted.append)
+    emitted = _capture_emitted_json(monkeypatch)
     monkeypatch.setattr(cli, "_preflight_verify_auth", _failing_preflight)
 
     exit_code = cli._handle_verify(_verify_args(claims=None, claims_file=str(tmp_path / "missing.md")))
@@ -494,7 +497,6 @@ def test_handle_verify_checks_claims_file_before_auth_preflight(
 
 def test_handle_verify_returns_nonzero_when_any_claim_is_not_passed(monkeypatch: Any) -> None:
     fake_runner = FakeRunner()
-    emitted: list[dict[str, Any]] = []
 
     async def _fake_run(**kwargs: Any) -> RunResult:
         viewport = kwargs.get("viewport", ViewportConfig())
@@ -525,7 +527,7 @@ def test_handle_verify_returns_nonzero_when_any_claim_is_not_passed(monkeypatch:
     fake_runner.run = _fake_run  # type: ignore[method-assign]
 
     monkeypatch.setattr(cli, "_new_runner", lambda **_: fake_runner)
-    monkeypatch.setattr(cli, "_emit_json", emitted.append)
+    emitted = _capture_emitted_json(monkeypatch)
     monkeypatch.setattr(cli, "_preflight_verify_auth", _noop_preflight_verify_auth)
 
     exit_code = cli._handle_verify(_verify_args())
@@ -538,7 +540,6 @@ def test_handle_verify_returns_nonzero_without_json_when_auth_preflight_fails(
     monkeypatch: Any,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    emitted: list[dict[str, Any]] = []
     new_runner_calls: list[object] = []
 
     async def _failing_preflight() -> None:
@@ -546,7 +547,7 @@ def test_handle_verify_returns_nonzero_without_json_when_auth_preflight_fails(
 
     monkeypatch.setattr(cli, "_preflight_verify_auth", _failing_preflight)
     monkeypatch.setattr(cli, "_new_runner", lambda **_: new_runner_calls.append(object()))
-    monkeypatch.setattr(cli, "_emit_json", emitted.append)
+    emitted = _capture_emitted_json(monkeypatch)
 
     exit_code = cli._handle_verify(_verify_args())
 
@@ -730,9 +731,8 @@ def test_handle_screenshot_returns_nonzero_when_not_testable(monkeypatch: Any) -
         )
 
     fake_runner.take_screenshot = _not_testable_screenshot  # type: ignore[method-assign]
-    emitted: list[dict[str, Any]] = []
     monkeypatch.setattr(cli, "_new_runner", lambda **_: fake_runner)
-    monkeypatch.setattr(cli, "_emit_json", emitted.append)
+    emitted = _capture_emitted_json(monkeypatch)
 
     exit_code = cli._handle_screenshot(_screenshot_args(url="http://localhost:3000", visualize=None))
 
