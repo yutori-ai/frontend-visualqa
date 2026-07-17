@@ -309,6 +309,13 @@ _REPORTERS: dict[str, type[Reporter]] = {
     "markdown": MarkdownReporter,
 }
 
+# Public view of the registered reporter names, in registration order. Lets
+# the CLI's ``--reporter`` argparse ``choices`` source from this single
+# registry instead of hand-copying the same three strings, which would
+# otherwise need to be kept in sync by hand whenever a reporter is added,
+# renamed, or removed.
+REPORTER_NAMES: tuple[str, ...] = tuple(_REPORTERS)
+
 
 def get_reporters(names: list[str]) -> list[Reporter]:
     """Instantiate reporters by name. Defaults to ['native'] if empty."""

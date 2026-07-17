@@ -21,6 +21,7 @@ from frontend_visualqa.browser import BrowserManager
 from frontend_visualqa.claim_parser import ParsedClaimsFile, parse_claims_file
 from frontend_visualqa.errors import ConfigurationError
 from frontend_visualqa.mcp_server import close_runners_sync, configure_server, get_mcp_server
+from frontend_visualqa.reporters import REPORTER_NAMES
 from frontend_visualqa.serialization import serialize_result
 from frontend_visualqa.schemas import (
     BrowserConfig,
@@ -97,7 +98,7 @@ def build_parser() -> argparse.ArgumentParser:
     verify_parser.add_argument(
         "--reporter",
         action="append",
-        choices=("native", "ctrf", "markdown"),
+        choices=REPORTER_NAMES,
         default=None,
         help="Output reporter. Can be specified multiple times. Defaults to native.",
     )
