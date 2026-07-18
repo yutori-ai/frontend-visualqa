@@ -174,6 +174,16 @@ def _inject_style_js(style_id: str, css_js_expr: str, *, guard: bool = False) ->
     )
 
 
+def _badge_vertical_flip_js(badge_ref: str, cy_expr: str) -> str:
+    """Return the JS assignment that flips the badge above the pointer near the bottom edge.
+
+    Shared by _THOUGHT_CARD_JS, _restore_cursor_position, and _move_cursor so the
+    72 / -68.5 / 27.37 constants — previously copy-pasted across all three — live
+    in one place instead of relying on comments to keep them in sync.
+    """
+    return f"{badge_ref}.style.top = ({cy_expr} + 72 > window.innerHeight) ? '-68.5px' : '27.37px';"
+
+
 # Animated y-loop draw cycle (retract -> CCW dot hop -> redraw, with the
 # depth-slice weave at the self-intersection), ported from the Live Cursor
 # mockup at experimental/mp/api-graphics/live-cursor/preview.html (yutori
@@ -591,7 +601,6 @@ _THOUGHT_CARD_JS = f"""(args) => {{
     // two-line pill and clamps with an ellipsis (rather than scrolling a
     // single-line marquee), keeping the y-loop centered in the grown pill.
     const B = 48, MAXW = 340, GAP = 10, END = 15, LH = 15;
-    const TOP0 = 27.37;                     // badge's default top within the cursor box
     const goLeft = (cx != null && cx >= 0) && ((cx - 18.33 + 45.33 + MAXW + 14) > window.innerWidth);
     if (goLeft) {{
         badge.style.left = 'auto'; badge.style.right = '16.67px';
@@ -603,10 +612,9 @@ _THOUGHT_CARD_JS = f"""(args) => {{
     // Mirror the vertical badge flip from _move_cursor: near the bottom edge the
     // badge sits above the pointer, so a thought shown before the action (cursor
     // already low) doesn't hang the pill below the viewport. cy is -1 before the
-    // first cursor move — leave the default top in that case. Keep the 72 / -68.5
-    // constants in sync with _move_cursor.
+    // first cursor move — leave the default top in that case.
     if (cy != null && cy >= 0) {{
-        badge.style.top = (cy + 72 > window.innerHeight) ? '-68.5px' : (TOP0 + 'px');
+        {_badge_vertical_flip_js("badge", "cy")}
     }}
 
     const vp = document.createElement('div');
@@ -905,7 +913,7 @@ class OverlayController:
                 const cursor = document.getElementById('{CURSOR_ID}');
                 if (!cursor) return;
                 const badge = document.getElementById('{BADGE_ID}');
-                if (badge) badge.style.top = ({self._cursor_y} + 72 > window.innerHeight) ? '-68.5px' : '27.37px';
+                if (badge) {_badge_vertical_flip_js("badge", str(self._cursor_y))}
                 cursor.style.transition = 'none';
                 cursor.style.left = '{self._cursor_x}px';
                 cursor.style.top = '{self._cursor_y}px';
@@ -1094,7 +1102,7 @@ class OverlayController:
                 // Flip the 48px badge above the pointer near the bottom edge so it
                 // doesn't clip off-screen (it otherwise hangs ~72px below the tip).
                 const badge = document.getElementById('{BADGE_ID}');
-                if (badge) badge.style.top = (cy + 72 > window.innerHeight) ? '-68.5px' : '27.37px';
+                if (badge) {_badge_vertical_flip_js("badge", "cy")}
                 // The thought pill's horizontal side (left/right of the badge) was
                 // chosen at show_thought time from the *previous* cursor x. Recompute
                 // it for the new x so the capsule can't run off-screen after the cursor
