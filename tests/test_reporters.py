@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -12,6 +13,18 @@ from frontend_visualqa.schemas import RunResult, ViewportConfig
 
 def _import_reporters_module():
     return import_or_skip("frontend_visualqa.reporters")
+
+
+def _write_ctrf_report(reporter: Any, run_result: RunResult, tmp_path: Path) -> dict[str, Any]:
+    """Write *run_result* via *reporter* and return the parsed ctrf-report.json.
+
+    Every CTRF reporter test below repeated this identical write-then-reload pair
+    (``reporter.write(...)`` followed by ``json.loads((tmp_path / "ctrf-report.json").read_text())``),
+    differing only in which run_result was written and which fields were asserted on the
+    parsed data. This is the shared helper they delegate to now.
+    """
+    reporter.write(run_result, tmp_path)
+    return json.loads((tmp_path / "ctrf-report.json").read_text())
 
 
 def _sample_run_result(artifacts_dir: str) -> RunResult:
@@ -180,10 +193,8 @@ def test_ctrf_reporter_writes_valid_ctrf_json(tmp_path: Path) -> None:
     module = _import_reporters_module()
     reporter = module.CTRFReporter()
     run_result = _sample_run_result(str(tmp_path))
-    reporter.write(run_result, tmp_path)
-    output_path = tmp_path / "ctrf-report.json"
-    assert output_path.exists()
-    data = json.loads(output_path.read_text())
+    data = _write_ctrf_report(reporter, run_result, tmp_path)
+    assert (tmp_path / "ctrf-report.json").exists()
     # Required CTRF root fields
     assert data["reportFormat"] == "CTRF"
     assert "specVersion" in data
@@ -218,8 +229,7 @@ def test_ctrf_reporter_uses_real_timing_when_available(tmp_path: Path) -> None:
     reporter = module.CTRFReporter()
     run_result = _sample_run_result(str(tmp_path))
     run_result = run_result.model_copy(update={"started_at": 1710000000.0, "completed_at": 1710000005.5})
-    reporter.write(run_result, tmp_path)
-    data = json.loads((tmp_path / "ctrf-report.json").read_text())
+    data = _write_ctrf_report(reporter, run_result, tmp_path)
     summary = data["results"]["summary"]
     assert summary["start"] == 1710000000000
     assert summary["stop"] == 1710000005500
@@ -252,8 +262,7 @@ def test_ctrf_reporter_maps_inconclusive_and_not_testable(tmp_path: Path) -> Non
         summary="0/2 claims passed. 2 inconclusive.",
         artifacts_dir=str(tmp_path),
     )
-    reporter.write(run_result, tmp_path)
-    data = json.loads((tmp_path / "ctrf-report.json").read_text())
+    data = _write_ctrf_report(reporter, run_result, tmp_path)
     tests = data["results"]["tests"]
     assert "extra" not in data["results"]
     assert tests[0]["status"] == "other"
@@ -266,8 +275,7 @@ def test_ctrf_reporter_includes_extra_fields(tmp_path: Path) -> None:
     module = _import_reporters_module()
     reporter = module.CTRFReporter()
     run_result = _sample_run_result(str(tmp_path))
-    reporter.write(run_result, tmp_path)
-    data = json.loads((tmp_path / "ctrf-report.json").read_text())
+    data = _write_ctrf_report(reporter, run_result, tmp_path)
     t1 = data["results"]["tests"][1]
     extra = t1["extra"]
     assert extra["claimResult"]["page"]["url"] == "http://localhost:3000/dashboard"
@@ -281,8 +289,7 @@ def test_ctrf_reporter_includes_screenshots_as_attachments(tmp_path: Path) -> No
     module = _import_reporters_module()
     reporter = module.CTRFReporter()
     run_result = _sample_run_result(str(tmp_path))
-    reporter.write(run_result, tmp_path)
-    data = json.loads((tmp_path / "ctrf-report.json").read_text())
+    data = _write_ctrf_report(reporter, run_result, tmp_path)
     t0 = data["results"]["tests"][0]
     assert "attachments" in t0
     assert len(t0["attachments"]) == 1
@@ -294,8 +301,7 @@ def test_ctrf_reporter_includes_trace_path_as_attachment(tmp_path: Path) -> None
     module = _import_reporters_module()
     reporter = module.CTRFReporter()
     run_result = _sample_run_result(str(tmp_path))
-    reporter.write(run_result, tmp_path)
-    data = json.loads((tmp_path / "ctrf-report.json").read_text())
+    data = _write_ctrf_report(reporter, run_result, tmp_path)
     t1 = data["results"]["tests"][1]
     assert len(t1["attachments"]) == 4  # 2 screenshots + 1 proof text + 1 trace
     proof_text_attachment = t1["attachments"][-2]
@@ -622,6 +628,5 @@ def test_ctrf_output_validates_against_official_schema(tmp_path: Path) -> None:
     module = _import_reporters_module()
     reporter = module.CTRFReporter()
     run_result = _sample_run_result(str(tmp_path))
-    reporter.write(run_result, tmp_path)
-    data = json.loads((tmp_path / "ctrf-report.json").read_text())
+    data = _write_ctrf_report(reporter, run_result, tmp_path)
     jsonschema.validate(instance=data, schema=schema)
