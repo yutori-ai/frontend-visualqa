@@ -67,6 +67,27 @@ def _badge_top_flip_js(cursor_y_expr: str) -> str:
     )
 
 
+# Horizontal counterpart to the vertical flip above: whether the thought pill
+# should render to the badge's LEFT instead of its right, so the pill (up to
+# THOUGHT_PILL_MAX_WIDTH_PX wide) can't run past the right edge of the
+# viewport. Shared by _THOUGHT_CARD_JS (first render) and _move_cursor's JS
+# (repositioning an already-visible pill as the cursor moves), which each
+# independently reimplemented this same formula — _move_cursor's own source
+# comment flagged "keep the constants and formula in sync with it."
+THOUGHT_PILL_MAX_WIDTH_PX = 340
+# Cursor-tip-to-badge transform offset (-18.33 + 45.33) plus a small
+# clearance margin (14), collapsed into one constant.
+_BADGE_GO_LEFT_OFFSET_PX = 41
+
+
+def _badge_go_left_js(cursor_x_expr: str) -> str:
+    """JS boolean expression for whether the thought pill should flip to the badge's left.
+
+    ``cursor_x_expr`` is a JS expression for the cursor's viewport x.
+    """
+    return f"(({cursor_x_expr}) + {_BADGE_GO_LEFT_OFFSET_PX + THOUGHT_PILL_MAX_WIDTH_PX}) > window.innerWidth"
+
+
 # Thought capsule shrink→expand on a new reasoning: collapse to the 48px badge
 # (THOUGHT_COLLAPSE_MS), then the badge width transition expands it to fit
 # (THOUGHT_EXPAND_MS — must match the badge CSS width transition). Used to hold a
@@ -609,8 +630,8 @@ _THOUGHT_CARD_JS = f"""(args) => {{
     // Short text stays a single-line pill; longer text grows to a taller
     // two-line pill and clamps with an ellipsis (rather than scrolling a
     // single-line marquee), keeping the y-loop centered in the grown pill.
-    const B = 48, MAXW = 340, GAP = 10, END = 15, LH = 15;
-    const goLeft = (cx != null && cx >= 0) && ((cx - 18.33 + 45.33 + MAXW + 14) > window.innerWidth);
+    const B = 48, MAXW = {THOUGHT_PILL_MAX_WIDTH_PX}, GAP = 10, END = 15, LH = 15;
+    const goLeft = (cx != null && cx >= 0) && {_badge_go_left_js('cx')};
     if (goLeft) {{
         badge.style.left = 'auto'; badge.style.right = '16.67px';
         slot.style.left = 'auto'; slot.style.right = '0';
@@ -1115,13 +1136,13 @@ class OverlayController:
                 // The thought pill's horizontal side (left/right of the badge) was
                 // chosen at show_thought time from the *previous* cursor x. Recompute
                 // it for the new x so the capsule can't run off-screen after the cursor
-                // moves to the action target. Mirrors goLeft in _THOUGHT_CARD_JS — keep
-                // the constants and formula in sync with it.
+                // moves to the action target. Shares its goLeft formula with
+                // _THOUGHT_CARD_JS via _badge_go_left_js so the two can't drift apart.
                 const card = document.getElementById('{THOUGHT_CARD_ID}');
                 const slot = document.getElementById('{BADGE_SLOT_ID}');
                 if (card && badge && slot) {{
-                    const B = 48, MAXW = 340, GAP = 10, END = 15;
-                    const goLeft = (cx + (-18.33 + 45.33 + MAXW + 14)) > window.innerWidth;
+                    const B = 48, MAXW = {THOUGHT_PILL_MAX_WIDTH_PX}, GAP = 10, END = 15;
+                    const goLeft = {_badge_go_left_js('cx')};
                     if (goLeft) {{
                         badge.style.left = 'auto'; badge.style.right = '16.67px';
                         slot.style.left = 'auto'; slot.style.right = '0';
