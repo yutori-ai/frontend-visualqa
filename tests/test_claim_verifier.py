@@ -494,16 +494,8 @@ async def test_claim_verifier_records_reasoning_events_and_shows_thought_for_too
         module,
         tmp_path,
         responses=[
-            FakeMessage(
-                content=reasoning,
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-1",
-                        function=FakeFunction(
-                            name="goto_url", arguments=json.dumps({"url": "http://fixture.local/save"})
-                        ),
-                    )
-                ],
+            tool_call_message(
+                name="goto_url", arguments=json.dumps({"url": "http://fixture.local/save"}), content=reasoning
             ),
             _verdict_response(status="passed", finding="The Save button is visible."),
         ],
@@ -564,17 +556,8 @@ async def test_claim_verifier_shows_post_capture_analysis_ui_after_action_screen
         module,
         tmp_path,
         responses=[
-            FakeMessage(
-                content=reasoning,
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-1",
-                        function=FakeFunction(
-                            name="left_click",
-                            arguments=json.dumps({"coordinates": [500, 250]}),
-                        ),
-                    )
-                ],
+            tool_call_message(
+                name="left_click", arguments=json.dumps({"coordinates": [500, 250]}), content=reasoning
             ),
             _verdict_response(status="passed", finding="The field is focused."),
         ],
@@ -609,16 +592,8 @@ async def test_claim_verifier_shows_thought_before_a_passive_first_tool(
         module,
         tmp_path,
         responses=[
-            FakeMessage(
-                content=reasoning,
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-1",
-                        function=FakeFunction(
-                            name="extract_elements", arguments=json.dumps({"filter": "interactive"})
-                        ),
-                    )
-                ],
+            tool_call_message(
+                name="extract_elements", arguments=json.dumps({"filter": "interactive"}), content=reasoning
             ),
             _verdict_response(status="passed", finding="The form is present."),
         ],
@@ -798,17 +773,8 @@ async def test_claim_verifier_preserves_tool_call_order_when_action_and_verdict_
         module,
         tmp_path,
         responses=[
-            FakeMessage(
-                content=reasoning,
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-1",
-                        function=FakeFunction(
-                            name="goto_url",
-                            arguments=json.dumps({"url": "http://fixture.local/modal"}),
-                        ),
-                    ),
-                ],
+            tool_call_message(
+                name="goto_url", arguments=json.dumps({"url": "http://fixture.local/modal"}), content=reasoning
             ),
             _verdict_response(status="passed", finding="The modal is visible."),
         ],
@@ -1253,16 +1219,10 @@ async def test_claim_verifier_writes_trace_json_with_action_and_verdict_events(t
         module,
         tmp_path,
         responses=[
-            FakeMessage(
+            tool_call_message(
+                name="goto_url",
+                arguments=json.dumps({"url": "http://fixture.local/save"}),
                 content="Open the save page before deciding.",
-                tool_calls=[
-                    FakeToolCall(
-                        id="tool-1",
-                        function=FakeFunction(
-                            name="goto_url", arguments=json.dumps({"url": "http://fixture.local/save"})
-                        ),
-                    )
-                ],
             ),
             _verdict_response(status="passed", finding="The Save button is visible."),
         ],
