@@ -263,6 +263,64 @@ async def test_navigator_client_does_not_retry_or_wrap_cancelled_error() -> None
     assert len(client.completions.calls) == 1
 
 
+# --- HTTP/2 client swap (enable_http2_on_yutori_client) ---
+
+
+@pytest.mark.asyncio
+async def test_build_http2_client_enables_http2_with_shared_limits() -> None:
+    import frontend_visualqa.navigator_client as module
+
+    client = module._build_http2_client(7.5)
+    try:
+        assert client.timeout.connect == 7.5
+        assert client._transport._pool._http2 is True
+    finally:
+        await client.aclose()
+
+
+def test_enable_http2_on_yutori_client_uses_shared_http2_client_builder(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Both swap paths delegate to the same ``_build_http2_client`` helper.
+
+    Regression test for a duplication where ``_swap_chat_openai_to_http2`` and
+    ``_swap_yutori_httpx_to_http2`` each independently constructed an identical
+    ``httpx.AsyncClient(http2=True, timeout=..., limits=_HTTP2_LIMITS)``.
+    """
+    import openai
+
+    import frontend_visualqa.navigator_client as module
+
+    build_calls: list[float] = []
+    built_clients: list[Any] = []
+
+    def fake_build_http2_client(timeout_seconds: float) -> Any:
+        build_calls.append(timeout_seconds)
+        client = SimpleNamespace(marker="http2-client")
+        built_clients.append(client)
+        return client
+
+    monkeypatch.setattr(module, "_build_http2_client", fake_build_http2_client)
+
+    class FakeAsyncOpenAI:
+        def __init__(self, *, api_key: str, base_url: str, timeout: float, http_client: Any) -> None:
+            self.api_key = api_key
+            self.base_url = base_url
+            self.timeout = timeout
+            self.http_client = http_client
+
+    monkeypatch.setattr(openai, "AsyncOpenAI", FakeAsyncOpenAI)
+
+    old_oai = SimpleNamespace(api_key="key-123", base_url="https://navigator.example/v1")
+    chat_ns = SimpleNamespace(_openai_client=old_oai, completions=SimpleNamespace(_client=None))
+    yclient = SimpleNamespace(chat=chat_ns, _client=SimpleNamespace())
+
+    module.enable_http2_on_yutori_client(yclient, timeout_seconds=12.5)
+
+    assert build_calls == [12.5, 12.5]
+    assert chat_ns._openai_client.http_client is built_clients[0]
+    assert chat_ns.completions._client is chat_ns._openai_client
+    assert yclient._client is built_clients[1]
+
+
 @pytest.mark.asyncio
 async def test_outer_asyncio_timeout_cancels_hung_request() -> None:
     """A claim/run-level asyncio.timeout tears down a hung create() through the retry loop.

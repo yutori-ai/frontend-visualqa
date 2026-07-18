@@ -38,6 +38,19 @@ _HTTP2_LIMITS = httpx.Limits(
 )
 
 
+def _build_http2_client(timeout_seconds: float) -> httpx.AsyncClient:
+    """Build an HTTP/2 ``httpx.AsyncClient`` with the shared timeout/limits.
+
+    Shared by both HTTP/2 swap paths in :func:`enable_http2_on_yutori_client`,
+    which previously constructed this identical client independently.
+    """
+    return httpx.AsyncClient(
+        http2=True,
+        timeout=timeout_seconds,
+        limits=_HTTP2_LIMITS,
+    )
+
+
 def _schedule_close(client: Any, *, attr: str = "close") -> None:
     """Best-effort async close of a swapped-out HTTP client.
 
@@ -98,11 +111,7 @@ def _swap_chat_openai_to_http2(yclient: Any, *, timeout_seconds: float) -> None:
         old_oai = chat_ns._openai_client  # type: ignore[attr-defined]
         api_key = old_oai.api_key
         base_url = str(old_oai.base_url)
-        new_http2_client = httpx.AsyncClient(
-            http2=True,
-            timeout=timeout_seconds,
-            limits=_HTTP2_LIMITS,
-        )
+        new_http2_client = _build_http2_client(timeout_seconds)
         new_oai = AsyncOpenAI(
             api_key=api_key,
             base_url=base_url,
@@ -120,11 +129,7 @@ def _swap_yutori_httpx_to_http2(yclient: Any, *, timeout_seconds: float) -> None
         warning_msg="Could not enable HTTP/2 on yutori SDK client; usage/auth preflight will use HTTP/1.1",
     ):
         old_httpx = yclient._client  # type: ignore[attr-defined]
-        new_httpx = httpx.AsyncClient(
-            http2=True,
-            timeout=timeout_seconds,
-            limits=_HTTP2_LIMITS,
-        )
+        new_httpx = _build_http2_client(timeout_seconds)
         yclient._client = new_httpx  # type: ignore[attr-defined]
         # Each namespace stores its own ref to the original client; update
         # them too so usage/scouts/browsing/research calls also use h2.
