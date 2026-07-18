@@ -34,10 +34,12 @@ def _build_action_executor(module: Any) -> Any:
 def _build_default_action_fixtures(module: Any) -> tuple[Any, FakePage, ViewportConfig]:
     """Build the default ActionExecutor, FakePage, and ViewportConfig used by most tests here.
 
-    15 tests each repeated this identical arrange block (an ``ActionExecutor`` via
+    21 tests each repeated this identical arrange block (an ``ActionExecutor`` via
     ``_build_action_executor``, a plain ``FakePage()``, and a default ``ViewportConfig()``) for
-    actions that don't need overlay wiring or a pre-seeded page. This is the shared helper they
-    delegate to now.
+    actions that don't need overlay wiring or a pre-seeded page. Several of them additionally
+    queue a result onto the returned page's ``evaluate_results`` (or reassign it) before invoking
+    the action; that doesn't need its own variant since it's just a call on the already-built page.
+    This is the shared helper they all delegate to now.
     """
     executor = _build_action_executor(module)
     page = FakePage()
@@ -552,10 +554,8 @@ async def test_execute_action_key_press_shows_copy_paste_glyph_only_for_bare_cho
 @pytest.mark.asyncio
 async def test_execute_action_mouse_move_and_ref_resolution_use_sdk_tool_helpers() -> None:
     module = _import_actions_module()
-    executor = _build_action_executor(module)
-    page = FakePage()
+    executor, page, viewport = _build_default_action_fixtures(module)
     page.evaluate_results = [{"success": True, "coordinates": [301, 199]}]
-    viewport = ViewportConfig()
 
     trace = await _call_execute_action(executor, page, "mouse_move", {"ref": "hero-button"}, viewport)
 
@@ -761,11 +761,9 @@ async def test_execute_action_click_modifier_released_on_failure() -> None:
 async def test_resolve_coordinates_falls_back_to_raw_when_ref_fails() -> None:
     """When ref resolution fails, fall back to the raw coordinates arg."""
     module = _import_actions_module()
-    executor = _build_action_executor(module)
-    page = FakePage()
+    executor, page, viewport = _build_default_action_fixtures(module)
     # Queue a failed evaluate result for ref resolution
     page.evaluate_results.append({"success": False, "message": "element not found"})
-    viewport = ViewportConfig()
 
     trace = await _call_execute_action(
         executor,
@@ -784,10 +782,8 @@ async def test_resolve_coordinates_falls_back_to_raw_when_ref_fails() -> None:
 async def test_resolve_coordinates_raises_when_ref_fails_and_no_coords() -> None:
     """When ref fails and there are no fallback coordinates, raise BrowserActionError."""
     module = _import_actions_module()
-    executor = _build_action_executor(module)
-    page = FakePage()
+    executor, page, viewport = _build_default_action_fixtures(module)
     page.evaluate_results.append({"success": False, "message": "element not found"})
-    viewport = ViewportConfig()
 
     with pytest.raises(module.BrowserActionError, match="element not found"):
         await _call_execute_action(
@@ -802,10 +798,8 @@ async def test_resolve_coordinates_raises_when_ref_fails_and_no_coords() -> None
 @pytest.mark.asyncio
 async def test_execute_action_type_masks_text_when_focused_element_is_password() -> None:
     module = _import_actions_module()
-    executor = _build_action_executor(module)
-    page = FakePage()
+    executor, page, viewport = _build_default_action_fixtures(module)
     page.evaluate_results.append(True)  # focused element is a password input
-    viewport = ViewportConfig()
 
     trace = await _call_execute_action(executor, page, "type", {"text": "hunter2"}, viewport)
 
@@ -817,10 +811,8 @@ async def test_execute_action_type_masks_text_when_focused_element_is_password()
 @pytest.mark.asyncio
 async def test_execute_action_type_keeps_text_for_non_password_fields() -> None:
     module = _import_actions_module()
-    executor = _build_action_executor(module)
-    page = FakePage()
+    executor, page, viewport = _build_default_action_fixtures(module)
     page.evaluate_results.append(False)  # focused element is not a password input
-    viewport = ViewportConfig()
 
     trace = await _call_execute_action(executor, page, "type", {"text": "hello world"}, viewport)
 
@@ -886,9 +878,8 @@ async def test_execute_action_type_masks_text_when_password_detection_fails() ->
     """Detection failures fail closed: with no evaluate result queued, FakePage
     raises, the helper returns None, and the trace must still be masked."""
     module = _import_actions_module()
-    executor = _build_action_executor(module)
-    page = FakePage()  # no evaluate result queued -> detection error
-    viewport = ViewportConfig()
+    # No evaluate result queued on the fresh FakePage -> detection error.
+    executor, page, viewport = _build_default_action_fixtures(module)
 
     trace = await _call_execute_action(executor, page, "type", {"text": "maybe-secret"}, viewport)
 
