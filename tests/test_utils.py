@@ -1,5 +1,6 @@
 """Tests for the shared safe_method_call / safe_async_method_call / safe_callback_call utilities."""
 
+import inspect
 import logging
 
 import pytest
@@ -11,30 +12,47 @@ from frontend_visualqa.utils import (
     safe_method_call,
 )
 
+_SAFE_CALLS = pytest.mark.parametrize("call", [safe_method_call, safe_async_method_call], ids=["sync", "async"])
 
-def test_sync_none_target_is_noop(caplog: pytest.LogCaptureFixture) -> None:
+
+async def _invoke(call, *args, **kwargs):
+    result = call(*args, **kwargs)
+    if inspect.isawaitable(result):
+        await result
+    return result
+
+
+@_SAFE_CALLS
+async def test_none_target_is_noop(call, caplog: pytest.LogCaptureFixture) -> None:
+    """Calling with target=None should do nothing and not raise."""
     with caplog.at_level(logging.DEBUG, logger="frontend_visualqa.utils"):
-        safe_method_call(None, "any_method", "arg1", key="val")
+        await _invoke(call, None, "any_method", "arg1", key="val")
 
     assert not caplog.records
 
 
-def test_sync_missing_method_is_noop(caplog: pytest.LogCaptureFixture) -> None:
+@_SAFE_CALLS
+async def test_missing_method_is_noop(call, caplog: pytest.LogCaptureFixture) -> None:
+    """Target without the named method should be a silent no-op."""
+
     class Stub:
         pass
 
     with caplog.at_level(logging.DEBUG, logger="frontend_visualqa.utils"):
-        safe_method_call(Stub(), "nonexistent_method")
+        await _invoke(call, Stub(), "nonexistent_method")
 
     assert not caplog.records
 
 
-def test_sync_non_callable_attribute_is_noop(caplog: pytest.LogCaptureFixture) -> None:
+@_SAFE_CALLS
+async def test_non_callable_attribute_is_noop(call, caplog: pytest.LogCaptureFixture) -> None:
+    """Target with a non-callable attribute of the same name should be a no-op."""
+
     class Stub:
         some_method = 42  # not callable
 
     with caplog.at_level(logging.DEBUG, logger="frontend_visualqa.utils"):
-        safe_method_call(Stub(), "some_method")
+        await _invoke(call, Stub(), "some_method")
 
     assert not caplog.records
 
@@ -83,42 +101,6 @@ def test_sync_default_label_uses_type_name(caplog: pytest.LogCaptureFixture) -> 
         safe_method_call(MyHook(), "fail")
 
     assert any("MyHook" in r.message and "fail" in r.message for r in caplog.records)
-
-
-@pytest.mark.asyncio
-async def test_none_target_is_noop(caplog: pytest.LogCaptureFixture) -> None:
-    """Calling with target=None should do nothing and not raise."""
-
-    with caplog.at_level(logging.DEBUG, logger="frontend_visualqa.utils"):
-        await safe_async_method_call(None, "any_method", "arg1", key="val")
-
-    assert not caplog.records
-
-
-@pytest.mark.asyncio
-async def test_missing_method_is_noop(caplog: pytest.LogCaptureFixture) -> None:
-    """Target without the named method should be a silent no-op."""
-
-    class Stub:
-        pass
-
-    with caplog.at_level(logging.DEBUG, logger="frontend_visualqa.utils"):
-        await safe_async_method_call(Stub(), "nonexistent_method")
-
-    assert not caplog.records
-
-
-@pytest.mark.asyncio
-async def test_non_callable_attribute_is_noop(caplog: pytest.LogCaptureFixture) -> None:
-    """Target with a non-callable attribute of the same name should be a no-op."""
-
-    class Stub:
-        some_method = 42  # not callable
-
-    with caplog.at_level(logging.DEBUG, logger="frontend_visualqa.utils"):
-        await safe_async_method_call(Stub(), "some_method")
-
-    assert not caplog.records
 
 
 @pytest.mark.asyncio
