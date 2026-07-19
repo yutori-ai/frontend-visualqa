@@ -199,6 +199,19 @@ def _get_key_text(arguments: dict[str, Any]) -> str:
     return str(arguments.get("key") or arguments.get("key_comb") or "")
 
 
+def _get_goto_url(arguments: dict[str, Any]) -> Any:
+    """Extract the raw target-URL value for a goto_url action.
+
+    Accepts either the ``url`` or ``href`` argument name, mirroring
+    :func:`_get_key_text`'s alias-fallback pattern. Returns whatever falsy
+    value both aliases resolve to (typically ``None``) when neither is
+    present; callers are responsible for stringifying/validating, matching
+    the previous inline duplication between :func:`render_action_trace` and
+    the ``goto_url`` execution branch.
+    """
+    return arguments.get("url") or arguments.get("href")
+
+
 def is_disallowed_zoom_shortcut(key_text: str) -> bool:
     """Return true when the key chord would change the browser zoom level."""
 
@@ -302,7 +315,7 @@ def render_action_trace(
         return "hold_key()"
 
     if canonical_name == "goto_url":
-        return f"goto_url({json.dumps(str(arguments.get('url') or arguments.get('href') or ''))})"
+        return f"goto_url({json.dumps(str(_get_goto_url(arguments) or ''))})"
 
     if not arguments:
         return f"{canonical_name}()"
@@ -533,7 +546,7 @@ class ActionExecutor:
                     await self._press_keys_skipping_zoom_shortcuts(page, _mapped_key_presses(key_text))
 
             elif canonical_name == "goto_url":
-                url = raw_arguments.get("url") or raw_arguments.get("href")
+                url = _get_goto_url(raw_arguments)
                 if not url:
                     raise BrowserActionError("goto_url requires url")
                 await self._best_effort_overlay_set_status("Navigating")
