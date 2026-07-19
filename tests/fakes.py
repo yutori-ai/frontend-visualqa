@@ -5,7 +5,7 @@ from __future__ import annotations
 import importlib
 import inspect
 import json
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from functools import partial
 from http.server import BaseHTTPRequestHandler, SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -87,6 +87,25 @@ def import_or_skip(module_path: str) -> ModuleType:
         if exc.name and exc.name.startswith("frontend_visualqa"):
             pytest.skip(f"{module_path} is not implemented yet")
         raise
+
+
+def new_runner_recorder(fake_runner: Any) -> tuple[Callable[..., Any], list[dict[str, Any]]]:
+    """Build a ``cli._new_runner``-shaped fake that records each call's kwargs and returns ``fake_runner``.
+
+    ``test_cli.py`` had four call sites that each defined an identical local ``_fake_new_runner``
+    closure capturing either ``browser_config`` or ``reporters`` into a separately-declared,
+    single-purpose list before returning a shared ``fake_runner``, differing only in which kwarg
+    was recorded. This is the shared constructor they delegate to now; callers read
+    ``calls[i]["browser_config"]`` or ``calls[i]["reporters"]`` off the returned list instead of
+    hand-rolling a differently-typed single-field list per test.
+    """
+    calls: list[dict[str, Any]] = []
+
+    def _fake_new_runner(*, browser_config: Any = None, reporters: list[str] | None = None) -> Any:
+        calls.append({"browser_config": browser_config, "reporters": reporters})
+        return fake_runner
+
+    return _fake_new_runner, calls
 
 
 def result_statuses(result: Any) -> list[str]:
