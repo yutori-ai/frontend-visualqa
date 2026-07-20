@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
 
@@ -63,6 +64,27 @@ def _build_live_runner(
         navigator_client=navigator_client,
         claim_verifier=claim_verifier,
     )
+
+
+@contextlib.asynccontextmanager
+async def _live_runner_scope(
+    *,
+    tmp_path: Path,
+    responses: list[Any],
+    headless: bool = True,
+) -> AsyncIterator[VisualQARunner]:
+    """Build a live runner via ``_build_live_runner`` and guarantee it is closed afterward.
+
+    Mirrors ``cli.py``'s ``_runner_scope`` context manager. The two plain
+    (non-instrumented) live-runner tests below each hand-rolled an identical
+    ``try: result = await runner.run(...) finally: await runner.close()``
+    around a runner built this way; this is the shared version they delegate to now.
+    """
+    runner = _build_live_runner(tmp_path=tmp_path, responses=responses, headless=headless)
+    try:
+        yield runner
+    finally:
+        await runner.close()
 
 
 async def _overlay_dom_state(page: Any) -> dict[str, Any]:
@@ -147,23 +169,19 @@ async def test_live_runner_executes_real_browser_flow_and_passes_modal_claim(
     example_server: str,
     tmp_path: Path,
 ) -> None:
-    runner = _build_live_runner(
+    async with _live_runner_scope(
         tmp_path=tmp_path,
         responses=[
             tool_call_message(name="left_click", arguments=json.dumps({"coordinates": [328, 435]})),
             FakeResponse(parsed_json={"status": "passed", "finding": "The modal title reads Edit Task."}),
         ],
-    )
-
-    try:
+    ) as runner:
         result = await runner.run(
             url=f"{example_server}/test_page.html",
             claims=["The modal title reads 'Edit Task'"],
             viewport=ViewportConfig(),
             navigation_hint="Click the first task row to open the task modal before judging the claim.",
         )
-    finally:
-        await runner.close()
 
     assert result.overall_status == "completed"
     assert result_statuses(result) == ["passed"]
@@ -184,7 +202,7 @@ async def test_live_runner_downgrades_false_positive_button_claim_with_grounding
     example_server: str,
     tmp_path: Path,
 ) -> None:
-    runner = _build_live_runner(
+    async with _live_runner_scope(
         tmp_path=tmp_path,
         responses=[
             FakeResponse(
@@ -194,16 +212,12 @@ async def test_live_runner_downgrades_false_positive_button_claim_with_grounding
                 }
             )
         ],
-    )
-
-    try:
+    ) as runner:
         result = await runner.run(
             url=f"{example_server}/test_page.html",
             claims=["The Save button is visible without scrolling"],
             viewport=ViewportConfig(),
         )
-    finally:
-        await runner.close()
 
     assert result.overall_status == "completed"
     assert result_statuses(result) == ["failed"]
