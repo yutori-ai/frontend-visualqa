@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from fakes import assert_claim_result_payload_shape, make_claim_result, noop_sleep, simple_proof
+from fakes import assert_claim_result_payload_shape, make_claim_result, new_runner_recorder, noop_sleep, simple_proof
 import frontend_visualqa.cli as cli
 from frontend_visualqa import __version__
 from frontend_visualqa.errors import ConfigurationError
@@ -222,13 +222,9 @@ def test_build_parser_supports_version_flag_without_subcommand(capsys: pytest.Ca
 
 def test_handle_verify_closes_runner_and_forwards_browser_config(monkeypatch: Any) -> None:
     fake_runner = FakeRunner()
-    browser_configs: list[BrowserConfig | None] = []
+    fake_new_runner, runner_calls = new_runner_recorder(fake_runner)
 
-    def _fake_new_runner(*, browser_config=None, reporters=None):
-        browser_configs.append(browser_config)
-        return fake_runner
-
-    monkeypatch.setattr(cli, "_new_runner", _fake_new_runner)
+    monkeypatch.setattr(cli, "_new_runner", fake_new_runner)
     emitted = _capture_emitted_json(monkeypatch)
     monkeypatch.setattr(cli, "_preflight_verify_auth", _noop_preflight_verify_auth)
 
@@ -247,7 +243,7 @@ def test_handle_verify_closes_runner_and_forwards_browser_config(monkeypatch: An
     assert exit_code == 0
     assert fake_runner.close_calls == 1
     assert fake_runner.run_calls[0]["viewport"] == ViewportConfig()
-    assert browser_configs == [
+    assert [call["browser_config"] for call in runner_calls] == [
         BrowserConfig(
             mode=BrowserMode.persistent,
             user_data_dir="/tmp/frontend-visualqa-profile",
@@ -268,13 +264,9 @@ def test_handle_verify_closes_runner_and_forwards_browser_config(monkeypatch: An
 
 def test_handle_screenshot_closes_runner_and_forwards_browser_config(monkeypatch: Any) -> None:
     fake_runner = FakeRunner()
-    browser_configs: list[BrowserConfig | None] = []
+    fake_new_runner, runner_calls = new_runner_recorder(fake_runner)
 
-    def _fake_new_runner(*, browser_config: BrowserConfig | None = None, reporters: list[str] | None = None) -> FakeRunner:
-        browser_configs.append(browser_config)
-        return fake_runner
-
-    monkeypatch.setattr(cli, "_new_runner", _fake_new_runner)
+    monkeypatch.setattr(cli, "_new_runner", fake_new_runner)
     emitted = _capture_emitted_json(monkeypatch)
 
     exit_code = cli._handle_screenshot(
@@ -290,7 +282,9 @@ def test_handle_screenshot_closes_runner_and_forwards_browser_config(monkeypatch
     assert exit_code == 0
     assert fake_runner.close_calls == 1
     assert fake_runner.screenshot_calls[0]["viewport"] == ViewportConfig(width=390, height=844, device_scale_factor=1.0)
-    assert browser_configs == [BrowserConfig(mode=BrowserMode.ephemeral, user_data_dir=None, headless=True)]
+    assert [call["browser_config"] for call in runner_calls] == [
+        BrowserConfig(mode=BrowserMode.ephemeral, user_data_dir=None, headless=True)
+    ]
     assert emitted[0]["final_url"] == "http://localhost:3000/tasks/123"
     assert emitted[0]["run_name"] == "mobile-home"
 
@@ -339,20 +333,16 @@ def test_handle_serve_configures_server_and_closes_cached_mcp_runners(monkeypatc
 
 def test_handle_verify_passes_reporters_to_runner(monkeypatch: Any) -> None:
     fake_runner = FakeRunner()
-    captured_reporters: list[list[str] | None] = []
+    fake_new_runner, runner_calls = new_runner_recorder(fake_runner)
 
-    def _fake_new_runner(*, browser_config=None, reporters=None):
-        captured_reporters.append(reporters)
-        return fake_runner
-
-    monkeypatch.setattr(cli, "_new_runner", _fake_new_runner)
+    monkeypatch.setattr(cli, "_new_runner", fake_new_runner)
     _capture_emitted_json(monkeypatch)
     monkeypatch.setattr(cli, "_preflight_verify_auth", _noop_preflight_verify_auth)
 
     exit_code = cli._handle_verify(_verify_args(reporter=["native", "ctrf"]))
 
     assert exit_code == 0
-    assert captured_reporters == [["native", "ctrf"]]
+    assert [call["reporters"] for call in runner_calls] == [["native", "ctrf"]]
     assert fake_runner.run_calls[0]["claim_navigation_hints"] is None
 
 
@@ -389,13 +379,9 @@ def test_handle_verify_reads_claims_file_and_emits_progress(
     )
 
     fake_runner = FakeRunner()
-    captured_reporters: list[list[str] | None] = []
+    fake_new_runner, runner_calls = new_runner_recorder(fake_runner)
 
-    def _fake_new_runner(*, browser_config=None, reporters=None):
-        captured_reporters.append(reporters)
-        return fake_runner
-
-    monkeypatch.setattr(cli, "_new_runner", _fake_new_runner)
+    monkeypatch.setattr(cli, "_new_runner", fake_new_runner)
     _capture_emitted_json(monkeypatch)
     monkeypatch.setattr(cli, "_preflight_verify_auth", _noop_preflight_verify_auth)
 
@@ -409,7 +395,7 @@ def test_handle_verify_reads_claims_file_and_emits_progress(
     )
 
     assert exit_code == 0
-    assert captured_reporters == [["markdown"]]
+    assert [call["reporters"] for call in runner_calls] == [["markdown"]]
     assert fake_runner.run_calls[0]["claims"] == [
         "The modal title reads Edit Task",
         "The API status indicator shows Active",
