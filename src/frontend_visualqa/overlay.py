@@ -194,6 +194,15 @@ def _set_visibility_opacity_js(element_ref: str, *, visibility: str, opacity: st
     )
 
 
+def _transient_root_guard_js() -> str:
+    """JS snippet declaring ``root`` from the transient layer, bailing out if it's absent.
+
+    Shared by the effect-injection helpers (`_show_click_effect`, `_show_drag_effect`) that
+    each append transient DOM nodes to the transient root.
+    """
+    return f"const root = document.getElementById('{TRANSIENT_ROOT_ID}'); if (!root) return;"
+
+
 def _inject_style_js(style_id: str, css_js_expr: str, *, guard: bool = False) -> str:
     """Return JS snippet that injects a <style> element into document.head.
 
@@ -1200,8 +1209,7 @@ class OverlayController:
         )
         await self._eval(
             f"""() => {{
-                const root = document.getElementById('{TRANSIENT_ROOT_ID}');
-                if (!root) return;
+                {_transient_root_guard_js()}
                 {click_style}
                 for (let i = 0; i < {num_clicks}; i++) {{
                     const delay = i * {gap};
@@ -1223,8 +1231,7 @@ class OverlayController:
         )
         await self._eval(
             f"""() => {{
-                const root = document.getElementById('{TRANSIENT_ROOT_ID}');
-                if (!root) return;
+                {_transient_root_guard_js()}
                 {drag_style}
                 const pressed = document.createElement('div');
                 pressed.style.cssText = 'position:fixed;left:{start_x}px;top:{start_y}px;width:8px;height:8px;background:rgba(29,205,152,0.5);border-radius:50%;transform:translate(-50%,-50%);pointer-events:none;z-index:{Z_INDEX};animation:n1dfade {DRAG_DURATION_MS + 100}ms ease-out forwards;';
