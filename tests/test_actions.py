@@ -230,6 +230,43 @@ def _make_overlay_enabled_page(call_order: list[tuple[Any, ...]]) -> FakePage:
     return page
 
 
+def _build_move_down_up_overlay_fixtures(
+    module: Any,
+) -> tuple[list[tuple[Any, ...]], FakePage, MagicMock, Any, ViewportConfig]:
+    """Build the overlay-preview + mouse move/down/up call-order fixture set.
+
+    2 tests (mouse_down/mouse_up and drag) each repeated this identical arrange block: a
+    call-order-tracking page with mouse.move/down/up wired to append to it, an overlay double
+    whose preview_action does the same, and the overlay-wired executor/viewport pair. This is
+    the shared helper they delegate to now.
+    """
+    call_order: list[tuple[Any, ...]] = []
+    page = _make_overlay_enabled_page(call_order)
+
+    async def _move(x: int, y: int, *, steps: int | None = None) -> None:
+        call_order.append(("move", x, y))
+
+    async def _down() -> None:
+        call_order.append(("down",))
+
+    async def _up() -> None:
+        call_order.append(("up",))
+
+    page.mouse.move = AsyncMock(side_effect=_move)
+    page.mouse.down = AsyncMock(side_effect=_down)
+    page.mouse.up = AsyncMock(side_effect=_up)
+
+    overlay = MagicMock()
+
+    async def _preview_action(action_type: str, **kwargs: Any) -> None:
+        call_order.append(("preview_action", action_type, kwargs))
+
+    overlay.preview_action = AsyncMock(side_effect=_preview_action)
+
+    executor, viewport = _build_overlay_action_fixtures(module, overlay)
+    return call_order, page, overlay, executor, viewport
+
+
 def test_render_action_trace_formats_scaled_coordinates() -> None:
     module = _import_actions_module()
     result = module.render_action_trace("left_click", {"coordinates": [500, 250]}, width=1280, height=800)
@@ -485,30 +522,7 @@ async def test_execute_action_mouse_down_and_up_preview_then_press_release(
     button. Pins the exact call order so the branch-merging refactor can be checked against it.
     """
     module = _import_actions_module()
-    call_order: list[tuple[Any, ...]] = []
-    page = _make_overlay_enabled_page(call_order)
-
-    async def _move(x: int, y: int, *, steps: int | None = None) -> None:
-        call_order.append(("move", x, y))
-
-    async def _down() -> None:
-        call_order.append(("down",))
-
-    async def _up() -> None:
-        call_order.append(("up",))
-
-    page.mouse.move = AsyncMock(side_effect=_move)
-    page.mouse.down = AsyncMock(side_effect=_down)
-    page.mouse.up = AsyncMock(side_effect=_up)
-
-    overlay = MagicMock()
-
-    async def _preview_action(action_type: str, **kwargs: Any) -> None:
-        call_order.append(("preview_action", action_type, kwargs))
-
-    overlay.preview_action = AsyncMock(side_effect=_preview_action)
-
-    executor, viewport = _build_overlay_action_fixtures(module, overlay)
+    call_order, page, overlay, executor, viewport = _build_move_down_up_overlay_fixtures(module)
     await _call_execute_action(executor, page, action_name, {"coordinates": [250, 500]}, viewport)
 
     assert call_order[:3] == [
@@ -586,30 +600,7 @@ async def test_execute_action_click_modifier_holds_and_releases_keys() -> None:
 @pytest.mark.asyncio
 async def test_execute_action_drag_previews_before_drag_motion() -> None:
     module = _import_actions_module()
-    call_order: list[tuple[Any, ...]] = []
-    page = _make_overlay_enabled_page(call_order)
-
-    async def _move(x: int, y: int, *, steps: int | None = None) -> None:
-        call_order.append(("move", x, y))
-
-    async def _down() -> None:
-        call_order.append(("down",))
-
-    async def _up() -> None:
-        call_order.append(("up",))
-
-    page.mouse.move = AsyncMock(side_effect=_move)
-    page.mouse.down = AsyncMock(side_effect=_down)
-    page.mouse.up = AsyncMock(side_effect=_up)
-
-    overlay = MagicMock()
-
-    async def _preview_action(action_type: str, **kwargs: Any) -> None:
-        call_order.append(("preview_action", action_type, kwargs))
-
-    overlay.preview_action = AsyncMock(side_effect=_preview_action)
-
-    executor, viewport = _build_overlay_action_fixtures(module, overlay)
+    call_order, page, overlay, executor, viewport = _build_move_down_up_overlay_fixtures(module)
     trace = await _call_execute_action(
         executor,
         page,
