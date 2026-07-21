@@ -95,6 +95,14 @@ KEY_COMBINATION_ACTIONS: dict[str, str] = {
     "F5": "refresh",
 }
 
+# Maps a canonical action name to the Playwright Page method to call (all invoked
+# with wait_until="domcontentloaded") and the overlay status label to set beforehand.
+_SIMPLE_NAVIGATION_METHODS: dict[str, tuple[str, str]] = {
+    "go_back": ("go_back", "Navigating"),
+    "go_forward": ("go_forward", "Navigating"),
+    "refresh": ("reload", "Refreshing"),
+}
+
 # The "+" key is intentionally omitted: is_disallowed_zoom_shortcut splits on
 # "+" as a delimiter, so "Control++" (Ctrl + the plus key) would split to
 # ["Control", ""] and evade the check. The "=" key covers the standard Ctrl+=
@@ -552,17 +560,10 @@ class ActionExecutor:
                 await self._best_effort_overlay_set_status("Navigating")
                 await page.goto(url, wait_until="domcontentloaded")
 
-            elif canonical_name == "go_back":
-                await self._best_effort_overlay_set_status("Navigating")
-                await page.go_back(wait_until="domcontentloaded")
-
-            elif canonical_name == "go_forward":
-                await self._best_effort_overlay_set_status("Navigating")
-                await page.go_forward(wait_until="domcontentloaded")
-
-            elif canonical_name == "refresh":
-                await self._best_effort_overlay_set_status("Refreshing")
-                await page.reload(wait_until="domcontentloaded")
+            elif canonical_name in _SIMPLE_NAVIGATION_METHODS:
+                method_name, status_label = _SIMPLE_NAVIGATION_METHODS[canonical_name]
+                await self._best_effort_overlay_set_status(status_label)
+                await getattr(page, method_name)(wait_until="domcontentloaded")
 
             elif canonical_name == "screenshot":
                 pass
