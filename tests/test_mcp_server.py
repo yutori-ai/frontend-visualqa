@@ -154,6 +154,18 @@ def _install_fake_runner(module: Any, fake_runner: FakeRunner, monkeypatch: pyte
         monkeypatch.setattr(module, "_get_runner", _return_runner, raising=False)
 
 
+def _module_with_fake_runner(monkeypatch: pytest.MonkeyPatch) -> tuple[Any, FakeRunner]:
+    """Import the mcp_server module and wire a fresh `FakeRunner` into it.
+
+    Shared by tests that only need the module and its fake runner installed before calling a tool,
+    without any of the additional state-reset steps `test_close_runners_sync_*` needs.
+    """
+    module = _import_mcp_server_module()
+    fake_runner = FakeRunner()
+    _install_fake_runner(module, fake_runner, monkeypatch)
+    return module, fake_runner
+
+
 def _reset_server_module_state(module: Any) -> None:
     module._runners_by_loop.clear()
     module._runner_locks_by_loop.clear()
@@ -180,9 +192,7 @@ async def test_mcp_server_registers_expected_tools() -> None:
 
 @pytest.mark.asyncio
 async def test_mcp_server_verify_visual_claims_delegates_to_runner(monkeypatch: pytest.MonkeyPatch) -> None:
-    module = _import_mcp_server_module()
-    fake_runner = FakeRunner()
-    _install_fake_runner(module, fake_runner, monkeypatch)
+    module, fake_runner = _module_with_fake_runner(monkeypatch)
 
     payload = {
         "url": "http://localhost:3000/tasks/123",
@@ -217,9 +227,7 @@ async def test_mcp_server_verify_visual_claims_delegates_to_runner(monkeypatch: 
 
 @pytest.mark.asyncio
 async def test_mcp_server_helpers_delegate_to_runner(monkeypatch: pytest.MonkeyPatch) -> None:
-    module = _import_mcp_server_module()
-    fake_runner = FakeRunner()
-    _install_fake_runner(module, fake_runner, monkeypatch)
+    module, fake_runner = _module_with_fake_runner(monkeypatch)
 
     screenshot_result = await _call_tool(
         module,
@@ -249,9 +257,7 @@ async def test_mcp_server_helpers_delegate_to_runner(monkeypatch: pytest.MonkeyP
 
 @pytest.mark.asyncio
 async def test_mcp_server_manage_browser_login_passes_url_to_runner(monkeypatch: pytest.MonkeyPatch) -> None:
-    module = _import_mcp_server_module()
-    fake_runner = FakeRunner()
-    _install_fake_runner(module, fake_runner, monkeypatch)
+    module, fake_runner = _module_with_fake_runner(monkeypatch)
 
     await _call_tool(
         module,
