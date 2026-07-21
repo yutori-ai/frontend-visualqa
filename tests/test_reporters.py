@@ -79,6 +79,20 @@ def _sample_run_result(artifacts_dir: str) -> RunResult:
     )
 
 
+def _sample_ctrf_report(tmp_path: Path) -> dict[str, Any]:
+    """Write the sample run result via a fresh ``CTRFReporter`` and return the parsed report.
+
+    Five CTRF reporter tests each repeated this identical
+    ``module -> reporter -> run_result -> data`` arrange block, differing only in which
+    fields they asserted on the returned ``data``. This is the shared helper they
+    delegate to now, matching the ``_write_ctrf_report`` write-then-reload convention above.
+    """
+    module = _import_reporters_module()
+    reporter = module.CTRFReporter()
+    run_result = _sample_run_result(str(tmp_path))
+    return _write_ctrf_report(reporter, run_result, tmp_path)
+
+
 def _duplicate_claim_run_result(artifacts_dir: str) -> RunResult:
     viewport = ViewportConfig()
     return RunResult(
@@ -190,10 +204,7 @@ def test_get_reporters_returns_native_and_ctrf() -> None:
 
 
 def test_ctrf_reporter_writes_valid_ctrf_json(tmp_path: Path) -> None:
-    module = _import_reporters_module()
-    reporter = module.CTRFReporter()
-    run_result = _sample_run_result(str(tmp_path))
-    data = _write_ctrf_report(reporter, run_result, tmp_path)
+    data = _sample_ctrf_report(tmp_path)
     assert (tmp_path / "ctrf-report.json").exists()
     # Required CTRF root fields
     assert data["reportFormat"] == "CTRF"
@@ -272,10 +283,7 @@ def test_ctrf_reporter_maps_inconclusive_and_not_testable(tmp_path: Path) -> Non
 
 
 def test_ctrf_reporter_includes_extra_fields(tmp_path: Path) -> None:
-    module = _import_reporters_module()
-    reporter = module.CTRFReporter()
-    run_result = _sample_run_result(str(tmp_path))
-    data = _write_ctrf_report(reporter, run_result, tmp_path)
+    data = _sample_ctrf_report(tmp_path)
     t1 = data["results"]["tests"][1]
     extra = t1["extra"]
     assert extra["claimResult"]["page"]["url"] == "http://localhost:3000/dashboard"
@@ -286,10 +294,7 @@ def test_ctrf_reporter_includes_extra_fields(tmp_path: Path) -> None:
 
 
 def test_ctrf_reporter_includes_screenshots_as_attachments(tmp_path: Path) -> None:
-    module = _import_reporters_module()
-    reporter = module.CTRFReporter()
-    run_result = _sample_run_result(str(tmp_path))
-    data = _write_ctrf_report(reporter, run_result, tmp_path)
+    data = _sample_ctrf_report(tmp_path)
     t0 = data["results"]["tests"][0]
     assert "attachments" in t0
     assert len(t0["attachments"]) == 1
@@ -298,10 +303,7 @@ def test_ctrf_reporter_includes_screenshots_as_attachments(tmp_path: Path) -> No
 
 
 def test_ctrf_reporter_includes_trace_path_as_attachment(tmp_path: Path) -> None:
-    module = _import_reporters_module()
-    reporter = module.CTRFReporter()
-    run_result = _sample_run_result(str(tmp_path))
-    data = _write_ctrf_report(reporter, run_result, tmp_path)
+    data = _sample_ctrf_report(tmp_path)
     t1 = data["results"]["tests"][1]
     assert len(t1["attachments"]) == 4  # 2 screenshots + 1 proof text + 1 trace
     proof_text_attachment = t1["attachments"][-2]
@@ -625,8 +627,5 @@ def test_ctrf_output_validates_against_official_schema(tmp_path: Path) -> None:
     schema_path = Path(__file__).parent / "fixtures" / "ctrf.schema.json"
     assert schema_path.exists(), "Vendored CTRF schema missing -- expected at tests/fixtures/ctrf.schema.json"
     schema = json.loads(schema_path.read_text())
-    module = _import_reporters_module()
-    reporter = module.CTRFReporter()
-    run_result = _sample_run_result(str(tmp_path))
-    data = _write_ctrf_report(reporter, run_result, tmp_path)
+    data = _sample_ctrf_report(tmp_path)
     jsonschema.validate(instance=data, schema=schema)
