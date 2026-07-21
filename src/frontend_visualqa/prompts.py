@@ -105,56 +105,58 @@ def build_verification_task(claim: str, url: str, navigation_hint: str | None = 
     return "\n".join(parts)
 
 
+def _build_reprompt(header: str, *body_lines: str, claim: str) -> str:
+    """Join a header, the quoted claim line, and body lines into a reprompt message.
+
+    Shared by the four ``build_*_prompt`` functions below, which all wrap
+    situation-specific guidance around the same header-then-claim-line shape.
+    """
+
+    return "\n".join([header, f'Claim: "{claim}"', *body_lines])
+
+
 def build_force_stop_prompt(claim: str) -> str:
     """Prompt appended when the verifier reaches the step limit without a verdict."""
 
-    return "\n".join(
-        [
-            "You have reached the maximum number of actions for this claim.",
-            f'Claim: "{claim}"',
-            "Do not take any more browser actions.",
-            "Output your verdict as JSON now with your best verdict and a short evidence-backed finding.",
-            "Use inconclusive if you truly cannot tell, or not_testable if the environment blocked you.",
-        ]
+    return _build_reprompt(
+        "You have reached the maximum number of actions for this claim.",
+        "Do not take any more browser actions.",
+        "Output your verdict as JSON now with your best verdict and a short evidence-backed finding.",
+        "Use inconclusive if you truly cannot tell, or not_testable if the environment blocked you.",
+        claim=claim,
     )
 
 
 def build_action_or_verdict_prompt(claim: str) -> str:
     """Prompt appended when the model responds with free text instead of a tool call."""
 
-    return "\n".join(
-        [
-            "You have not finished this claim yet.",
-            f'Claim: "{claim}"',
-            "Do not narrate your intent in plain text.",
-            "Either take exactly one browser action next, or output your verdict as JSON now if you already have enough evidence.",
-            "A plain-text response without a tool call will be treated as a failure to follow instructions.",
-        ]
+    return _build_reprompt(
+        "You have not finished this claim yet.",
+        "Do not narrate your intent in plain text.",
+        "Either take exactly one browser action next, or output your verdict as JSON now if you already have enough evidence.",
+        "A plain-text response without a tool call will be treated as a failure to follow instructions.",
+        claim=claim,
     )
 
 
 def build_follow_navigation_hint_prompt(claim: str, navigation_hint: str) -> str:
     """Prompt appended when the model tries to verdict before following the navigation hint."""
 
-    return "\n".join(
-        [
-            "You have not followed the navigation hint yet.",
-            f'Claim: "{claim}"',
-            f"Navigation hint: {navigation_hint}",
-            "Do not render a final verdict before taking a browser action that follows the hint.",
-            "Take exactly one browser action now, then reassess from the next screenshot.",
-        ]
+    return _build_reprompt(
+        "You have not followed the navigation hint yet.",
+        f"Navigation hint: {navigation_hint}",
+        "Do not render a final verdict before taking a browser action that follows the hint.",
+        "Take exactly one browser action now, then reassess from the next screenshot.",
+        claim=claim,
     )
 
 
 def build_take_action_prompt(claim: str) -> str:
     """Prompt appended when the model says more interaction is needed but does not take it."""
 
-    return "\n".join(
-        [
-            "Your last finding said more browser interaction is needed before you can decide this claim.",
-            f'Claim: "{claim}"',
-            "Do not narrate the next step or record another provisional inconclusive verdict.",
-            "Take exactly one browser action now, then reassess from the next screenshot.",
-        ]
+    return _build_reprompt(
+        "Your last finding said more browser interaction is needed before you can decide this claim.",
+        "Do not narrate the next step or record another provisional inconclusive verdict.",
+        "Take exactly one browser action now, then reassess from the next screenshot.",
+        claim=claim,
     )
