@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Callable
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
@@ -241,13 +242,26 @@ async def manage_browser(
     return serialize_result(result)
 
 
+def run_stdio_server(get_server: Callable[[], FastMCP], close_runners: Callable[[], None]) -> None:
+    """Run an MCP server over stdio, always closing cached runners afterward.
+
+    Shared by ``main()`` (this module's own entrypoint) and the unified CLI's
+    ``_handle_serve`` (`cli.py`), which previously duplicated this identical
+    try/finally shutdown sequence. Takes the server-getter and close-runners
+    callables as parameters, rather than reaching for this module's own
+    ``get_mcp_server``/``close_runners_sync`` directly, so each caller's own
+    (possibly monkeypatched, in tests) references are honored.
+    """
+    try:
+        get_server().run(transport="stdio")
+    finally:
+        close_runners()
+
+
 def main() -> None:
     """Run the MCP server over stdio."""
 
-    try:
-        get_mcp_server().run(transport="stdio")
-    finally:
-        close_runners_sync()
+    run_stdio_server(get_mcp_server, close_runners_sync)
 
 
 if __name__ == "__main__":

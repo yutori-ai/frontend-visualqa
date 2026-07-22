@@ -362,3 +362,30 @@ async def test_close_runners_sync_resets_state_immediately_inside_running_loop(
     await asyncio.sleep(0)
 
     assert fake_runner.close_calls == 1
+
+
+def test_run_stdio_server_runs_then_closes_runners() -> None:
+    module = _import_mcp_server_module()
+    calls: list[str] = []
+
+    class FakeServer:
+        def run(self, *, transport: str) -> None:
+            calls.append(f"run:{transport}")
+
+    module.run_stdio_server(lambda: FakeServer(), lambda: calls.append("closed"))
+
+    assert calls == ["run:stdio", "closed"]
+
+
+def test_run_stdio_server_closes_runners_even_if_run_raises() -> None:
+    module = _import_mcp_server_module()
+    calls: list[str] = []
+
+    class FailingServer:
+        def run(self, *, transport: str) -> None:
+            raise RuntimeError("boom")
+
+    with pytest.raises(RuntimeError, match="boom"):
+        module.run_stdio_server(lambda: FailingServer(), lambda: calls.append("closed"))
+
+    assert calls == ["closed"]
