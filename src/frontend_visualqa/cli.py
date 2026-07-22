@@ -20,7 +20,7 @@ from frontend_visualqa import __version__
 from frontend_visualqa.browser import BrowserManager
 from frontend_visualqa.claim_parser import ParsedClaimsFile, parse_claims_file
 from frontend_visualqa.errors import ConfigurationError
-from frontend_visualqa.mcp_server import close_runners_sync, configure_server, get_mcp_server
+from frontend_visualqa.mcp_server import close_runners_sync, configure_server, get_mcp_server, run_stdio_server
 from frontend_visualqa.reporters import REPORTER_NAMES
 from frontend_visualqa.serialization import serialize_result
 from frontend_visualqa.schemas import (
@@ -325,10 +325,7 @@ def _emit_json(payload: dict[str, Any]) -> None:
 def _handle_serve(args: argparse.Namespace) -> int:
     _configure_serve_logging()
     configure_server(_build_browser_config(args))
-    try:
-        get_mcp_server().run(transport="stdio")
-    finally:
-        close_runners_sync()
+    run_stdio_server(get_mcp_server, close_runners_sync)
     return 0
 
 
