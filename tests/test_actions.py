@@ -267,6 +267,42 @@ def _build_move_down_up_overlay_fixtures(
     return call_order, page, overlay, executor, viewport
 
 
+@pytest.mark.parametrize(
+    ("arguments", "names", "expected"),
+    [
+        # First truthy alias wins, regardless of position.
+        ({"url": "http://a", "href": "http://b"}, ("url", "href"), "http://a"),
+        ({"href": "http://b"}, ("url", "href"), "http://b"),
+        ({"clear_before": True}, ("clear_before_typing", "clear_before", "clear_before_type"), True),
+        # A falsy earlier alias falls through to a truthy later one.
+        ({"url": "", "href": "http://b"}, ("url", "href"), "http://b"),
+        ({"key": 0, "key_comb": "ctrl+a"}, ("key", "key_comb"), "ctrl+a"),
+        # All-falsy: the *last* alias's raw value is returned, matching the
+        # `get(a) or get(b)` chains this helper replaced (no substituted default).
+        ({}, ("url", "href"), None),
+        ({"url": ""}, ("url", "href"), None),
+        ({"url": "", "href": ""}, ("url", "href"), ""),
+    ],
+)
+def test_first_alias_value_matches_or_chain_semantics(
+    arguments: dict[str, Any], names: tuple[str, ...], expected: Any
+) -> None:
+    module = _import_actions_module()
+    assert module._first_alias_value(arguments, *names) == expected
+
+
+def test_alias_accessors_share_first_alias_value_semantics() -> None:
+    module = _import_actions_module()
+
+    assert module._get_goto_url({"href": "http://b"}) == "http://b"
+    assert module._get_goto_url({}) is None
+    # Coercing accessors normalize the all-falsy case to their own empty value.
+    assert module._get_key_text({"key_comb": "ctrl+a"}) == "ctrl+a"
+    assert module._get_key_text({}) == ""
+    assert module._get_clear_before({"clear_before_type": True}) is True
+    assert module._get_clear_before({}) is False
+
+
 def test_render_action_trace_formats_scaled_coordinates() -> None:
     module = _import_actions_module()
     result = module.render_action_trace("left_click", {"coordinates": [500, 250]}, width=1280, height=800)

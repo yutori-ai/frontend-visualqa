@@ -146,15 +146,31 @@ def _format_modifier_trace_suffix(modifier: Any) -> str:
     return f", modifier={'+'.join(modifier_keys)}"
 
 
+def _first_alias_value(arguments: dict[str, Any], *names: str) -> Any:
+    """Return the first truthy value among ``names`` in ``arguments``.
+
+    The model emits several historical aliases for the same tool argument, so
+    every alias-tolerant accessor below reduces to this lookup. Semantics match
+    the ``arguments.get(a) or arguments.get(b) or ...`` chains this replaces
+    exactly, including the all-falsy case: the value of the *last* alias is
+    returned (``None`` when that alias is absent), never a substituted default.
+    Callers apply their own coercion (``bool``/``str``) on top.
+    """
+    value: Any = None
+    for name in names:
+        value = arguments.get(name)
+        if value:
+            return value
+    return value
+
+
 def _get_clear_before(arguments: dict[str, Any]) -> bool:
     """Return whether a ``type`` action should clear the field before typing.
 
     Accepts any of the aliases the model has historically emitted:
     ``clear_before_typing``, ``clear_before``, and ``clear_before_type``.
     """
-    return bool(
-        arguments.get("clear_before_typing") or arguments.get("clear_before") or arguments.get("clear_before_type")
-    )
+    return bool(_first_alias_value(arguments, "clear_before_typing", "clear_before", "clear_before_type"))
 
 
 async def focused_element_is_password(page: Any) -> bool | None:
@@ -204,20 +220,19 @@ def _get_key_text(arguments: dict[str, Any]) -> str:
     Accepts either the ``key`` or ``key_comb`` argument name and coerces the
     result to ``str``; returns ``""`` when neither is present.
     """
-    return str(arguments.get("key") or arguments.get("key_comb") or "")
+    return str(_first_alias_value(arguments, "key", "key_comb") or "")
 
 
 def _get_goto_url(arguments: dict[str, Any]) -> Any:
     """Extract the raw target-URL value for a goto_url action.
 
-    Accepts either the ``url`` or ``href`` argument name, mirroring
-    :func:`_get_key_text`'s alias-fallback pattern. Returns whatever falsy
-    value both aliases resolve to (typically ``None``) when neither is
+    Accepts either the ``url`` or ``href`` argument name. Returns whatever
+    falsy value both aliases resolve to (typically ``None``) when neither is
     present; callers are responsible for stringifying/validating, matching
     the previous inline duplication between :func:`render_action_trace` and
     the ``goto_url`` execution branch.
     """
-    return arguments.get("url") or arguments.get("href")
+    return _first_alias_value(arguments, "url", "href")
 
 
 def is_disallowed_zoom_shortcut(key_text: str) -> bool:
