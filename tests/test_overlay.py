@@ -288,9 +288,7 @@ class TestOverlayInformationalCards:
         # before the action runs), so preview_action must NOT clear it — it stays
         # through the cursor move/morph and is hidden only by the evidence
         # screenshot. clear_thought's signature is `vp.remove()`.
-        page, controller = _new_controller()
-
-        await controller.claim_started()
+        page, controller = await _started_controller()
         await controller.show_thought("Inspect the form before deciding.")
         page.evaluate.reset_mock()
 
@@ -304,9 +302,7 @@ class TestOverlayInformationalCards:
     async def test_set_status_non_analyzing_preserves_existing_thought_card(self) -> None:
         # A status change no longer clears the thought (see set_status): the synced
         # reasoning must survive the status label changing to "Navigating"/"Running …".
-        page, controller = _new_controller()
-
-        await controller.claim_started()
+        page, controller = await _started_controller()
         await controller.show_thought("Inspect the form before deciding.")
         page.evaluate.reset_mock()
 
@@ -318,9 +314,7 @@ class TestOverlayInformationalCards:
 
     @pytest.mark.asyncio
     async def test_set_status_analyzing_preserves_existing_thought_card(self) -> None:
-        page, controller = _new_controller()
-
-        await controller.claim_started()
+        page, controller = await _started_controller()
         await controller.show_thought("Inspect the form before deciding.")
         page.evaluate.reset_mock()
 
