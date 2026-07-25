@@ -146,15 +146,29 @@ def _format_modifier_trace_suffix(modifier: Any) -> str:
     return f", modifier={'+'.join(modifier_keys)}"
 
 
+def _first_present_argument(arguments: dict[str, Any], *keys: str) -> Any:
+    """Return the first truthy value among ``keys`` in ``arguments``.
+
+    Falls back to the last key's (possibly falsy) value when none are
+    truthy, matching the semantics of an ``arguments.get(a) or arguments.get(b) or ...``
+    chain. Shared by the alias-fallback getters below, which each accept
+    multiple historical argument names for the same logical value.
+    """
+    value: Any = None
+    for key in keys:
+        value = arguments.get(key)
+        if value:
+            return value
+    return value
+
+
 def _get_clear_before(arguments: dict[str, Any]) -> bool:
     """Return whether a ``type`` action should clear the field before typing.
 
     Accepts any of the aliases the model has historically emitted:
     ``clear_before_typing``, ``clear_before``, and ``clear_before_type``.
     """
-    return bool(
-        arguments.get("clear_before_typing") or arguments.get("clear_before") or arguments.get("clear_before_type")
-    )
+    return bool(_first_present_argument(arguments, "clear_before_typing", "clear_before", "clear_before_type"))
 
 
 async def focused_element_is_password(page: Any) -> bool | None:
@@ -204,7 +218,7 @@ def _get_key_text(arguments: dict[str, Any]) -> str:
     Accepts either the ``key`` or ``key_comb`` argument name and coerces the
     result to ``str``; returns ``""`` when neither is present.
     """
-    return str(arguments.get("key") or arguments.get("key_comb") or "")
+    return str(_first_present_argument(arguments, "key", "key_comb") or "")
 
 
 def _get_goto_url(arguments: dict[str, Any]) -> Any:
@@ -217,7 +231,7 @@ def _get_goto_url(arguments: dict[str, Any]) -> Any:
     the previous inline duplication between :func:`render_action_trace` and
     the ``goto_url`` execution branch.
     """
-    return arguments.get("url") or arguments.get("href")
+    return _first_present_argument(arguments, "url", "href")
 
 
 def is_disallowed_zoom_shortcut(key_text: str) -> bool:
