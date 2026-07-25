@@ -31,6 +31,11 @@ THOUGHT_STYLE_ID = "__n1ThoughtStyle"
 CLICK_STYLE_ID = "__n1ClickStyle"
 
 CURSOR_ID = "__n1Cursor"
+# Off-screen park position for the cursor: its initial style on persistent-root
+# mount, and the sentinel `_move_cursor` string-compares against to decide
+# whether to teleport (no transition) instead of sliding. Shared by both sites
+# so a future retune of the park spot can't leave the teleport check stale.
+_CURSOR_OFFSCREEN_PX = -200
 BADGE_ID = "__n1Badge"
 BADGE_SLOT_ID = "__n1BadgeSlot"
 BADGE_LOGO_ID = "__n1BadgeLogo"
@@ -482,7 +487,7 @@ _PERSISTENT_ROOT_JS = f"""() => {{
     if (!document.getElementById('{CURSOR_ID}')) {{
         const cursor = document.createElement('div');
         cursor.id = '{CURSOR_ID}';
-        cursor.style.cssText = 'position:fixed;left:-200px;top:-200px;width:110px;height:130px;pointer-events:none;z-index:{Z_INDEX + 2};transition:{_CURSOR_TRANSITION_CSS};transform:translate(-18.33px,-3.45px);';
+        cursor.style.cssText = 'position:fixed;left:{_CURSOR_OFFSCREEN_PX}px;top:{_CURSOR_OFFSCREEN_PX}px;width:110px;height:130px;pointer-events:none;z-index:{Z_INDEX + 2};transition:{_CURSOR_TRANSITION_CSS};transform:translate(-18.33px,-3.45px);';
         // The badge is a live element carrying the full Figma treatment (fill
         // gradient, gradient rim, two white inner shadows, teal drop shadows).
         // The thought capsule stretches THIS element, so expanded and idle
@@ -1176,7 +1181,7 @@ class OverlayController:
                         card.style.left = (B + GAP) + 'px'; card.style.right = END + 'px';
                     }}
                 }}
-                const offScreen = cursor.style.left === '-200px';
+                const offScreen = cursor.style.left === '{_CURSOR_OFFSCREEN_PX}px';
                 if (offScreen) {{
                     cursor.style.transition = 'none';
                     cursor.style.left = cx + 'px';
