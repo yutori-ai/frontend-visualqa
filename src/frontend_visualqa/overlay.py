@@ -57,6 +57,14 @@ _CURSOR_TRANSITION_CSS = (
 _BADGE_DEFAULT_TOP_PX = 27.37
 _BADGE_FLIPPED_TOP_PX = -68.5
 _BADGE_FLIP_MARGIN_PX = 72
+# Horizontal counterpart to the top/flipped-top pair above: the badge's default
+# `left` offset (mirroring the persistent-root mount) and its `right` offset once
+# `_badge_go_left_js` flips it to the cursor's left. Shared by _PERSISTENT_ROOT_JS
+# (initial mount), _THOUGHT_CARD_JS, _move_cursor's teleport reset, and
+# _CLEAR_THOUGHT_JS's collapse-back-to-default, which each independently
+# reimplemented these same literals.
+_BADGE_DEFAULT_LEFT_PX = 45.33
+_BADGE_FLIPPED_RIGHT_PX = 16.67
 
 
 def _badge_top_flip_js(cursor_y_expr: str) -> str:
@@ -481,7 +489,7 @@ _PERSISTENT_ROOT_JS = f"""() => {{
         // states are one continuous surface.
         const badge = document.createElement('div');
         badge.id = '{BADGE_ID}';
-        badge.style.cssText = 'position:absolute;left:45.33px;top:{_BADGE_DEFAULT_TOP_PX}px;width:48px;height:48px;border-radius:10.962px;background:linear-gradient(211.4deg,#18AA7E 13.6%,#148F6A 43.9%,#148F6A 64%,#159871 80.8%);box-shadow:inset 1.1px -2.4px 4.7px rgba(255,255,255,0.15),inset -1.1px 3.6px 4.7px rgba(255,255,255,0.4),0 2.4px 2.4px rgba(16,103,111,0.07),0 9.6px 4.7px rgba(16,103,111,0.06),0 21.5px 6.6px rgba(16,103,111,0.04),0 38.4px 7.7px rgba(16,103,111,0.01);overflow:hidden;pointer-events:none;transition:width {THOUGHT_EXPAND_MS}ms cubic-bezier(0.22,1,0.36,1),top 260ms ease-in-out;';
+        badge.style.cssText = 'position:absolute;left:{_BADGE_DEFAULT_LEFT_PX}px;top:{_BADGE_DEFAULT_TOP_PX}px;width:48px;height:48px;border-radius:10.962px;background:linear-gradient(211.4deg,#18AA7E 13.6%,#148F6A 43.9%,#148F6A 64%,#159871 80.8%);box-shadow:inset 1.1px -2.4px 4.7px rgba(255,255,255,0.15),inset -1.1px 3.6px 4.7px rgba(255,255,255,0.4),0 2.4px 2.4px rgba(16,103,111,0.07),0 9.6px 4.7px rgba(16,103,111,0.06),0 21.5px 6.6px rgba(16,103,111,0.04),0 38.4px 7.7px rgba(16,103,111,0.01);overflow:hidden;pointer-events:none;transition:width {THOUGHT_EXPAND_MS}ms cubic-bezier(0.22,1,0.36,1),top 260ms ease-in-out;';
         // Slot pins the y-loop (and morphing action glyph) to the badge end.
         const slot = document.createElement('div');
         slot.id = '{BADGE_SLOT_ID}';
@@ -648,10 +656,10 @@ _THOUGHT_CARD_JS = f"""(args) => {{
     const B = 48, MAXW = {THOUGHT_PILL_MAX_WIDTH_PX}, GAP = 10, END = 15, LH = 15;
     const goLeft = (cx != null && cx >= 0) && {_badge_go_left_js('cx')};
     if (goLeft) {{
-        badge.style.left = 'auto'; badge.style.right = '16.67px';
+        badge.style.left = 'auto'; badge.style.right = '{_BADGE_FLIPPED_RIGHT_PX}px';
         slot.style.left = 'auto'; slot.style.right = '0';
     }} else {{
-        badge.style.right = 'auto'; badge.style.left = '45.33px';
+        badge.style.right = 'auto'; badge.style.left = '{_BADGE_DEFAULT_LEFT_PX}px';
         slot.style.right = 'auto'; slot.style.left = '0';
     }}
     // Mirror the vertical badge flip from _move_cursor: near the bottom edge the
@@ -732,7 +740,7 @@ _THOUGHT_CARD_JS = f"""(args) => {{
             root.__n1CollapseTimer = setTimeout(() => {{
                 root.__n1CollapseTimer = null;
                 current.remove();
-                badge.style.left = '45.33px'; badge.style.right = 'auto';
+                badge.style.left = '{_BADGE_DEFAULT_LEFT_PX}px'; badge.style.right = 'auto';
                 slot.style.left = '0'; slot.style.right = 'auto';
             }}, {THOUGHT_COLLAPSE_MS});
         }}, timeoutMs);
@@ -790,7 +798,7 @@ _CLEAR_THOUGHT_JS = f"""() => {{
     const collapseTimer = setTimeout(() => {{
         if (persistent && persistent.__n1CollapseTimer === collapseTimer) persistent.__n1CollapseTimer = null;
         if (vp) vp.remove();
-        if (badge) {{ badge.style.left = '45.33px'; badge.style.right = 'auto'; }}
+        if (badge) {{ badge.style.left = '{_BADGE_DEFAULT_LEFT_PX}px'; badge.style.right = 'auto'; }}
         if (slot) {{ slot.style.left = '0'; slot.style.right = 'auto'; }}
     }}, {THOUGHT_COLLAPSE_MS});
     if (persistent) persistent.__n1CollapseTimer = collapseTimer;
@@ -1159,11 +1167,11 @@ class OverlayController:
                     const B = 48, MAXW = {THOUGHT_PILL_MAX_WIDTH_PX}, GAP = 10, END = 15;
                     const goLeft = {_badge_go_left_js('cx')};
                     if (goLeft) {{
-                        badge.style.left = 'auto'; badge.style.right = '16.67px';
+                        badge.style.left = 'auto'; badge.style.right = '{_BADGE_FLIPPED_RIGHT_PX}px';
                         slot.style.left = 'auto'; slot.style.right = '0';
                         card.style.left = END + 'px'; card.style.right = (B + GAP) + 'px';
                     }} else {{
-                        badge.style.right = 'auto'; badge.style.left = '45.33px';
+                        badge.style.right = 'auto'; badge.style.left = '{_BADGE_DEFAULT_LEFT_PX}px';
                         slot.style.right = 'auto'; slot.style.left = '0';
                         card.style.left = (B + GAP) + 'px'; card.style.right = END + 'px';
                     }}
