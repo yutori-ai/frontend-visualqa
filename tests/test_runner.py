@@ -262,6 +262,36 @@ def _build_runner(
     return runner, browser, verifier
 
 
+def _build_visualize_override_runner(
+    module: Any,
+    browser: FakeBrowserManager,
+    verifier: Any,
+    artifacts: FakeArtifactManager,
+) -> Any:
+    """Build a VisualQARunner with an explicit BrowserConfig(visualize=False) and a
+    skipped preflight check, for tests exercising per-call visualize overrides."""
+    runner = instantiate_with_aliased_attrs(
+        module.VisualQARunner,
+        {
+            "browser_manager": browser,
+            "browser": browser,
+            "claim_verifier": verifier,
+            "verifier": verifier,
+            "artifact_manager": artifacts,
+            "artifacts": artifacts,
+        },
+        browser_config=BrowserConfig(visualize=False),
+        navigator_client=FakeNavigatorClient([]),
+    )
+
+    async def _skip_preflight(url: str) -> None:
+        del url
+        return None
+
+    runner._preflight_url = _skip_preflight
+    return runner
+
+
 async def _call_run(runner: Any, **kwargs: Any) -> Any:
     signature = inspect.signature(runner.run)
     filtered = {name: value for name, value in kwargs.items() if name in signature.parameters}
@@ -1719,25 +1749,7 @@ async def test_runner_preserves_injected_claim_verifier_visualize_default(
     verifier._visualize = True
     artifacts = FakeArtifactManager(tmp_path, run_id="run-001")
 
-    runner = instantiate_with_aliased_attrs(
-        module.VisualQARunner,
-        {
-            "browser_manager": browser,
-            "browser": browser,
-            "claim_verifier": verifier,
-            "verifier": verifier,
-            "artifact_manager": artifacts,
-            "artifacts": artifacts,
-        },
-        browser_config=BrowserConfig(visualize=False),
-        navigator_client=FakeNavigatorClient([]),
-    )
-
-    async def _skip_preflight(url: str) -> None:
-        del url
-        return None
-
-    runner._preflight_url = _skip_preflight
+    runner = _build_visualize_override_runner(module, browser, verifier, artifacts)
 
     result = await runner.run(
         url="http://fixture.local/page",
@@ -1770,25 +1782,7 @@ async def test_per_call_visualize_override_does_not_leak_across_requests(
     verifier._visualize = False
     artifacts = FakeArtifactManager(tmp_path, run_id="run-001")
 
-    runner = instantiate_with_aliased_attrs(
-        module.VisualQARunner,
-        {
-            "browser_manager": browser,
-            "browser": browser,
-            "claim_verifier": verifier,
-            "verifier": verifier,
-            "artifact_manager": artifacts,
-            "artifacts": artifacts,
-        },
-        browser_config=BrowserConfig(visualize=False),
-        navigator_client=FakeNavigatorClient([]),
-    )
-
-    async def _skip_preflight(url: str) -> None:
-        del url
-        return None
-
-    runner._preflight_url = _skip_preflight
+    runner = _build_visualize_override_runner(module, browser, verifier, artifacts)
 
     # First request: visualize=True
     await runner.run(
