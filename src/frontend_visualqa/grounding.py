@@ -380,21 +380,37 @@ def _check_dialog_title_match(
     )
 
 
+def _no_visible_match_failure(
+    label: str, *, entity_label: str, candidates_label: str, candidates: list[str]
+) -> tuple[ClaimStatus, str]:
+    """Build the shared "no visible <entity> matched" failed-tuple.
+
+    Used by ``_check_button_match``, ``_check_button_fully_visible``, and
+    ``_check_progress_bar_completely_filled`` for the branch where ``label``
+    matches none of the visible candidates. Listing the full candidate set in
+    the message is intentional — it gives the LLM grading the trajectory
+    enough context to distinguish a missing element from a label-mismatch.
+    """
+    return (
+        "failed",
+        f"No visible {entity_label} matched {label!r}. Visible {candidates_label}: {candidates or ['<none>']}.",
+    )
+
+
 def _no_visible_button_failure(
     grounding_state: GroundingState, label: str
 ) -> tuple[ClaimStatus, str]:
     """Build the shared "no visible button matched" failed-tuple.
 
     Used by ``_check_button_match`` and ``_check_button_fully_visible`` for the
-    branch where ``label`` matches none of the visible buttons. Listing the
-    full ``visibleButtons`` set in the message is intentional — it gives the
-    LLM grading the trajectory enough context to distinguish a missing button
-    from a label-mismatch.
+    branch where ``label`` matches none of the visible buttons.
     """
     visible_buttons = grounding_state.get("visibleButtons", [])
-    return (
-        "failed",
-        f"No visible button label matched {label!r}. Visible buttons: {visible_buttons or ['<none>']}.",
+    return _no_visible_match_failure(
+        label,
+        entity_label="button label",
+        candidates_label="buttons",
+        candidates=visible_buttons,
     )
 
 
@@ -439,9 +455,11 @@ def _check_progress_bar_completely_filled(
     matched_bars = _matching_progress_bars(grounding_state, groups["label"])
     if not matched_bars:
         visible_labels = [bar.get("label", "") for bar in grounding_state.get("progressBars", []) if bar.get("label")]
-        return (
-            "failed",
-            f"No visible progress bar label matched {groups['label']!r}. Visible progress labels: {visible_labels or ['<none>']}.",
+        return _no_visible_match_failure(
+            groups["label"],
+            entity_label="progress bar label",
+            candidates_label="progress labels",
+            candidates=visible_labels,
         )
 
     fullest_bar = max(matched_bars, key=lambda bar: float(bar.get("fillRatio", 0.0)))
