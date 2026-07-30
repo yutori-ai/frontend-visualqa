@@ -30,6 +30,7 @@ dependencies = [
     "pydantic>=2.7.0",
     "tenacity>=8.2.0",
     "yutori>=0.6.0",
+    "yutori-navigator-overlay-runtime==0.1.0",
 ]
 
 [project.urls]

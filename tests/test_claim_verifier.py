@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -1331,6 +1332,38 @@ class FailingBrowserManager(FakeBrowserManager):
         if self.capture_calls == self.fail_on_capture_call:
             raise RuntimeError("page crashed while capturing screenshot")
         return b"\x89PNGfake"
+
+
+@pytest.mark.asyncio
+async def test_capture_aborts_when_overlay_cannot_be_hidden(tmp_path: Path) -> None:
+    module = _import_claim_verifier_module()
+    browser = FakeBrowserManager()
+    verifier, _, _ = _build_claim_verifier(
+        module,
+        tmp_path,
+        responses=[],
+        browser_manager=browser,
+    )
+    overlay = SimpleNamespace(
+        before_screenshot=AsyncMock(side_effect=RuntimeError("overlay hide failed")),
+        after_screenshot=AsyncMock(),
+    )
+    verifier._overlay = overlay
+    run_artifacts = RunArtifacts(run_id="run-test", run_dir=tmp_path)
+
+    with pytest.raises(module.BrowserActionError, match="overlay hide failed"):
+        await verifier._capture_evidence_screenshot(
+            session=FakeSession(
+                page=FakePage(url="http://fixture.local/page"),
+                viewport=ViewportConfig(),
+            ),
+            run_artifacts=run_artifacts,
+            claim_index=1,
+            label="step-01",
+        )
+
+    assert browser.capture_calls == 0
+    overlay.after_screenshot.assert_awaited_once()
 
 
 @pytest.mark.asyncio

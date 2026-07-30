@@ -509,7 +509,7 @@ class ClaimVerifier:
         label: str,
     ) -> tuple[bytes, str]:
         try:
-            await self._best_effort_overlay_call("before_screenshot")
+            await self._hide_overlay_for_screenshot()
             screenshot_bytes = await self.browser_manager.capture_screenshot(session)
         except Exception as exc:
             raise BrowserActionError(f"Failed to capture screenshot for {label}: {exc}") from exc
@@ -522,6 +522,15 @@ class ClaimVerifier:
             raise BrowserActionError(f"Failed to save screenshot for {label}: {exc}") from exc
 
         return screenshot_bytes, screenshot_path
+
+    async def _hide_overlay_for_screenshot(self) -> None:
+        """Require a successful overlay hide before capturing model evidence."""
+
+        if self._overlay is None:
+            return
+        before_screenshot = getattr(self._overlay, "before_screenshot", None)
+        if callable(before_screenshot):
+            await before_screenshot()
 
     async def _force_stop(
         self,
