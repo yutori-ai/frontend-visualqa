@@ -43,7 +43,7 @@ jobs:
 
       - name: Install frontend-visualqa
         run: |
-          uv tool install 'frontend-visualqa>=0.3.21' \
+          uv tool install . \
             --with-executables-from playwright
           playwright install chromium --with-deps
 

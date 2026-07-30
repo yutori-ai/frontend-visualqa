@@ -24,7 +24,7 @@ classifiers = [
 ]
 dependencies = [
     "httpx[http2]>=0.26.0",
-    "mcp>=1.1.2",
+    "mcp>=1.1.2,<2",
     "pillow>=10.0.0",
     "playwright>=1.40.0",
     "pydantic>=2.7.0",
