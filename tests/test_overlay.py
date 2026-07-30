@@ -339,7 +339,7 @@ async def test_before_screenshot_receives_hidden_acknowledgement() -> None:
 
 @pytest.mark.asyncio
 async def test_navigation_queued_during_screenshot_hide_restores_hidden_snapshot() -> None:
-    page, controller = await _started_controller()
+    _, controller = await _started_controller()
     controller._activated = True
     hide_started = asyncio.Event()
     finish_hide = asyncio.Event()
