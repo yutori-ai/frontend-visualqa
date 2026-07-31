@@ -93,7 +93,14 @@ async def _overlay_dom_state(page: Any) -> dict[str, Any]:
             const read = (id) => {
                 const element = document.getElementById(id);
                 if (!element) {
-                    return { present: false, display: null, visibility: null, opacity: null, text: null };
+                    return {
+                        present: false,
+                        display: null,
+                        visibility: null,
+                        opacity: null,
+                        inlineOpacity: null,
+                        text: null,
+                    };
                 }
                 const style = window.getComputedStyle(element);
                 return {
@@ -101,12 +108,13 @@ async def _overlay_dom_state(page: Any) -> dict[str, Any]:
                     display: style.display,
                     visibility: style.visibility,
                     opacity: style.opacity,
+                    inlineOpacity: element.style.opacity,
                     text: (element.textContent || "").trim(),
                 };
             };
             return {
-                persistent: read("__n1PersistentRoot"),
-                transient: read("__n1TransientRoot"),
+                persistent: read("__yutoriNavigatorOverlayPersistent"),
+                transient: read("__yutoriNavigatorOverlayTransient"),
                 chip: read("__n1StatusChip"),
             };
         }"""
@@ -261,7 +269,7 @@ async def test_live_runner_headed_overlay_hides_restores_and_cleans_up(
         started_samples = [sample for sample in lifecycle_samples if sample["phase"] == "after_claim_started"]
         ended_samples = [sample for sample in lifecycle_samples if sample["phase"] == "after_claim_ended"]
 
-        assert started_samples, "overlay claim_started should inject persistent and transient roots"
+        assert started_samples, "overlay claim_started should initialize the lifecycle"
         assert ended_samples, "overlay claim_ended should clean up overlay roots"
         # Initial screenshot is taken before overlay injection (no flash),
         # so this one-action flow should produce exactly one post-action pair.
@@ -286,7 +294,10 @@ async def test_live_runner_headed_overlay_hides_restores_and_cleans_up(
             assert state["persistent"]["present"] is True
             assert state["persistent"]["display"] != "none"
             assert state["persistent"]["visibility"] == "visible"
-            assert state["persistent"]["opacity"] == "1"
+            # Restore starts a non-blocking 0→1 fade. The computed value may
+            # still be at its first frame here, but the target must already be 1.
+            assert 0 <= float(state["persistent"]["opacity"]) <= 1
+            assert state["persistent"]["inlineOpacity"] == "1"
             assert state["transient"]["present"] is True
             assert state["transient"]["display"] != "none"
             assert state["transient"]["visibility"] == "hidden"
@@ -309,10 +320,10 @@ async def test_live_runner_headed_overlay_hides_restores_and_cleans_up(
 
         started_state = started_samples[0]["state"]
         assert started_samples[0]["error"] is None
-        assert started_state["persistent"]["present"] is True
-        assert started_state["persistent"]["display"] != "none"
-        assert started_state["persistent"]["visibility"] == "visible"
-        assert started_state["persistent"]["opacity"] == "1"
+        # The adapter binds navigation at claim start but does not mount idle
+        # chrome. The first thought/action activates the shared runtime.
+        assert started_state["persistent"]["present"] is False
+        assert started_state["transient"]["present"] is False
         assert started_state["chip"]["present"] is False
 
         ended_state = ended_samples[0]["state"]
@@ -364,16 +375,15 @@ async def test_live_runner_headed_overlay_zero_action_path_skips_hide_restore(
         started_samples = [sample for sample in lifecycle_samples if sample["phase"] == "after_claim_started"]
         ended_samples = [sample for sample in lifecycle_samples if sample["phase"] == "after_claim_ended"]
 
-        assert started_samples, "overlay claim_started should inject persistent and transient roots"
+        assert started_samples, "overlay claim_started should initialize the lifecycle"
         assert ended_samples, "overlay claim_ended should clean up overlay roots"
         assert before_samples == []
         assert after_samples == []
 
         started_state = started_samples[0]["state"]
         assert started_samples[0]["error"] is None
-        assert started_state["persistent"]["present"] is True
-        assert started_state["persistent"]["visibility"] == "visible"
-        assert started_state["persistent"]["opacity"] == "1"
+        assert started_state["persistent"]["present"] is False
+        assert started_state["transient"]["present"] is False
         # No status chip element is rendered (retired in the overlay redesign;
         # the thought capsule conveys status instead).
         assert started_state["chip"]["present"] is False
