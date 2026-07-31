@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.8.5] - 2026-07-31
+
 ### Added
 - `verify --video` records a Playwright video of the browser session. Recordings are saved under `<run-artifacts>/videos/` (`<run_id>.webm`, or `<run_id>-claim-<N>.webm` per claim when sessions aren't reused) and their paths are returned in `RunResult.video_paths`. The recording is moved into place on the filesystem after the context closes, so it saves reliably in persistent mode (where closing the context also stops the Playwright driver).
 
