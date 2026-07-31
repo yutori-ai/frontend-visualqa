@@ -446,14 +446,22 @@ async def test_navigation_restore_task_failures_are_consumed_and_logged(caplog: 
 
 @pytest.mark.asyncio
 async def test_before_screenshot_raises_when_runtime_and_backstop_cannot_hide() -> None:
-    _, controller = await _started_controller(
+    page, controller = await _started_controller(
         before_screenshot_success=False,
         emergency_hide_success=False,
     )
     await controller.show_thought("Inspect the result.")
+    page.evaluate.reset_mock()
 
     with pytest.raises(RuntimeError, match="could not be hidden"):
         await controller.before_screenshot()
+
+    assert controller._emergency_hidden is True
+
+    await controller.after_screenshot()
+
+    assert any(call.args[0] == overlay_module._EMERGENCY_RESTORE_JS for call in page.evaluate.call_args_list)
+    assert controller._emergency_hidden is False
 
 
 @pytest.mark.asyncio

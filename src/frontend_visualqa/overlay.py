@@ -257,10 +257,10 @@ class OverlayController:
         if isinstance(snapshot, dict) and snapshot.get("hidden") is True:
             return
 
+        self._emergency_hidden = True
         hidden = await self._safe_evaluate(_EMERGENCY_HIDE_JS, default=False)
         if hidden is not True:
             raise RuntimeError("Navigator overlay could not be hidden before evidence capture")
-        self._emergency_hidden = True
 
     async def after_screenshot(self) -> None:
         try:
