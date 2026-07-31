@@ -41,6 +41,7 @@ def _make_mock_page(
     page.snapshot = _default_snapshot()
     page.operations = []
     page.iife_evaluations = 0
+    page.emergency_hide_present = False
 
     async def evaluate(script: str, *args: object) -> object:
         if evaluate_side_effect is not None:
@@ -52,10 +53,12 @@ def _make_mock_page(
         if script == overlay_module._FOCUSED_ELEMENT_CENTER_JS:
             return focused_center
         if script == overlay_module._EMERGENCY_HIDE_JS:
+            page.emergency_hide_present = True
             if emergency_hide_success:
                 page.snapshot["hidden"] = True
             return emergency_hide_success
         if script == overlay_module._EMERGENCY_RESTORE_JS:
+            page.emergency_hide_present = False
             return True
         if script != overlay_module._APPLY_OPERATION_JS:
             return None
@@ -426,6 +429,29 @@ async def test_claim_ended_clears_emergency_hide_when_controller_is_inactive() -
 
     page.evaluate.assert_awaited_once_with(overlay_module._EMERGENCY_RESTORE_JS)
     assert controller._emergency_hidden is False
+
+
+@pytest.mark.asyncio
+async def test_new_controller_clears_stale_emergency_hide_before_first_overlay_action() -> None:
+    page = _make_mock_page(before_screenshot_success=False, emergency_hide_success=False)
+    first_controller = OverlayController(page)
+    await first_controller.claim_started()
+    await first_controller.show_thought("Inspect the result.")
+
+    with pytest.raises(RuntimeError, match="could not be hidden"):
+        await first_controller.before_screenshot()
+
+    assert page.emergency_hide_present is True
+
+    second_controller = OverlayController(page)
+    await second_controller.claim_started()
+    page.evaluate.reset_mock()
+
+    await second_controller.show_thought("Continue inspecting.")
+
+    assert page.evaluate.call_args_list[0].args[0] == overlay_module._EMERGENCY_RESTORE_JS
+    assert page.emergency_hide_present is False
+    assert second_controller._emergency_hidden is False
 
 
 @pytest.mark.asyncio

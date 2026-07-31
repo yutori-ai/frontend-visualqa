@@ -341,8 +341,8 @@ class OverlayController:
                 exc_info=(type(error), error, error.__traceback__),
             )
 
-    async def _clear_emergency_hide(self) -> None:
-        if not self._emergency_hidden:
+    async def _clear_emergency_hide(self, *, force: bool = False) -> None:
+        if not force and not self._emergency_hidden:
             return
         restored = await self._safe_evaluate(_EMERGENCY_RESTORE_JS, default=False)
         self._emergency_hidden = restored is not True
@@ -364,9 +364,12 @@ class OverlayController:
         *,
         bootstrap_snapshot: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        if self._operation_activates_overlay(operation):
-            self._activated = True
+        activates_overlay = self._operation_activates_overlay(operation)
         async with self._operation_lock:
+            if activates_overlay and not self._activated and not self._hidden:
+                await self._clear_emergency_hide(force=True)
+            if activates_overlay:
+                self._activated = True
             return await self._apply_operation_now(
                 operation,
                 bootstrap_snapshot=bootstrap_snapshot or self._snapshot(),
