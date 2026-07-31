@@ -119,7 +119,8 @@ class _VerificationProgress:
 def _create_overlay_controller(page: Any) -> Any | None:
     try:
         from frontend_visualqa.overlay import OverlayController
-    except ImportError:
+    except Exception:
+        logger.debug("Failed to import overlay controller", exc_info=True)
         return None
     try:
         return OverlayController(page)

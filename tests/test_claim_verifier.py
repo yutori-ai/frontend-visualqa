@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import builtins
 import inspect
 import json
 from dataclasses import dataclass
@@ -40,6 +41,20 @@ def _verdict_response(status: str, finding: str) -> FakeResponse:
 
 def _import_claim_verifier_module():
     return import_or_skip("frontend_visualqa.claim_verifier")
+
+
+def test_create_overlay_controller_degrades_when_overlay_import_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _import_claim_verifier_module()
+    original_import = builtins.__import__
+
+    def failing_import(name: str, *args: Any, **kwargs: Any) -> Any:
+        if name == "frontend_visualqa.overlay":
+            raise RuntimeError("runtime integrity check failed")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", failing_import)
+
+    assert module._create_overlay_controller(FakePage(url="http://fixture.local/page")) is None
 
 
 def _import_recovery_module():

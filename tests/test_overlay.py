@@ -55,6 +55,8 @@ def _make_mock_page(
             if emergency_hide_success:
                 page.snapshot["hidden"] = True
             return emergency_hide_success
+        if script == overlay_module._EMERGENCY_RESTORE_JS:
+            return True
         if script != overlay_module._APPLY_OPERATION_JS:
             return None
 
@@ -126,6 +128,13 @@ def test_emergency_hide_targets_runtime_owned_roots_including_collision_suffixes
     assert "data-yutori-navigator-overlay-root" in overlay_module._EMERGENCY_HIDE_JS
     assert "data-yutori-navigator-overlay-owned" in overlay_module._EMERGENCY_HIDE_JS
     assert "getElementById" not in overlay_module._EMERGENCY_HIDE_JS
+
+
+def test_emergency_hide_uses_an_owned_stylesheet_with_a_matching_restore() -> None:
+    assert overlay_module._EMERGENCY_HIDE_STYLE_ID in overlay_module._EMERGENCY_HIDE_JS
+    assert "data-yutori-navigator-overlay-emergency-hide" in overlay_module._EMERGENCY_HIDE_JS
+    assert "data-yutori-navigator-overlay-emergency-hide" in overlay_module._EMERGENCY_RESTORE_JS
+    assert "style.remove()" in overlay_module._EMERGENCY_RESTORE_JS
 
 
 @pytest.mark.asyncio
@@ -389,7 +398,22 @@ async def test_before_screenshot_uses_emergency_hide_after_runtime_failure() -> 
     await controller.before_screenshot()
 
     assert controller._hidden is True
+    assert controller._emergency_hidden is True
     assert any(call.args[0] == overlay_module._EMERGENCY_HIDE_JS for call in page.evaluate.call_args_list)
+
+
+@pytest.mark.asyncio
+async def test_after_screenshot_clears_emergency_hide_after_runtime_restore() -> None:
+    page, controller = await _started_controller(before_screenshot_success=False)
+    await controller.show_thought("Inspect the result.")
+    await controller.before_screenshot()
+    page.evaluate.reset_mock()
+
+    await controller.after_screenshot()
+
+    evaluated_scripts = [call.args[0] for call in page.evaluate.call_args_list]
+    assert evaluated_scripts[-1] == overlay_module._EMERGENCY_RESTORE_JS
+    assert controller._emergency_hidden is False
 
 
 @pytest.mark.asyncio

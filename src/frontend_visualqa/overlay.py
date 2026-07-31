@@ -32,6 +32,7 @@ _DEFAULT_VIEWPORT_WIDTH = 1280
 _DEFAULT_VIEWPORT_HEIGHT = 800
 _RUNTIME_GLOBAL = "__yutoriNavigatorOverlay"
 _RUNTIME_REGISTRY = "yutori.navigator-overlay.runtime.registry"
+_EMERGENCY_HIDE_STYLE_ID = "__yutoriNavigatorOverlayEmergencyHide"
 
 if not verify_iife():
     raise RuntimeError("The installed Navigator overlay runtime failed its integrity check")
@@ -66,19 +67,40 @@ _FOCUSED_ELEMENT_CENTER_JS = """() => {
     };
 }"""
 
-_EMERGENCY_HIDE_JS = """() => {
+_EMERGENCY_HIDE_JS = f"""() => {{
+    let emergencyStyle = document.querySelector(
+        'style[data-yutori-navigator-overlay-emergency-hide]'
+    );
+    if (!emergencyStyle) {{
+        emergencyStyle = document.createElement('style');
+        emergencyStyle.id = '{_EMERGENCY_HIDE_STYLE_ID}';
+        emergencyStyle.setAttribute('data-yutori-navigator-overlay-emergency-hide', '');
+        emergencyStyle.textContent = `
+            [data-yutori-navigator-overlay-root][data-yutori-navigator-overlay-owned] {{
+                transition: none !important;
+                visibility: hidden !important;
+                opacity: 0 !important;
+            }}
+        `;
+        (document.head || document.documentElement).appendChild(emergencyStyle);
+    }}
     const roots = Array.from(document.querySelectorAll(
         '[data-yutori-navigator-overlay-root][data-yutori-navigator-overlay-owned]'
     ));
-    for (const root of roots) {
-        root.style.setProperty('transition', 'none', 'important');
-        root.style.setProperty('visibility', 'hidden', 'important');
-        root.style.setProperty('opacity', '0', 'important');
-    }
-    return roots.every((root) => {
+    return roots.every((root) => {{
         const style = window.getComputedStyle(root);
         return style.visibility === 'hidden' && style.opacity === '0';
-    });
+    }});
+}}"""
+
+_EMERGENCY_RESTORE_JS = """() => {
+    const styles = Array.from(document.querySelectorAll(
+        'style[data-yutori-navigator-overlay-emergency-hide]'
+    ));
+    for (const style of styles) style.remove();
+    return document.querySelector(
+        'style[data-yutori-navigator-overlay-emergency-hide]'
+    ) === null;
 }"""
 
 
@@ -103,6 +125,7 @@ class OverlayController:
         self._thought_text: str | None = None
         self._badge: dict[str, Any] = _loop_badge()
         self._hidden = False
+        self._emergency_hidden = False
         self._effect_sequence = 0
         self._operation_lock = asyncio.Lock()
         self._navigation_handler: Any | None = None
@@ -117,6 +140,7 @@ class OverlayController:
         self._thought_text = None
         self._badge = _loop_badge()
         self._hidden = False
+        self._emergency_hidden = False
         self._detach_navigation_listener()
         self._navigation_handler = self._on_navigation
         try:
@@ -233,6 +257,7 @@ class OverlayController:
         hidden = await self._safe_evaluate(_EMERGENCY_HIDE_JS, default=False)
         if hidden is not True:
             raise RuntimeError("Navigator overlay could not be hidden before evidence capture")
+        self._emergency_hidden = True
 
     async def after_screenshot(self) -> None:
         if not self._active or not self._activated:
@@ -240,6 +265,11 @@ class OverlayController:
         self._hidden = False
         evaluation = await self._apply_operation({"op": "afterScreenshot"})
         self._sync_snapshot(evaluation["result"])
+        if self._emergency_hidden:
+            restored = await self._safe_evaluate(_EMERGENCY_RESTORE_JS, default=False)
+            self._emergency_hidden = restored is not True
+            if self._emergency_hidden:
+                logger.debug("Failed to clear emergency overlay hide after evidence capture")
 
     async def _move_cursor(self, x: int, y: int) -> None:
         previous = dict(self._cursor)
