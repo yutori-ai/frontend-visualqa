@@ -132,6 +132,7 @@ class OverlayController:
         self._navigation_tasks: set[asyncio.Task[None]] = set()
 
     async def claim_started(self) -> None:
+        await self._clear_emergency_hide()
         self._active = True
         self._activated = False
         self._disposed = False
@@ -140,7 +141,6 @@ class OverlayController:
         self._thought_text = None
         self._badge = _loop_badge()
         self._hidden = False
-        self._emergency_hidden = False
         self._detach_navigation_listener()
         self._navigation_handler = self._on_navigation
         try:
@@ -150,13 +150,16 @@ class OverlayController:
             self._navigation_handler = None
 
     async def claim_ended(self) -> None:
-        if not self._active:
-            return
-        self._active = False
-        self._disposed = True
-        self._detach_navigation_listener()
-        await self._apply_operation({"op": "destroy"})
-        self._activated = False
+        try:
+            if not self._active:
+                return
+            self._active = False
+            self._disposed = True
+            self._detach_navigation_listener()
+            await self._apply_operation({"op": "destroy"})
+            self._activated = False
+        finally:
+            await self._clear_emergency_hide()
 
     async def preview_action(
         self,
@@ -260,16 +263,14 @@ class OverlayController:
         self._emergency_hidden = True
 
     async def after_screenshot(self) -> None:
-        if not self._active or not self._activated:
-            return
-        self._hidden = False
-        evaluation = await self._apply_operation({"op": "afterScreenshot"})
-        self._sync_snapshot(evaluation["result"])
-        if self._emergency_hidden:
-            restored = await self._safe_evaluate(_EMERGENCY_RESTORE_JS, default=False)
-            self._emergency_hidden = restored is not True
-            if self._emergency_hidden:
-                logger.debug("Failed to clear emergency overlay hide after evidence capture")
+        try:
+            if not self._active or not self._activated:
+                return
+            self._hidden = False
+            evaluation = await self._apply_operation({"op": "afterScreenshot"})
+            self._sync_snapshot(evaluation["result"])
+        finally:
+            await self._clear_emergency_hide()
 
     async def _move_cursor(self, x: int, y: int) -> None:
         previous = dict(self._cursor)
@@ -327,6 +328,26 @@ class OverlayController:
         task = asyncio.create_task(self._restore_after_navigation())
         self._navigation_tasks.add(task)
         task.add_done_callback(self._navigation_tasks.discard)
+        task.add_done_callback(self._log_navigation_task_result)
+
+    @staticmethod
+    def _log_navigation_task_result(task: asyncio.Task[None]) -> None:
+        if task.cancelled():
+            return
+        error = task.exception()
+        if error is not None:
+            logger.debug(
+                "Overlay navigation restore failed",
+                exc_info=(type(error), error, error.__traceback__),
+            )
+
+    async def _clear_emergency_hide(self) -> None:
+        if not self._emergency_hidden:
+            return
+        restored = await self._safe_evaluate(_EMERGENCY_RESTORE_JS, default=False)
+        self._emergency_hidden = restored is not True
+        if self._emergency_hidden:
+            logger.debug("Failed to clear emergency overlay hide")
 
     def _detach_navigation_listener(self) -> None:
         if self._navigation_handler is None:

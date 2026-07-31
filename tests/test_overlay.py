@@ -417,6 +417,34 @@ async def test_after_screenshot_clears_emergency_hide_after_runtime_restore() ->
 
 
 @pytest.mark.asyncio
+async def test_claim_ended_clears_emergency_hide_when_controller_is_inactive() -> None:
+    page, controller = await _started_controller()
+    controller._active = False
+    controller._emergency_hidden = True
+
+    await controller.claim_ended()
+
+    page.evaluate.assert_awaited_once_with(overlay_module._EMERGENCY_RESTORE_JS)
+    assert controller._emergency_hidden is False
+
+
+@pytest.mark.asyncio
+async def test_navigation_restore_task_failures_are_consumed_and_logged(caplog: pytest.LogCaptureFixture) -> None:
+    _, controller = await _started_controller()
+
+    async def fail_restore() -> None:
+        raise RuntimeError("page navigated again")
+
+    task = asyncio.create_task(fail_restore())
+    await asyncio.wait({task})
+
+    with caplog.at_level("DEBUG", logger=overlay_module.__name__):
+        controller._log_navigation_task_result(task)
+
+    assert "Overlay navigation restore failed" in caplog.text
+
+
+@pytest.mark.asyncio
 async def test_before_screenshot_raises_when_runtime_and_backstop_cannot_hide() -> None:
     _, controller = await _started_controller(
         before_screenshot_success=False,
