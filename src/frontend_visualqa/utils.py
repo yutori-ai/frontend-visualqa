@@ -9,7 +9,13 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
-def _resolve_optional_method(target: Any | None, method_name: str) -> Any | None:
+def resolve_optional_method(target: Any | None, method_name: str) -> Any | None:
+    """Return the bound *method_name* on *target* if it exists and is callable, else ``None``.
+
+    No-op-safe when *target* is ``None``. Public so callers that need to invoke an
+    optional method directly (rather than through ``safe_method_call``/``safe_async_method_call``'s
+    swallow-and-log semantics) can still share the same lookup logic.
+    """
     if target is None:
         return None
     method = getattr(target, method_name, None)
@@ -29,7 +35,7 @@ def safe_method_call(
     Any exception raised by the method is caught and logged at DEBUG level
     so that hook / overlay failures never break the main control flow.
     """
-    method = _resolve_optional_method(target, method_name)
+    method = resolve_optional_method(target, method_name)
     if method is None:
         return
     try:
@@ -51,7 +57,7 @@ async def safe_async_method_call(
     Any exception raised by the method is caught and logged at DEBUG level
     so that overlay / hook failures never break the main control flow.
     """
-    method = _resolve_optional_method(target, method_name)
+    method = resolve_optional_method(target, method_name)
     if method is None:
         return
     try:

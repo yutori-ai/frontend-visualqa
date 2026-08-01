@@ -39,7 +39,7 @@ from frontend_visualqa.schemas import ClaimPage, ClaimProof, ClaimResult, ClaimS
 from frontend_visualqa.serialization import dump_or_pass_through
 from frontend_visualqa.text_utils import clip_text
 from frontend_visualqa.tool_arguments import parse_tool_arguments, tool_call_arguments_as_text, tool_call_name
-from frontend_visualqa.utils import safe_async_method_call, safe_method_call
+from frontend_visualqa.utils import resolve_optional_method, safe_async_method_call, safe_method_call
 
 if TYPE_CHECKING:
     from frontend_visualqa.navigator_client import NavigatorClient
@@ -527,10 +527,8 @@ class ClaimVerifier:
     async def _hide_overlay_for_screenshot(self) -> None:
         """Require a successful overlay hide before capturing model evidence."""
 
-        if self._overlay is None:
-            return
-        before_screenshot = getattr(self._overlay, "before_screenshot", None)
-        if callable(before_screenshot):
+        before_screenshot = resolve_optional_method(self._overlay, "before_screenshot")
+        if before_screenshot is not None:
             await before_screenshot()
 
     async def _force_stop(

@@ -7,6 +7,7 @@ import pytest
 
 from frontend_visualqa.text_utils import clip_text, clip_text_preserving_lines, collapse_whitespace
 from frontend_visualqa.utils import (
+    resolve_optional_method,
     safe_async_method_call,
     safe_callback_call,
     safe_method_call,
@@ -20,6 +21,36 @@ async def _invoke(call, *args, **kwargs):
     if inspect.isawaitable(result):
         await result
     return result
+
+
+def test_resolve_optional_method_returns_none_for_none_target() -> None:
+    assert resolve_optional_method(None, "anything") is None
+
+
+def test_resolve_optional_method_returns_none_for_missing_method() -> None:
+    class Stub:
+        pass
+
+    assert resolve_optional_method(Stub(), "nonexistent_method") is None
+
+
+def test_resolve_optional_method_returns_none_for_non_callable_attribute() -> None:
+    class Stub:
+        some_method = 42  # not callable
+
+    assert resolve_optional_method(Stub(), "some_method") is None
+
+
+def test_resolve_optional_method_returns_bound_method() -> None:
+    class Stub:
+        def greet(self, name: str) -> str:
+            return f"hi {name}"
+
+    stub = Stub()
+    method = resolve_optional_method(stub, "greet")
+
+    assert method is not None
+    assert method("world") == "hi world"
 
 
 @_SAFE_CALLS
