@@ -235,18 +235,16 @@ class OverlayController:
         bootstrap = self._snapshot()
         bootstrap["thought"] = None
         self._thought_text = clipped
-        evaluation = await self._apply_operation(
+        await self._apply_operation_and_sync(
             {"op": "showThought", "markdown": clipped},
             bootstrap_snapshot=bootstrap,
         )
-        self._sync_snapshot(evaluation["result"])
 
     async def clear_thought(self) -> None:
         self._thought_text = None
         if not self._active:
             return
-        evaluation = await self._apply_operation({"op": "clearThought"})
-        self._sync_snapshot(evaluation["result"])
+        await self._apply_operation_and_sync({"op": "clearThought"})
 
     async def before_screenshot(self) -> None:
         if not self._active or not self._activated:
@@ -268,8 +266,7 @@ class OverlayController:
             if not self._active or not self._activated:
                 return
             self._hidden = False
-            evaluation = await self._apply_operation({"op": "afterScreenshot"})
-            self._sync_snapshot(evaluation["result"])
+            await self._apply_operation_and_sync({"op": "afterScreenshot"})
         finally:
             await self._clear_emergency_hide()
 
@@ -302,7 +299,7 @@ class OverlayController:
     ) -> None:
         bootstrap = self._snapshot()
         self._badge = dict(badge)
-        evaluation = await self._apply_operation(
+        await self._apply_operation_and_sync(
             {
                 "op": "previewAction",
                 "presentation": {
@@ -312,7 +309,6 @@ class OverlayController:
             },
             bootstrap_snapshot=bootstrap,
         )
-        self._sync_snapshot(evaluation["result"])
 
     async def _restore_after_navigation(self) -> None:
         async with self._operation_lock:
@@ -375,6 +371,16 @@ class OverlayController:
                 operation,
                 bootstrap_snapshot=bootstrap_snapshot or self._snapshot(),
             )
+
+    async def _apply_operation_and_sync(
+        self,
+        operation: dict[str, Any],
+        *,
+        bootstrap_snapshot: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        evaluation = await self._apply_operation(operation, bootstrap_snapshot=bootstrap_snapshot)
+        self._sync_snapshot(evaluation["result"])
+        return evaluation
 
     async def _apply_operation_now(
         self,
