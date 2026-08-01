@@ -119,6 +119,16 @@ class OverlayController:
     def __init__(self, page: Page) -> None:
         self._page = page
         self._active = False
+        self._reset_state()
+        self._emergency_hidden = False
+        self._effect_sequence = 0
+        self._operation_lock = asyncio.Lock()
+        self._navigation_handler: Any | None = None
+        self._navigation_tasks: set[asyncio.Task[None]] = set()
+
+    def _reset_state(self) -> None:
+        """Reset the per-claim overlay state shared by ``__init__`` and ``claim_started``."""
+
         self._activated = False
         self._disposed = False
         self._current_status = "Analyzing"
@@ -126,22 +136,11 @@ class OverlayController:
         self._thought_text: str | None = None
         self._badge: dict[str, Any] = _loop_badge()
         self._hidden = False
-        self._emergency_hidden = False
-        self._effect_sequence = 0
-        self._operation_lock = asyncio.Lock()
-        self._navigation_handler: Any | None = None
-        self._navigation_tasks: set[asyncio.Task[None]] = set()
 
     async def claim_started(self) -> None:
         await self._clear_emergency_hide()
         self._active = True
-        self._activated = False
-        self._disposed = False
-        self._current_status = "Analyzing"
-        self._cursor = self._initial_cursor()
-        self._thought_text = None
-        self._badge = _loop_badge()
-        self._hidden = False
+        self._reset_state()
         self._detach_navigation_listener()
         self._navigation_handler = self._on_navigation
         try:
