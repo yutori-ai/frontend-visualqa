@@ -9,7 +9,7 @@ import time
 from collections import Counter
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Literal, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Literal
 
 import httpx
 
@@ -17,7 +17,6 @@ from frontend_visualqa.artifacts import ArtifactManager, RunArtifacts
 from frontend_visualqa.browser import BrowserManager
 from frontend_visualqa.claim_parser import ParsedClaimsFile
 from frontend_visualqa.reporters import get_reporters
-from frontend_visualqa.utils import safe_callback_call
 from frontend_visualqa.schemas import (
     BrowserConfig,
     BrowserMode,
@@ -35,6 +34,7 @@ from frontend_visualqa.schemas import (
     coerce_optional_viewport,
     coerce_viewport,
 )
+from frontend_visualqa.utils import resolve_optional_method, safe_callback_call
 
 logger = logging.getLogger(__name__)
 
@@ -604,8 +604,8 @@ class VisualQARunner:
 
     def _rebind_claim_verifier(self, browser_config: BrowserConfig) -> None:
         """Rebind the claim verifier to the current browser manager."""
-        rebind_browser_manager = getattr(self.claim_verifier, "set_browser_manager", None)
-        if callable(rebind_browser_manager):
+        rebind_browser_manager = resolve_optional_method(self.claim_verifier, "set_browser_manager")
+        if rebind_browser_manager is not None:
             rebind_browser_manager(self.browser_manager, visualize=browser_config.visualize)
         else:
             logger.info("claim_verifier lacks set_browser_manager; falling back to manual attribute patching")
@@ -806,8 +806,8 @@ class VisualQARunner:
         )
 
     def _consume_partial_claim_result(self, *, status: ClaimStatus, finding: str) -> ClaimResult | None:
-        consume_partial_result = getattr(self.claim_verifier, "consume_partial_result", None)
-        if not callable(consume_partial_result):
+        consume_partial_result = resolve_optional_method(self.claim_verifier, "consume_partial_result")
+        if consume_partial_result is None:
             return None
         try:
             return consume_partial_result(status=status, finding=finding)
