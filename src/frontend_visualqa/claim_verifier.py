@@ -116,6 +116,11 @@ class _VerificationProgress:
     consecutive_action_failures: int = 0
 
 
+def _resolve_navigation_timeout_ms(browser_manager: BrowserManager) -> int:
+    """Read ``navigation_timeout_ms`` off *browser_manager*, tolerating doubles that lack it."""
+    return getattr(browser_manager, "navigation_timeout_ms", DEFAULT_NAVIGATION_TIMEOUT_MS)
+
+
 def _create_overlay_controller(page: Any) -> Any | None:
     try:
         from frontend_visualqa.overlay import OverlayController
@@ -145,12 +150,17 @@ class ClaimVerifier:
         self.artifact_manager = artifact_manager
         self.navigator_client = navigator_client
         self.action_executor = action_executor or ActionExecutor(
-            navigation_timeout_ms=getattr(browser_manager, "navigation_timeout_ms", DEFAULT_NAVIGATION_TIMEOUT_MS)
+            navigation_timeout_ms=_resolve_navigation_timeout_ms(browser_manager)
         )
         self._visualize = visualize
         self._overlay: Any | None = None
         self._hook: VisualQAHookAdapter | None = None
         self._partial_progress: _VerificationProgress | None = None
+
+    def _clear_overlay(self) -> None:
+        """Drop the overlay reference held here and on the action executor."""
+        self.action_executor.overlay = None
+        self._overlay = None
 
     def set_browser_manager(self, browser_manager: BrowserManager, *, visualize: bool | None = None) -> None:
         """Rebind long-lived browser dependencies after the runner reconfigures the browser.
@@ -159,11 +169,8 @@ class ClaimVerifier:
         """
 
         self.browser_manager = browser_manager
-        self.action_executor.navigation_timeout_ms = getattr(
-            browser_manager, "navigation_timeout_ms", DEFAULT_NAVIGATION_TIMEOUT_MS
-        )
-        self.action_executor.overlay = None
-        self._overlay = None
+        self.action_executor.navigation_timeout_ms = _resolve_navigation_timeout_ms(browser_manager)
+        self._clear_overlay()
         self._hook = None
         self._partial_progress = None
         if visualize is not None:
@@ -200,8 +207,7 @@ class ClaimVerifier:
         preserve_partial_progress = False
 
         try:
-            self.action_executor.overlay = None
-            self._overlay = None
+            self._clear_overlay()
             self._hook = None
 
             initial_bytes, initial_path = await self._capture_evidence_screenshot(
@@ -299,8 +305,7 @@ class ClaimVerifier:
                     self._hook = None
                 await self._best_effort_overlay_call("claim_ended")
             finally:
-                self.action_executor.overlay = None
-                self._overlay = None
+                self._clear_overlay()
 
     async def _handle_json_verdict(
         self,

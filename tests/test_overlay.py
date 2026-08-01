@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Iterator
 from copy import deepcopy
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -117,6 +118,19 @@ async def _started_controller(**page_options: object) -> tuple[MagicMock, Overla
     return page, controller
 
 
+@pytest.fixture
+def patched_sleep() -> Iterator[AsyncMock]:
+    """Patch out ``overlay.asyncio.sleep`` so preview_action's real-time holds don't slow tests.
+
+    6 test bodies each wrapped their `preview_action` call in an identical
+    ``with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):`` block, one
+    of which also captured the mock to assert a sleep duration. This is the shared fixture they
+    request instead.
+    """
+    with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+        yield mock_sleep
+
+
 def _operation(page: MagicMock, name: str) -> dict[str, object]:
     return next(operation for operation in page.operations if operation["op"] == name)
 
@@ -194,11 +208,11 @@ async def test_partial_runtime_install_still_enables_screenshot_hide() -> None:
 
 
 @pytest.mark.asyncio
-async def test_navigation_reinstalls_and_restores_cursor_thought_and_badge() -> None:
+async def test_navigation_reinstalls_and_restores_cursor_thought_and_badge(patched_sleep: AsyncMock) -> None:
+    del patched_sleep  # patched only so preview_action's internal sleep doesn't run for real
     page, controller = await _started_controller()
     await controller.show_thought("Open the detail page.")
-    with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
-        await controller.preview_action("scroll", x=900, y=700, direction="up")
+    await controller.preview_action("scroll", x=900, y=700, direction="up")
     page.runtime_installed = False
     page.operations.clear()
 
@@ -217,19 +231,18 @@ async def test_navigation_reinstalls_and_restores_cursor_thought_and_badge() -> 
 
 
 @pytest.mark.asyncio
-async def test_click_glides_then_presents_shared_click_effect() -> None:
+async def test_click_glides_then_presents_shared_click_effect(patched_sleep: AsyncMock) -> None:
     page, controller = await _started_controller()
     await controller.show_thought("Open the matching row.")
     page.operations.clear()
 
-    with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock) as sleep:
-        await controller.preview_action("double_click", x=100, y=200, num_clicks=2)
+    await controller.preview_action("double_click", x=100, y=200, num_clicks=2)
 
     assert [operation["op"] for operation in page.operations] == [
         "moveCursor",
         "previewAction",
     ]
-    sleep.assert_awaited_once_with(CURSOR_TRANSITION_MS / 1000)
+    patched_sleep.assert_awaited_once_with(CURSOR_TRANSITION_MS / 1000)
     presentation = _operation(page, "previewAction")["presentation"]
     assert presentation["badge"] == {"type": "loop"}
     assert presentation["transientEffects"][0] == {
@@ -243,11 +256,10 @@ async def test_click_glides_then_presents_shared_click_effect() -> None:
 
 
 @pytest.mark.asyncio
-async def test_first_action_mounts_at_target_without_artificial_glide_wait() -> None:
+async def test_first_action_mounts_at_target_without_artificial_glide_wait(patched_sleep: AsyncMock) -> None:
     page, controller = await _started_controller()
 
-    with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock) as sleep:
-        await controller.preview_action("hover", x=320, y=240)
+    await controller.preview_action("hover", x=320, y=240)
 
     assert page.iife_evaluations == 1
     assert page.operations[0] == {
@@ -259,7 +271,7 @@ async def test_first_action_mounts_at_target_without_artificial_glide_wait() -> 
             "hidden": False,
         },
     }
-    sleep.assert_not_awaited()
+    patched_sleep.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -275,22 +287,23 @@ async def test_first_action_mounts_at_target_without_artificial_glide_wait() -> 
 async def test_scroll_maps_direction_to_shared_badge(
     direction: str,
     expected_badge: dict[str, object],
+    patched_sleep: AsyncMock,
 ) -> None:
+    del patched_sleep  # patched only so preview_action's internal sleep doesn't run for real
     page, controller = await _started_controller()
 
-    with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
-        await controller.preview_action("scroll", x=640, y=400, direction=direction)
+    await controller.preview_action("scroll", x=640, y=400, direction=direction)
 
     presentation = _operation(page, "previewAction")["presentation"]
     assert presentation == {"badge": expected_badge, "transientEffects": []}
 
 
 @pytest.mark.asyncio
-async def test_type_moves_to_focused_element_and_uses_shared_type_badge() -> None:
+async def test_type_moves_to_focused_element_and_uses_shared_type_badge(patched_sleep: AsyncMock) -> None:
+    del patched_sleep  # patched only so preview_action's internal sleep doesn't run for real
     page, controller = await _started_controller(focused_center={"x": 200, "y": 150})
 
-    with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
-        await controller.preview_action("type")
+    await controller.preview_action("type")
 
     move = _operation(page, "moveCursor")
     assert move["point"] == {"x": 200, "y": 150}
@@ -302,11 +315,11 @@ async def test_type_moves_to_focused_element_and_uses_shared_type_badge() -> Non
 
 
 @pytest.mark.asyncio
-async def test_drag_keeps_cursor_at_start_and_uses_shared_drag_trail() -> None:
+async def test_drag_keeps_cursor_at_start_and_uses_shared_drag_trail(patched_sleep: AsyncMock) -> None:
+    del patched_sleep  # patched only so preview_action's internal sleep doesn't run for real
     page, controller = await _started_controller()
 
-    with patch("frontend_visualqa.overlay.asyncio.sleep", new_callable=AsyncMock):
-        await controller.preview_action("drag", start_x=100, start_y=200, x=500, y=600)
+    await controller.preview_action("drag", start_x=100, start_y=200, x=500, y=600)
 
     assert _operation(page, "moveCursor")["point"] == {"x": 100, "y": 200}
     presentation = _operation(page, "previewAction")["presentation"]
