@@ -152,6 +152,11 @@ class ClaimVerifier:
         self._hook: VisualQAHookAdapter | None = None
         self._partial_progress: _VerificationProgress | None = None
 
+    def _clear_overlay(self) -> None:
+        """Drop the overlay reference held here and on the action executor."""
+        self.action_executor.overlay = None
+        self._overlay = None
+
     def set_browser_manager(self, browser_manager: BrowserManager, *, visualize: bool | None = None) -> None:
         """Rebind long-lived browser dependencies after the runner reconfigures the browser.
 
@@ -162,8 +167,7 @@ class ClaimVerifier:
         self.action_executor.navigation_timeout_ms = getattr(
             browser_manager, "navigation_timeout_ms", DEFAULT_NAVIGATION_TIMEOUT_MS
         )
-        self.action_executor.overlay = None
-        self._overlay = None
+        self._clear_overlay()
         self._hook = None
         self._partial_progress = None
         if visualize is not None:
@@ -200,8 +204,7 @@ class ClaimVerifier:
         preserve_partial_progress = False
 
         try:
-            self.action_executor.overlay = None
-            self._overlay = None
+            self._clear_overlay()
             self._hook = None
 
             initial_bytes, initial_path = await self._capture_evidence_screenshot(
@@ -299,8 +302,7 @@ class ClaimVerifier:
                     self._hook = None
                 await self._best_effort_overlay_call("claim_ended")
             finally:
-                self.action_executor.overlay = None
-                self._overlay = None
+                self._clear_overlay()
 
     async def _handle_json_verdict(
         self,
