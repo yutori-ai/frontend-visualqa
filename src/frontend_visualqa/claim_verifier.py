@@ -116,6 +116,11 @@ class _VerificationProgress:
     consecutive_action_failures: int = 0
 
 
+def _resolve_navigation_timeout_ms(browser_manager: BrowserManager) -> int:
+    """Read ``navigation_timeout_ms`` off *browser_manager*, tolerating doubles that lack it."""
+    return getattr(browser_manager, "navigation_timeout_ms", DEFAULT_NAVIGATION_TIMEOUT_MS)
+
+
 def _create_overlay_controller(page: Any) -> Any | None:
     try:
         from frontend_visualqa.overlay import OverlayController
@@ -145,7 +150,7 @@ class ClaimVerifier:
         self.artifact_manager = artifact_manager
         self.navigator_client = navigator_client
         self.action_executor = action_executor or ActionExecutor(
-            navigation_timeout_ms=getattr(browser_manager, "navigation_timeout_ms", DEFAULT_NAVIGATION_TIMEOUT_MS)
+            navigation_timeout_ms=_resolve_navigation_timeout_ms(browser_manager)
         )
         self._visualize = visualize
         self._overlay: Any | None = None
@@ -164,9 +169,7 @@ class ClaimVerifier:
         """
 
         self.browser_manager = browser_manager
-        self.action_executor.navigation_timeout_ms = getattr(
-            browser_manager, "navigation_timeout_ms", DEFAULT_NAVIGATION_TIMEOUT_MS
-        )
+        self.action_executor.navigation_timeout_ms = _resolve_navigation_timeout_ms(browser_manager)
         self._clear_overlay()
         self._hook = None
         self._partial_progress = None
