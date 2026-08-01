@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 from yutori_navigator_overlay_runtime import PROTOCOL_VERSION, get_iife, verify_iife
 
+from frontend_visualqa.actions import CLICK_ACTIONS
 from frontend_visualqa.text_utils import clip_text_preserving_lines
 from frontend_visualqa.utils import safe_page_evaluate
 
@@ -186,7 +187,7 @@ class OverlayController:
         else:
             await self._move_cursor(x, y)
 
-        if action_type in {"left_click", "double_click", "triple_click", "middle_click", "right_click"}:
+        if action_type in CLICK_ACTIONS:
             await self._present_action(
                 badge=_loop_badge(),
                 transient_effects=[
