@@ -208,8 +208,8 @@ async def test_partial_runtime_install_still_enables_screenshot_hide() -> None:
 
 
 @pytest.mark.asyncio
-async def test_navigation_reinstalls_and_restores_cursor_thought_and_badge(patched_sleep: AsyncMock) -> None:
-    del patched_sleep  # patched only so preview_action's internal sleep doesn't run for real
+@pytest.mark.usefixtures("patched_sleep")
+async def test_navigation_reinstalls_and_restores_cursor_thought_and_badge() -> None:
     page, controller = await _started_controller()
     await controller.show_thought("Open the detail page.")
     await controller.preview_action("scroll", x=900, y=700, direction="up")
@@ -275,6 +275,7 @@ async def test_first_action_mounts_at_target_without_artificial_glide_wait(patch
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("patched_sleep")
 @pytest.mark.parametrize(
     ("direction", "expected_badge"),
     [
@@ -287,9 +288,7 @@ async def test_first_action_mounts_at_target_without_artificial_glide_wait(patch
 async def test_scroll_maps_direction_to_shared_badge(
     direction: str,
     expected_badge: dict[str, object],
-    patched_sleep: AsyncMock,
 ) -> None:
-    del patched_sleep  # patched only so preview_action's internal sleep doesn't run for real
     page, controller = await _started_controller()
 
     await controller.preview_action("scroll", x=640, y=400, direction=direction)
@@ -299,8 +298,8 @@ async def test_scroll_maps_direction_to_shared_badge(
 
 
 @pytest.mark.asyncio
-async def test_type_moves_to_focused_element_and_uses_shared_type_badge(patched_sleep: AsyncMock) -> None:
-    del patched_sleep  # patched only so preview_action's internal sleep doesn't run for real
+@pytest.mark.usefixtures("patched_sleep")
+async def test_type_moves_to_focused_element_and_uses_shared_type_badge() -> None:
     page, controller = await _started_controller(focused_center={"x": 200, "y": 150})
 
     await controller.preview_action("type")
@@ -315,8 +314,8 @@ async def test_type_moves_to_focused_element_and_uses_shared_type_badge(patched_
 
 
 @pytest.mark.asyncio
-async def test_drag_keeps_cursor_at_start_and_uses_shared_drag_trail(patched_sleep: AsyncMock) -> None:
-    del patched_sleep  # patched only so preview_action's internal sleep doesn't run for real
+@pytest.mark.usefixtures("patched_sleep")
+async def test_drag_keeps_cursor_at_start_and_uses_shared_drag_trail() -> None:
     page, controller = await _started_controller()
 
     await controller.preview_action("drag", start_x=100, start_y=200, x=500, y=600)
