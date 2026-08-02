@@ -17,6 +17,7 @@ from frontend_visualqa.schemas import (
     _pydantic_field_default,
     validate_url,
 )
+from frontend_visualqa.utils import resolve_optional_method
 
 
 logger = logging.getLogger(__name__)
@@ -111,7 +112,7 @@ async def _close_detached_runners(runners: list[Any]) -> None:
     """Close runners after server state has already been reset."""
 
     for runner in runners:
-        close = getattr(runner, "close", None)
+        close = resolve_optional_method(runner, "close")
         if close is None:
             continue
         try:
