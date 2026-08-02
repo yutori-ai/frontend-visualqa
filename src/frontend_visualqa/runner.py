@@ -86,6 +86,15 @@ def _load_class(name: str) -> Any:
     return loaded
 
 
+def _resolve_default_visualize(claim_verifier: Any, fallback: bool) -> bool:
+    """Read *claim_verifier*'s ``_visualize`` flag, falling back to *fallback* if absent.
+
+    Shared by construction and ``_rebind_claim_verifier`` so the two places that
+    (re)compute ``_default_visualize`` cannot drift out of sync.
+    """
+    return bool(getattr(claim_verifier, "_visualize", fallback))
+
+
 class VisualQARunner:
     """High-level orchestration for verify/screenshot/manage-browser flows."""
 
@@ -127,7 +136,7 @@ class VisualQARunner:
             )
         else:
             self.claim_verifier = claim_verifier
-        self._default_visualize = bool(getattr(self.claim_verifier, "_visualize", configured_visualize))
+        self._default_visualize = _resolve_default_visualize(self.claim_verifier, configured_visualize)
         self.reporters = get_reporters(reporters or [])
         self._operation_lock = asyncio.Lock()
 
@@ -616,7 +625,7 @@ class VisualQARunner:
             if hasattr(self.claim_verifier, "_visualize"):
                 self.claim_verifier._visualize = browser_config.visualize
 
-        self._default_visualize = bool(getattr(self.claim_verifier, "_visualize", browser_config.visualize))
+        self._default_visualize = _resolve_default_visualize(self.claim_verifier, browser_config.visualize)
 
     def _status_with_summary(self, summary: str) -> BrowserStatusResult:
         return self.browser_manager.status().model_copy(update={"summary": summary})
