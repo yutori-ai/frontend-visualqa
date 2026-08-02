@@ -5,12 +5,13 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Callable
-from typing import Any
+from typing import Any, get_args
 
 from mcp.server.fastmcp import FastMCP
 
 from frontend_visualqa.serialization import serialize_result
 from frontend_visualqa.schemas import (
+    BrowserAction,
     BrowserConfig,
     VerifyVisualClaimsInput,
     ViewportConfig,
@@ -21,6 +22,10 @@ from frontend_visualqa.utils import resolve_optional_method
 
 
 logger = logging.getLogger(__name__)
+
+# Derived from BrowserAction so this list can't drift from the Literal that
+# ManageBrowserInput.action actually validates against.
+_BROWSER_ACTIONS = ", ".join(get_args(BrowserAction))
 
 SERVER_INSTRUCTIONS = (
     "Use verify_visual_claims for explicit, observable frontend claims. "
@@ -213,7 +218,7 @@ async def take_screenshot(
     name="manage_browser",
     description=(
         "Manage the shared Playwright browser session. "
-        "Valid actions: status, restart, close, set_viewport, login. "
+        f"Valid actions: {_BROWSER_ACTIONS}. "
         "Use action='login' with a url to open a persistent headed browser for human authentication on "
         "auth-gated apps."
     ),
