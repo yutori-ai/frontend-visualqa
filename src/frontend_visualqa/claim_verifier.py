@@ -728,7 +728,7 @@ class ClaimVerifier:
     def _clip_trace_output_preview(output_text: str | None) -> str | None:
         if output_text is None:
             return None
-        clipped = clip_text(output_text, 280, ellipsis="…")
+        clipped = clip_text(output_text, MAX_INLINE_PROOF_TEXT_CHARS, ellipsis="…")
         return clipped or None
 
     @staticmethod
