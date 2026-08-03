@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 from yutori_navigator_overlay_runtime import PROTOCOL_VERSION, get_iife, verify_iife
 
 from frontend_visualqa.actions import CLICK_ACTIONS
+from frontend_visualqa.schemas import ViewportConfig, _pydantic_field_default
 from frontend_visualqa.text_utils import clip_text_preserving_lines
 from frontend_visualqa.utils import safe_page_evaluate
 
@@ -29,8 +30,11 @@ DRAG_DURATION_MS = 200
 MIN_GLIDE_DISTANCE_PX = 6
 THOUGHT_MAX_CHARACTERS = 520
 
-_DEFAULT_VIEWPORT_WIDTH = 1280
-_DEFAULT_VIEWPORT_HEIGHT = 800
+# Sourced from ViewportConfig's own field defaults so this fallback (used only
+# when Playwright's page.viewport_size is unavailable) can't drift from the
+# canonical default viewport if ViewportConfig's ever changes.
+_DEFAULT_VIEWPORT_WIDTH: int = _pydantic_field_default(ViewportConfig, "width")
+_DEFAULT_VIEWPORT_HEIGHT: int = _pydantic_field_default(ViewportConfig, "height")
 _RUNTIME_GLOBAL = "__yutoriNavigatorOverlay"
 _RUNTIME_REGISTRY = "yutori.navigator-overlay.runtime.registry"
 _EMERGENCY_HIDE_STYLE_ID = "__yutoriNavigatorOverlayEmergencyHide"
