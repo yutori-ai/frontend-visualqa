@@ -2,11 +2,13 @@
 
 import inspect
 import logging
+import time
 
 import pytest
 
 from frontend_visualqa.text_utils import clip_text, clip_text_preserving_lines, collapse_whitespace
 from frontend_visualqa.utils import (
+    elapsed_ms,
     resolve_optional_method,
     safe_async_method_call,
     safe_callback_call,
@@ -21,6 +23,21 @@ async def _invoke(call, *args, **kwargs):
     if inspect.isawaitable(result):
         await result
     return result
+
+
+def test_elapsed_ms_returns_non_negative_milliseconds_since_start() -> None:
+    start = time.perf_counter()
+    time.sleep(0.01)
+
+    result = elapsed_ms(start)
+
+    assert result >= 10.0
+
+
+def test_elapsed_ms_reflects_time_already_passed_before_start_was_captured() -> None:
+    start = time.perf_counter() - 0.5
+
+    assert elapsed_ms(start) == pytest.approx(500.0, abs=50.0)
 
 
 def test_resolve_optional_method_returns_none_for_none_target() -> None:

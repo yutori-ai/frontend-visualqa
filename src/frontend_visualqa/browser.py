@@ -24,6 +24,7 @@ from frontend_visualqa.schemas import (
     BrowserStatusResult,
     ViewportConfig,
 )
+from frontend_visualqa.utils import elapsed_ms
 
 
 # Must exceed the SDK's PageReadyChecker.initial_wait (2.0s, hardcoded) by
@@ -261,11 +262,11 @@ class BrowserManager:
         # ms / encode ms" breakdown when running with `verify -v`.
         capture_started = time.perf_counter()
         image = await self._capture_screenshot_image(session)
-        capture_ms = (time.perf_counter() - capture_started) * 1000
+        capture_ms = elapsed_ms(capture_started)
 
         encode_started = time.perf_counter()
         webp_bytes = self._image_to_webp_bytes(image)
-        encode_ms = (time.perf_counter() - encode_started) * 1000
+        encode_ms = elapsed_ms(encode_started)
 
         logger.info(
             "Screenshot capture %.0f ms / encode %.0f ms / size %d KB",

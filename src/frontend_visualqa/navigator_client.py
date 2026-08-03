@@ -14,6 +14,7 @@ from yutori import AsyncYutoriClient
 from yutori.navigator import N1_5_MODEL, TOOL_SET_EXPANDED, estimate_messages_size_bytes, trim_images_to_fit
 
 from frontend_visualqa.errors import NavigatorClientError, NavigatorRequestTimeout
+from frontend_visualqa.utils import elapsed_ms
 
 
 logger = logging.getLogger(__name__)
@@ -254,18 +255,18 @@ class NavigatorClient:
         # Wall-clock per Navigator call. Surfaced by `frontend-visualqa verify
         # -v` (INFO). Includes any retry+backoff time, so a single line can
         # account for both raw latency and transient-failure recovery cost.
-        elapsed_ms = (time.perf_counter() - request_started) * 1000
+        request_elapsed_ms = elapsed_ms(request_started)
         usage = getattr(response, "usage", None)
         if usage is not None:
             logger.info(
                 "Navigator call %.0f ms — usage prompt=%s completion=%s total=%s",
-                elapsed_ms,
+                request_elapsed_ms,
                 getattr(usage, "prompt_tokens", "?"),
                 getattr(usage, "completion_tokens", "?"),
                 getattr(usage, "total_tokens", "?"),
             )
         else:
-            logger.info("Navigator call %.0f ms (no usage info)", elapsed_ms)
+            logger.info("Navigator call %.0f ms (no usage info)", request_elapsed_ms)
         return response
 
     async def _create_once(
