@@ -3,10 +3,21 @@
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Callable
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+
+def elapsed_ms(start: float) -> float:
+    """Milliseconds elapsed since *start* (a ``time.perf_counter()`` reading).
+
+    Centralizes the ``(time.perf_counter() - start) * 1000`` idiom repeated at
+    every latency-logging call site (screenshot capture/encode timing in
+    ``browser.py``, Navigator request timing in ``navigator_client.py``).
+    """
+    return (time.perf_counter() - start) * 1000
 
 
 def resolve_optional_method(target: Any | None, method_name: str) -> Any | None:
