@@ -16,7 +16,7 @@ from typing import Any
 
 import pytest
 
-from frontend_visualqa.artifacts import RunArtifacts, claim_dir_path
+from frontend_visualqa.artifacts import RunArtifacts, claim_dir_path, write_json_file, write_text_file
 from frontend_visualqa.grounding import GroundingState
 from frontend_visualqa.schemas import ClaimResult, ViewportConfig
 
@@ -390,16 +390,15 @@ class FakeArtifactManager:
 
     def save_rich_trace(self, run: RunArtifacts, claim_index: int, events: list[dict[str, Any]]) -> str:
         path = claim_dir_path(run.run_dir, claim_index) / "trace.json"
-        path.write_text(json.dumps(events))
+        write_json_file(path, events)
         return str(path)
 
     def save_proof_text(self, run: RunArtifacts, claim_index: int, label: str, text: str) -> str:
         path = claim_dir_path(run.run_dir, claim_index) / f"{label}.txt"
-        path.write_text(text, encoding="utf-8")
+        write_text_file(path, text)
         return str(path)
 
     def save_json(self, run: RunArtifacts, relative_path: str, payload: dict[str, Any]) -> str:
         path = run.run_dir / relative_path
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(payload))
+        write_json_file(path, payload)
         return str(path)
