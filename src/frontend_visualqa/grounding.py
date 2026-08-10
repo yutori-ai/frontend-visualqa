@@ -42,9 +42,20 @@ BUTTON_FULLY_VISIBLE_PATTERN = re.compile(
     r"""^The\s+(?P<label>.+?)\s+button\s+is\s+fully\s+visible(?:\s+within\s+its\s+container)?\.?$""",
     re.IGNORECASE,
 )
-HEADING_READS_PATTERN = re.compile(r"""^The\s+heading\s+reads\s+["'](?P<text>.+?)["']\.?$""", re.IGNORECASE)
-PAGE_TITLE_READS_PATTERN = re.compile(r"""^The\s+page\s+title\s+reads\s+["'](?P<text>.+?)["']\.?$""", re.IGNORECASE)
-MODAL_TITLE_READS_PATTERN = re.compile(r"""^The\s+modal\s+title\s+reads\s+["'](?P<text>.+?)["']\.?$""", re.IGNORECASE)
+
+
+def _reads_pattern(subject: str) -> re.Pattern[str]:
+    """Compile a 'The <subject> reads "..."' claim pattern.
+
+    Shared by the heading/page-title/modal-title patterns below, which are
+    identical apart from *subject* (e.g. ``"heading"``, ``r"page\\s+title"``).
+    """
+    return re.compile(rf"""^The\s+{subject}\s+reads\s+["'](?P<text>.+?)["']\.?$""", re.IGNORECASE)
+
+
+HEADING_READS_PATTERN = _reads_pattern(r"heading")
+PAGE_TITLE_READS_PATTERN = _reads_pattern(r"page\s+title")
+MODAL_TITLE_READS_PATTERN = _reads_pattern(r"modal\s+title")
 PROGRESS_BAR_COMPLETELY_FILLED_PATTERN = re.compile(
     r"""^The\s+(?P<label>.+?)\s+progress\s+bar\s+is\s+completely\s+filled\.?$""",
     re.IGNORECASE,
