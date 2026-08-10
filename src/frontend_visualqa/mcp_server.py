@@ -126,10 +126,6 @@ async def _close_detached_runners(runners: list[Any]) -> None:
             logger.warning("Failed to close frontend-visualqa runner during shutdown", exc_info=True)
 
 
-async def _close_all_runners() -> None:
-    await _close_detached_runners(_detach_runners_for_close())
-
-
 def close_runners_sync() -> None:
     """Close any cached runners after the MCP server exits."""
 
