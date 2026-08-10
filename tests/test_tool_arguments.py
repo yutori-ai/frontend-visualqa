@@ -5,7 +5,12 @@ from types import SimpleNamespace
 import pytest
 
 from frontend_visualqa.errors import BrowserActionError
-from frontend_visualqa.tool_arguments import parse_tool_arguments, tool_call_arguments_as_text, tool_call_name
+from frontend_visualqa.tool_arguments import (
+    parse_tool_arguments,
+    tool_call_arguments_as_text,
+    tool_call_name,
+    tool_calls_from_message,
+)
 
 
 def _tool_call(arguments: object) -> SimpleNamespace:
@@ -60,3 +65,17 @@ def test_tool_call_arguments_as_text_encodes_dict_as_json() -> None:
 
 def test_tool_call_arguments_as_text_defaults_to_empty_when_missing() -> None:
     assert tool_call_arguments_as_text(SimpleNamespace()) == ""
+
+
+def test_tool_calls_from_message_returns_list_when_present() -> None:
+    marker = object()
+
+    assert tool_calls_from_message(SimpleNamespace(tool_calls=[marker])) == [marker]
+
+
+def test_tool_calls_from_message_defaults_to_empty_list_when_missing() -> None:
+    assert tool_calls_from_message(SimpleNamespace()) == []
+
+
+def test_tool_calls_from_message_defaults_to_empty_list_when_none() -> None:
+    assert tool_calls_from_message(SimpleNamespace(tool_calls=None)) == []
