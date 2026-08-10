@@ -24,6 +24,15 @@ def tool_call_name(tool_call: Any) -> str:
     return getattr(_function_obj(tool_call), "name", "")
 
 
+def tool_calls_from_message(message: Any) -> list[Any]:
+    """Return ``message.tool_calls`` as a list, defaulting to ``[]`` when absent or falsy.
+
+    Shared by the hook adapter's ``on_llm_end`` and the claim-verifier turn loop,
+    both of which read tool calls off an assistant message the same tolerant way.
+    """
+    return list(getattr(message, "tool_calls", []) or [])
+
+
 def tool_call_arguments_as_text(tool_call: Any) -> str:
     """Return ``tool_call``'s raw arguments as text, best-effort.
 

@@ -7,6 +7,7 @@ from typing import Any
 from yutori.navigator import RunHooksBase, extract_text_content
 
 from frontend_visualqa.schemas import ClaimStatus, TraceEvent
+from frontend_visualqa.tool_arguments import tool_calls_from_message
 
 
 class VisualQAHookAdapter(RunHooksBase):
@@ -23,7 +24,7 @@ class VisualQAHookAdapter(RunHooksBase):
 
     async def on_llm_end(self, *, response: Any) -> None:
         message = response.choices[0].message if hasattr(response, "choices") else response
-        tool_calls = list(getattr(message, "tool_calls", []) or [])
+        tool_calls = tool_calls_from_message(message)
         reasoning = extract_text_content(getattr(message, "content", None))
         self._current_turn_reasoning = reasoning if reasoning and tool_calls else None
 

@@ -38,7 +38,12 @@ from frontend_visualqa.prompts import (
 from frontend_visualqa.schemas import ClaimPage, ClaimProof, ClaimResult, ClaimStatus, ClaimTrace, VerdictSource
 from frontend_visualqa.serialization import dump_or_pass_through
 from frontend_visualqa.text_utils import clip_text
-from frontend_visualqa.tool_arguments import parse_tool_arguments, tool_call_arguments_as_text, tool_call_name
+from frontend_visualqa.tool_arguments import (
+    parse_tool_arguments,
+    tool_call_arguments_as_text,
+    tool_call_name,
+    tool_calls_from_message,
+)
 from frontend_visualqa.utils import resolve_optional_method, safe_async_method_call, safe_method_call
 
 if TYPE_CHECKING:
@@ -259,7 +264,7 @@ class ClaimVerifier:
                     continue
 
                 # --- Check for tool calls (browser actions) ---
-                tool_calls = list(getattr(assistant_message, "tool_calls", []) or [])
+                tool_calls = tool_calls_from_message(assistant_message)
                 if not tool_calls:
                     # No JSON verdict and no tool calls — reprompt
                     if progress.non_action_reprompts < MAX_NON_ACTION_REPROMPTS:
