@@ -99,17 +99,13 @@ async def _get_runner() -> Any:
         return runner
 
 
-def _reset_server_state() -> None:
+def _detach_runners_for_close() -> list[Any]:
     global _server_browser_config, _config_frozen
+    runners = list(_runners_by_loop.values())
+    _runners_by_loop.clear()
     _runner_locks_by_loop.clear()
     _server_browser_config = None
     _config_frozen = False
-
-
-def _detach_runners_for_close() -> list[Any]:
-    runners = list(_runners_by_loop.values())
-    _runners_by_loop.clear()
-    _reset_server_state()
     return runners
 
 
