@@ -241,7 +241,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.7.0" },
     { name = "tenacity", specifier = ">=8.2.0" },
     { name = "yutori", specifier = ">=0.6.0" },
-    { name = "yutori-navigator-overlay-runtime", specifier = "==0.2.1" },
+    { name = "yutori-navigator-overlay-runtime", specifier = "==0.2.2" },
 ]
 
 [package.metadata.requires-dev]
@@ -1234,8 +1234,8 @@ wheels = [
 
 [[package]]
 name = "yutori-navigator-overlay-runtime"
-version = "0.2.1"
+version = "0.2.2"
 source = { registry = "https://pypi.org/simple" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/2e/85/01566c488f5dbe2bbca2a4878ae2d1effe8ad55df5851d6bd72592f24ce3/yutori_navigator_overlay_runtime-0.2.1-py3-none-any.whl", hash = "sha256:c5499a1ffab6e1ff7f6736a0c84d4cd230951fc5cfb8b5ecefae9693d9c61c61", size = 69459, upload-time = "2026-08-13T01:54:38.684Z" },
+    { url = "https://files.pythonhosted.org/packages/03/c8/0d40ca30021a4afe4ae0d700570da6144d2b96fec85ab6013f6c0d2d81bd/yutori_navigator_overlay_runtime-0.2.2-py3-none-any.whl", hash = "sha256:f3d4a131c56429287804fd5f598746bfa3e71939fbef33f2335287c4b2bbddd4", size = 69560, upload-time = "2026-08-13T04:15:03.096Z" },
 ]
