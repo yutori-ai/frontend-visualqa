@@ -55,8 +55,7 @@ NEGATIVE_CLAIM_PATTERN = re.compile(
     re.IGNORECASE,
 )
 FAILED_FINDING_PATTERNS = (
-    re.compile(r"""\b(?:does not|do not|did not|doesn't|don't)\s+match\b""", re.IGNORECASE),
-    re.compile(r"""\b(?:does not|do not|did not|doesn't|don't)\s+equal\b""", re.IGNORECASE),
+    re.compile(r"""\b(?:does not|do not|did not|doesn't|don't)\s+(?:match|equal)\b""", re.IGNORECASE),
     re.compile(r"""\bnot\s+equal\b""", re.IGNORECASE),
     re.compile(r"""\b(?:is|are)\s+not\s+visible\b""", re.IGNORECASE),
     re.compile(r"""\bnot\s+fully\s+visible\b""", re.IGNORECASE),
@@ -72,11 +71,7 @@ INCONCLUSIVE_FINDING_PATTERNS = (
 )
 ACTION_NEEDED_FINDING_PATTERNS = (
     re.compile(
-        r"""\b(?:i\s+)?need\s+to\s+(?:click|tap|open|navigate|go|scroll|expand|select|hover|move|drag|press|hold)\b""",
-        re.IGNORECASE,
-    ),
-    re.compile(
-        r"""\b(?:i\s+)?should\s+(?:click|tap|open|navigate|go|scroll|expand|select|hover|move|drag|press|hold)\b""",
+        r"""\b(?:i\s+)?(?:need\s+to|should)\s+(?:click|tap|open|navigate|go|scroll|expand|select|hover|move|drag|press|hold)\b""",
         re.IGNORECASE,
     ),
     re.compile(r"""\bbefore\s+i\s+can\s+(?:verify|determine|confirm|decide)\b""", re.IGNORECASE),
@@ -334,7 +329,9 @@ class ClaimVerifier:
             and self._finding_says_action_is_needed(json_verdict[1])
         ):
             reprompt_text = build_take_action_prompt(progress.claim)
-            force_stop_finding = "The model kept saying more interaction was needed without taking the next browser action."
+            force_stop_finding = (
+                "The model kept saying more interaction was needed without taking the next browser action."
+            )
         elif navigation_hint and not progress.has_interacted and json_verdict[0] != "not_testable":
             reprompt_text = build_follow_navigation_hint_prompt(progress.claim, navigation_hint)
             force_stop_finding = "The model tried to render a verdict before following the navigation hint."
@@ -484,9 +481,7 @@ class ClaimVerifier:
 
         return None, had_action_in_turn
 
-    async def _invoke_navigator_turn(
-        self, messages: list[dict[str, Any]]
-    ) -> tuple[Any, list[dict[str, Any]]]:
+    async def _invoke_navigator_turn(self, messages: list[dict[str, Any]]) -> tuple[Any, list[dict[str, Any]]]:
         """Trim messages, dispatch a navigator request, and append the assistant reply.
 
         Returns ``(response, messages)`` where ``messages`` is the trimmed list with
