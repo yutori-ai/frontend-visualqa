@@ -14,7 +14,7 @@ from yutori import AsyncYutoriClient
 from yutori.navigator import N1_5_MODEL, TOOL_SET_EXPANDED, estimate_messages_size_bytes, trim_images_to_fit
 
 from frontend_visualqa.errors import NavigatorClientError, NavigatorRequestTimeout
-from frontend_visualqa.utils import elapsed_ms
+from frontend_visualqa.utils import elapsed_ms, resolve_optional_method
 
 
 logger = logging.getLogger(__name__)
@@ -60,7 +60,7 @@ def _schedule_close(client: Any, *, attr: str = "close") -> None:
     is bounded — the original client never sent a request and gets
     cleaned up by GC.
     """
-    coro_factory = getattr(client, attr, None)
+    coro_factory = resolve_optional_method(client, attr)
     if coro_factory is None:
         return
     try:

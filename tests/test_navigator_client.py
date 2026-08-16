@@ -267,6 +267,43 @@ async def test_navigator_client_does_not_retry_or_wrap_cancelled_error() -> None
 
 
 @pytest.mark.asyncio
+async def test_schedule_close_schedules_task_when_close_method_present() -> None:
+    import frontend_visualqa.navigator_client as module
+
+    closed = []
+
+    class ClosableClient:
+        async def close(self) -> None:
+            closed.append(True)
+
+    module._schedule_close(ClosableClient())
+    # Let the scheduled background task run before asserting.
+    await asyncio.sleep(0)
+
+    assert closed == [True]
+
+
+def test_schedule_close_is_noop_when_close_method_missing() -> None:
+    """No `close`/`aclose` attribute at all — resolve_optional_method returns None."""
+    import frontend_visualqa.navigator_client as module
+
+    # Does not raise even with no running event loop.
+    module._schedule_close(SimpleNamespace())
+
+
+def test_schedule_close_is_noop_when_attr_is_not_callable() -> None:
+    """A non-callable `close` attribute must not be invoked as a coroutine factory.
+
+    Regression guard for the resolve_optional_method migration: a plain
+    getattr(client, attr, None) would have treated any truthy non-callable
+    value as a coroutine factory and crashed when called.
+    """
+    import frontend_visualqa.navigator_client as module
+
+    module._schedule_close(SimpleNamespace(close="not-a-method"))
+
+
+@pytest.mark.asyncio
 async def test_build_http2_client_enables_http2_with_shared_limits() -> None:
     import frontend_visualqa.navigator_client as module
 
