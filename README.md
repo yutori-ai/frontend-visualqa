@@ -385,6 +385,7 @@ frontend-visualqa verify <url> --claims-file claims.md [options]
 | `--verbose`, `-v` | off | Stream service-responsiveness logs to stderr. -v for INFO, -vv for DEBUG. |
 | `--reset-between-claims` / `--no-reset-between-claims` | on | Return to the base URL between claims. |
 | `--reporter` | native | Output reporter (`native`, `ctrf`, `markdown`). Repeat for multiple. |
+| `--video` / `--no-video` | off | Record a Playwright video of the browser session. Saved as `.webm` files under `<run-artifacts>/videos/`. |
 
 </details>
 
@@ -610,7 +611,7 @@ The repo includes a GitHub Actions workflow (`.github/workflows/visualqa.yml`) t
     ```yaml
     - name: Upload visual QA artifacts
       if: always()
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: visualqa-results
         path: |
