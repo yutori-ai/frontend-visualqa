@@ -283,6 +283,23 @@ async def test_schedule_close_schedules_task_when_close_method_present() -> None
     assert closed == [True]
 
 
+@pytest.mark.asyncio
+async def test_schedule_close_schedules_task_for_aclose_attr() -> None:
+    """The `attr="aclose"` call site (used for the swapped-out yutori httpx client)."""
+    import frontend_visualqa.navigator_client as module
+
+    closed = []
+
+    class AcloseableClient:
+        async def aclose(self) -> None:
+            closed.append(True)
+
+    module._schedule_close(AcloseableClient(), attr="aclose")
+    await asyncio.sleep(0)
+
+    assert closed == [True]
+
+
 def test_schedule_close_is_noop_when_close_method_missing() -> None:
     """No `close`/`aclose` attribute at all — resolve_optional_method returns None."""
     import frontend_visualqa.navigator_client as module
@@ -291,12 +308,15 @@ def test_schedule_close_is_noop_when_close_method_missing() -> None:
     module._schedule_close(SimpleNamespace())
 
 
-def test_schedule_close_is_noop_when_attr_is_not_callable() -> None:
+@pytest.mark.asyncio
+async def test_schedule_close_is_noop_when_attr_is_not_callable() -> None:
     """A non-callable `close` attribute must not be invoked as a coroutine factory.
 
     Regression guard for the resolve_optional_method migration: a plain
     getattr(client, attr, None) would have treated any truthy non-callable
-    value as a coroutine factory and crashed when called.
+    value as a coroutine factory and crashed when called. Must run inside a
+    running event loop — otherwise `asyncio.get_running_loop()`'s own
+    RuntimeError would mask the bug this test is meant to catch.
     """
     import frontend_visualqa.navigator_client as module
 
