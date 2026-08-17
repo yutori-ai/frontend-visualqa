@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import time
 from enum import Enum
 from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from frontend_visualqa import __version__
+from frontend_visualqa.utils import now_ms
 
 
 ClaimStatus = Literal["passed", "failed", "inconclusive", "not_testable"]
@@ -119,7 +119,7 @@ class TraceEvent(FrontendVisualQABaseModel):
     verdict_status: ClaimStatus | None = None
     verdict_source: VerdictSource | None = None
     finding: str | None = None
-    timestamp_ms: int = Field(default_factory=lambda: int(time.time() * 1000))
+    timestamp_ms: int = Field(default_factory=now_ms)
 
 
 class ClaimTrace(FrontendVisualQABaseModel):
