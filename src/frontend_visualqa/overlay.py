@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
-import time
 from typing import TYPE_CHECKING, Any
 
 from yutori_navigator_overlay_runtime import PROTOCOL_VERSION, get_iife, verify_iife
@@ -13,7 +12,7 @@ from yutori_navigator_overlay_runtime import PROTOCOL_VERSION, get_iife, verify_
 from frontend_visualqa.actions import CLICK_ACTIONS
 from frontend_visualqa.schemas import ViewportConfig, _pydantic_field_default
 from frontend_visualqa.text_utils import clip_text_preserving_lines
-from frontend_visualqa.utils import safe_page_evaluate
+from frontend_visualqa.utils import now_ms, safe_page_evaluate
 
 if TYPE_CHECKING:
     from playwright.async_api import Page
@@ -199,7 +198,7 @@ class OverlayController:
                         "type": "click",
                         "point": _point(x, y),
                         "clicks": max(1, num_clicks),
-                        "startedAtMs": self._now_ms(),
+                        "startedAtMs": now_ms(),
                         "durationMs": CLICK_DURATION_MS,
                     }
                 ],
@@ -222,7 +221,7 @@ class OverlayController:
                         "type": "drag-trail",
                         "from": _point(start_x, start_y),
                         "to": _point(x, y),
-                        "startedAtMs": self._now_ms(),
+                        "startedAtMs": now_ms(),
                         "durationMs": DRAG_DURATION_MS,
                     }
                 ],
@@ -487,10 +486,6 @@ class OverlayController:
     def _next_effect_id(self, effect: str) -> str:
         self._effect_sequence += 1
         return f"frontend-visualqa-{effect}-{self._effect_sequence}"
-
-    @staticmethod
-    def _now_ms() -> int:
-        return time.time_ns() // 1_000_000
 
     @staticmethod
     def _result_ok(result: Any) -> bool:

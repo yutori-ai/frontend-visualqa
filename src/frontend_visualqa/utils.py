@@ -20,6 +20,17 @@ def elapsed_ms(start: float) -> float:
     return (time.perf_counter() - start) * 1000
 
 
+def now_ms() -> int:
+    """Current wall-clock time in whole milliseconds since the Unix epoch.
+
+    Centralizes the epoch-milliseconds idiom repeated at trace-event timestamp
+    (``schemas.py``), CTRF report timestamp (``reporters.py``), and overlay
+    transient-effect timing (``overlay.py``) call sites. Uses ``time.time_ns()``
+    rather than ``int(time.time() * 1000)`` to avoid float-rounding drift.
+    """
+    return time.time_ns() // 1_000_000
+
+
 def resolve_optional_method(target: Any | None, method_name: str) -> Any | None:
     """Return the bound *method_name* on *target* if it exists and is callable, else ``None``.
 

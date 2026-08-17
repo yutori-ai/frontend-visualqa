@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import time
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -11,6 +10,7 @@ from frontend_visualqa.claim_parser import ParsedClaimLine, ParsedClaimsFile
 from frontend_visualqa.schemas import ClaimProof, ClaimResult, ClaimTrace, RunResult
 from frontend_visualqa.serialization import serialize_result
 from frontend_visualqa.text_utils import collapse_whitespace as _collapse_whitespace
+from frontend_visualqa.utils import now_ms
 
 
 class Reporter(Protocol):
@@ -76,7 +76,7 @@ class CTRFReporter:
 
     def write(self, run_result: RunResult, output_dir: Path, *, claims_file: ParsedClaimsFile | None = None) -> None:
         del claims_file
-        now_ms = int(time.time() * 1000)
+        now = now_ms()
         summary_counts: dict[str, int] = {
             "passed": 0, "failed": 0, "pending": 0, "skipped": 0, "other": 0,
         }
@@ -102,8 +102,8 @@ class CTRFReporter:
                 ctrf_test["attachments"] = attachments
             ctrf_tests.append(ctrf_test)
 
-        start_ms = int(run_result.started_at * 1000) if run_result.started_at is not None else now_ms
-        stop_ms = int(run_result.completed_at * 1000) if run_result.completed_at is not None else now_ms
+        start_ms = int(run_result.started_at * 1000) if run_result.started_at is not None else now
+        stop_ms = int(run_result.completed_at * 1000) if run_result.completed_at is not None else now
 
         ctrf_report = {
             "reportFormat": "CTRF",
