@@ -448,8 +448,9 @@ def _check_button_fully_visible(
     if not matched_states:
         return _no_visible_button_failure(grounding_state, groups["label"])
 
-    if any(state.get("fullyVisible", False) for state in matched_states):
-        candidate = next(state.get("text", groups["label"]) for state in matched_states if state.get("fullyVisible", False))
+    fully_visible_state = next((state for state in matched_states if state.get("fullyVisible", False)), None)
+    if fully_visible_state is not None:
+        candidate = fully_visible_state.get("text", groups["label"])
         return "passed", f"Visible button label matched {groups['label']!r} and is fully visible: {candidate!r}."
 
     candidate = matched_states[0].get("text", groups["label"])
