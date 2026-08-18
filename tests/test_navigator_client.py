@@ -10,6 +10,7 @@ import pytest
 from frontend_visualqa.errors import NavigatorClientError, NavigatorRequestTimeout
 
 try:
+    import frontend_visualqa.navigator_client as module
     from frontend_visualqa.navigator_client import AsyncYutoriClient, NavigatorClient, wait_exponential
 except ModuleNotFoundError:
     pytestmark = pytest.mark.skip(reason="yutori SDK not installed")
@@ -172,8 +173,6 @@ def test_wait_exponential_matches_original_retry_delays() -> None:
 
 
 def test_navigator_client_trim_messages_uses_sdk_compatibility_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
-    import frontend_visualqa.navigator_client as module
-
     messages = _check_messages()
     navigator_client = NavigatorClient(client=FakeClient([]), max_request_bytes=10)
     trim_calls: list[dict[str, Any]] = []
@@ -268,8 +267,6 @@ async def test_navigator_client_does_not_retry_or_wrap_cancelled_error() -> None
 
 @pytest.mark.asyncio
 async def test_schedule_close_schedules_task_when_close_method_present() -> None:
-    import frontend_visualqa.navigator_client as module
-
     closed = []
 
     class ClosableClient:
@@ -286,8 +283,6 @@ async def test_schedule_close_schedules_task_when_close_method_present() -> None
 @pytest.mark.asyncio
 async def test_schedule_close_schedules_task_for_aclose_attr() -> None:
     """The `attr="aclose"` call site (used for the swapped-out yutori httpx client)."""
-    import frontend_visualqa.navigator_client as module
-
     closed = []
 
     class AcloseableClient:
@@ -302,8 +297,6 @@ async def test_schedule_close_schedules_task_for_aclose_attr() -> None:
 
 def test_schedule_close_is_noop_when_close_method_missing() -> None:
     """No `close`/`aclose` attribute at all — resolve_optional_method returns None."""
-    import frontend_visualqa.navigator_client as module
-
     # Does not raise even with no running event loop.
     module._schedule_close(SimpleNamespace())
 
@@ -318,15 +311,11 @@ async def test_schedule_close_is_noop_when_attr_is_not_callable() -> None:
     running event loop — otherwise `asyncio.get_running_loop()`'s own
     RuntimeError would mask the bug this test is meant to catch.
     """
-    import frontend_visualqa.navigator_client as module
-
     module._schedule_close(SimpleNamespace(close="not-a-method"))
 
 
 @pytest.mark.asyncio
 async def test_build_http2_client_enables_http2_with_shared_limits() -> None:
-    import frontend_visualqa.navigator_client as module
-
     client = module._build_http2_client(7.5)
     try:
         assert client.timeout.connect == 7.5
@@ -343,8 +332,6 @@ def test_enable_http2_on_yutori_client_uses_shared_http2_client_builder(monkeypa
     ``httpx.AsyncClient(http2=True, timeout=..., limits=_HTTP2_LIMITS)``.
     """
     import openai
-
-    import frontend_visualqa.navigator_client as module
 
     build_calls: list[float] = []
     built_clients: list[Any] = []
