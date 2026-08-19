@@ -819,6 +819,7 @@ async def test_referenced_element_is_password_true() -> None:
     page.evaluate_results.append(True)
 
     assert await module.referenced_element_is_password(page, "some-ref") is True
+    assert page.evaluate_calls[-1][1] == ("some-ref",)
 
 
 @pytest.mark.asyncio
@@ -828,6 +829,7 @@ async def test_referenced_element_is_password_false() -> None:
     page.evaluate_results.append(False)
 
     assert await module.referenced_element_is_password(page, "some-ref") is False
+    assert page.evaluate_calls[-1][1] == ("some-ref",)
 
 
 @pytest.mark.asyncio
@@ -836,6 +838,8 @@ async def test_referenced_element_is_password_none_on_evaluate_failure() -> None
     page = FakePage()  # no result queued -> FakePage.evaluate raises, caught as a failure
 
     assert await module.referenced_element_is_password(page, "some-ref") is None
+    # The ref must still have been forwarded to page.evaluate on the failing call.
+    assert page.evaluate_calls[-1][1] == ("some-ref",)
 
 
 @pytest.mark.asyncio
