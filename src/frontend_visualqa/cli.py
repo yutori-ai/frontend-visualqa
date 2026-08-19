@@ -583,14 +583,9 @@ async def _run_login(args: argparse.Namespace) -> int:
         while not done.is_set():
             await asyncio.sleep(0.2)
 
-        if browser_closed:
-            print("Browser closed.", file=sys.stderr)
-            await manager.close()  # stops Playwright subprocess
-            manager_closed = True
-        else:
-            await manager.close()
-            manager_closed = True
-            print("Saved session.", file=sys.stderr)
+        await manager.close()  # stops Playwright subprocess, even if the window already closed itself
+        manager_closed = True
+        print("Browser closed." if browser_closed else "Saved session.", file=sys.stderr)
         return 0
     finally:
         if not manager_closed:
