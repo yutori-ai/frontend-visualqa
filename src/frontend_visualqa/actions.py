@@ -171,16 +171,27 @@ def _get_clear_before(arguments: dict[str, Any]) -> bool:
     return bool(_first_present_argument(arguments, "clear_before_typing", "clear_before", "clear_before_type"))
 
 
+async def _evaluate_password_check(page: Any, script: str, arg: object | None = None) -> bool | None:
+    """Run a password-detection ``page.evaluate`` script; ``None`` on failure.
+
+    Shared by :func:`focused_element_is_password` and
+    :func:`referenced_element_is_password`, which otherwise each duplicated the
+    identical "best-effort evaluate, then coerce to bool unless it failed"
+    wrapper around :func:`safe_page_evaluate`.
+    """
+    result = await safe_page_evaluate(page, script, arg)
+    return None if result is None else bool(result)
+
+
 async def focused_element_is_password(page: Any) -> bool | None:
     """Whether the currently focused element is a password input.
 
     Returns ``None`` when detection fails (page navigating, evaluate error).
     Callers must fail closed: redact unless the result is explicitly ``False``.
     """
-    result = await safe_page_evaluate(
+    return await _evaluate_password_check(
         page, "() => !!document.activeElement && document.activeElement.type === 'password'"
     )
-    return None if result is None else bool(result)
 
 
 async def referenced_element_is_password(page: Any, ref: str) -> bool | None:
@@ -189,7 +200,7 @@ async def referenced_element_is_password(page: Any, ref: str) -> bool | None:
     Returns ``None`` when detection fails (page navigating, evaluate error).
     Callers must fail closed: redact unless the result is explicitly ``False``.
     """
-    result = await safe_page_evaluate(
+    return await _evaluate_password_check(
         page,
         """(ref) => {
             const weakRef = window.__yutoriElementRefs && window.__yutoriElementRefs[ref];
@@ -199,7 +210,6 @@ async def referenced_element_is_password(page: Any, ref: str) -> bool | None:
         }""",
         ref,
     )
-    return None if result is None else bool(result)
 
 
 def redact_type_text(arguments: dict[str, Any]) -> dict[str, Any]:

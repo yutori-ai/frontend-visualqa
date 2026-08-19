@@ -787,6 +787,62 @@ async def test_resolve_coordinates_raises_when_ref_fails_and_no_coords() -> None
 
 
 @pytest.mark.asyncio
+async def test_focused_element_is_password_true() -> None:
+    module = _import_actions_module()
+    page = FakePage()
+    page.evaluate_results.append(True)
+
+    assert await module.focused_element_is_password(page) is True
+
+
+@pytest.mark.asyncio
+async def test_focused_element_is_password_false() -> None:
+    module = _import_actions_module()
+    page = FakePage()
+    page.evaluate_results.append(False)
+
+    assert await module.focused_element_is_password(page) is False
+
+
+@pytest.mark.asyncio
+async def test_focused_element_is_password_none_on_evaluate_failure() -> None:
+    module = _import_actions_module()
+    page = FakePage()  # no result queued -> FakePage.evaluate raises, caught as a failure
+
+    assert await module.focused_element_is_password(page) is None
+
+
+@pytest.mark.asyncio
+async def test_referenced_element_is_password_true() -> None:
+    module = _import_actions_module()
+    page = FakePage()
+    page.evaluate_results.append(True)
+
+    assert await module.referenced_element_is_password(page, "some-ref") is True
+    assert page.evaluate_calls[-1][1] == ("some-ref",)
+
+
+@pytest.mark.asyncio
+async def test_referenced_element_is_password_false() -> None:
+    module = _import_actions_module()
+    page = FakePage()
+    page.evaluate_results.append(False)
+
+    assert await module.referenced_element_is_password(page, "some-ref") is False
+    assert page.evaluate_calls[-1][1] == ("some-ref",)
+
+
+@pytest.mark.asyncio
+async def test_referenced_element_is_password_none_on_evaluate_failure() -> None:
+    module = _import_actions_module()
+    page = FakePage()  # no result queued -> FakePage.evaluate raises, caught as a failure
+
+    assert await module.referenced_element_is_password(page, "some-ref") is None
+    # The ref must still have been forwarded to page.evaluate on the failing call.
+    assert page.evaluate_calls[-1][1] == ("some-ref",)
+
+
+@pytest.mark.asyncio
 async def test_execute_action_type_masks_text_when_focused_element_is_password() -> None:
     module = _import_actions_module()
     executor, page, viewport = _build_default_action_fixtures(module)
