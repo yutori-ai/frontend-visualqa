@@ -361,9 +361,11 @@ def _check_exact_text_match(
     candidates = grounding_state.get(state_key, [])
     if any(_normalize_text(text) == expected for text in candidates):
         return "passed", f"Visible {entity_label} matched {groups['text']!r}."
-    return (
-        "failed",
-        f"No visible {entity_label} matched {groups['text']!r}. Visible {entity_label}s: {candidates or ['<none>']}.",
+    return _no_visible_match_failure(
+        groups["text"],
+        entity_label=entity_label,
+        candidates_label=f"{entity_label}s",
+        candidates=candidates,
     )
 
 
@@ -396,11 +398,12 @@ def _no_visible_match_failure(
 ) -> tuple[ClaimStatus, str]:
     """Build the shared "no visible <entity> matched" failed-tuple.
 
-    Used by ``_check_button_match``, ``_check_button_fully_visible``, and
-    ``_check_progress_bar_completely_filled`` for the branch where ``label``
-    matches none of the visible candidates. Listing the full candidate set in
-    the message is intentional — it gives the LLM grading the trajectory
-    enough context to distinguish a missing element from a label-mismatch.
+    Used by ``_check_exact_text_match``, ``_check_button_match``,
+    ``_check_button_fully_visible``, and ``_check_progress_bar_completely_filled``
+    for the branch where ``label`` matches none of the visible candidates.
+    Listing the full candidate set in the message is intentional — it gives the
+    LLM grading the trajectory enough context to distinguish a missing element
+    from a label-mismatch.
     """
     return (
         "failed",
