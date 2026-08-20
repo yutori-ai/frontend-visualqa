@@ -248,8 +248,17 @@ class OverlayController:
             return
         await self._apply_operation_and_sync({"op": "clearThought"})
 
+    @property
+    def _ready(self) -> bool:
+        """True once a claim is active and the runtime has been activated for it.
+
+        Shared by the screenshot-hide/restore and navigation-restore paths, which
+        must all no-op until the overlay has actually been activated on the page.
+        """
+        return self._active and self._activated
+
     async def before_screenshot(self) -> None:
-        if not self._active or not self._activated:
+        if not self._ready:
             return
         self._hidden = True
         evaluation = await self._apply_operation({"op": "beforeScreenshot"})
@@ -265,7 +274,7 @@ class OverlayController:
 
     async def after_screenshot(self) -> None:
         try:
-            if not self._active or not self._activated:
+            if not self._ready:
                 return
             self._hidden = False
             await self._apply_operation_and_sync({"op": "afterScreenshot"})
@@ -314,7 +323,7 @@ class OverlayController:
 
     async def _restore_after_navigation(self) -> None:
         async with self._operation_lock:
-            if not self._active or not self._activated:
+            if not self._ready:
                 return
             snapshot = self._snapshot()
             evaluation = await self._apply_operation_now(
