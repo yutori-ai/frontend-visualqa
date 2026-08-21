@@ -279,12 +279,12 @@ class VisualQARunner:
                                 video_paths=video_paths,
                             )
                         except Exception as exc:
-                            result = self._build_claim(
+                            result = self._build_session_claim(
                                 claim=claim,
                                 status="not_testable",
                                 finding=f"Could not prepare browser state for this claim: {exc}",
-                                final_url=session.page.url or request.url,
-                                viewport=session.viewport,
+                                session=session,
+                                request=request,
                             )
                             _append_result(index, claim, result)
                             continue
@@ -326,12 +326,12 @@ class VisualQARunner:
 
                     for claim_index, claim in enumerate(timed_out_claims[1:], start=next_claim_index + 1):
                         _safe_on_claim_start(claim_index, claim)
-                        fallback_result = self._build_claim(
+                        fallback_result = self._build_session_claim(
                             claim=claim,
                             status="inconclusive",
                             finding=timeout_finding,
-                            final_url=session.page.url or request.url,
-                            viewport=session.viewport,
+                            session=session,
+                            request=request,
                         )
                         _append_result(claim_index, claim, fallback_result)
 
@@ -814,6 +814,31 @@ class VisualQARunner:
             trace=ClaimTrace(),
         )
 
+    @staticmethod
+    def _build_session_claim(
+        *,
+        claim: str,
+        status: ClaimStatus,
+        finding: str,
+        session: Any,
+        request: VerifyVisualClaimsInput,
+    ) -> ClaimResult:
+        """Build a claim result whose page context comes from a live session.
+
+        Centralizes the ``final_url=session.page.url or request.url`` /
+        ``viewport=session.viewport`` pair that every session-derived result site
+        (the per-claim prepare failure, the run-timeout fallback claims, and
+        :meth:`_inconclusive_claim_result`) previously hand-rolled, so the
+        fall-back-to-request-URL rule cannot drift between them.
+        """
+        return VisualQARunner._build_claim(
+            claim=claim,
+            status=status,
+            finding=finding,
+            final_url=session.page.url or request.url,
+            viewport=session.viewport,
+        )
+
     def _consume_partial_claim_result(self, *, status: ClaimStatus, finding: str) -> ClaimResult | None:
         consume_partial_result = resolve_optional_method(self.claim_verifier, "consume_partial_result")
         if consume_partial_result is None:
@@ -836,12 +861,12 @@ class VisualQARunner:
         return self._consume_partial_claim_result(
             status="inconclusive",
             finding=finding,
-        ) or self._build_claim(
+        ) or self._build_session_claim(
             claim=claim,
             status="inconclusive",
             finding=finding,
-            final_url=session.page.url or request.url,
-            viewport=session.viewport,
+            session=session,
+            request=request,
         )
 
     @staticmethod
