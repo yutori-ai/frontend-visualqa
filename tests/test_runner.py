@@ -37,7 +37,16 @@ from frontend_visualqa.schemas import (
 )
 
 
-def _import_runner_module():
+@pytest.fixture
+def module() -> Any:
+    """The ``frontend_visualqa.runner`` module, for monkeypatching module-level names.
+
+    Every test that needs to monkeypatch a module-level constructor (``BrowserManager``,
+    ``ClaimVerifier``, etc.) or reach a private helper like ``VisualQARunner`` used to
+    re-call ``_import_runner_module()`` locally -- 37 identical call sites across this
+    file. Hoisted to a fixture, matching the import-hoisting convention already applied
+    to test_navigator_client.py, test_cli.py, and test_mcp_server.py.
+    """
     return import_or_skip("frontend_visualqa.runner")
 
 
@@ -436,10 +445,10 @@ def _result(name: str, status: str, viewport: ViewportConfig) -> ClaimResult:
 
 @pytest.mark.asyncio
 async def test_runner_run_aggregates_claim_results_and_resets_between_claims(
+    module: Any,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    module = _import_runner_module()
     viewport = ViewportConfig()
     runner, browser, verifier = _build_runner(
         module,
@@ -482,10 +491,10 @@ async def test_runner_run_aggregates_claim_results_and_resets_between_claims(
 
 @pytest.mark.asyncio
 async def test_runner_run_uses_per_claim_navigation_hints_and_falls_back_to_global_hint(
+    module: Any,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    module = _import_runner_module()
     viewport = ViewportConfig()
     runner, _, verifier = _build_runner(
         module,
@@ -514,10 +523,10 @@ async def test_runner_run_uses_per_claim_navigation_hints_and_falls_back_to_glob
 
 @pytest.mark.asyncio
 async def test_runner_run_uses_second_claim_navigation_hint_override(
+    module: Any,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    module = _import_runner_module()
     viewport = ViewportConfig()
     runner, _, verifier = _build_runner(
         module,
@@ -546,10 +555,10 @@ async def test_runner_run_uses_second_claim_navigation_hint_override(
 
 @pytest.mark.asyncio
 async def test_runner_run_request_reuses_prevalidated_input(
+    module: Any,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    module = _import_runner_module()
     viewport = ViewportConfig()
     runner, browser, verifier = _build_runner(
         module,
@@ -583,10 +592,10 @@ async def test_runner_run_request_reuses_prevalidated_input(
 
 @pytest.mark.asyncio
 async def test_runner_saves_video_when_recording_enabled(
+    module: Any,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    module = _import_runner_module()
     viewport = ViewportConfig()
     browser = FakeBrowserManager(viewport, config=BrowserConfig(record_video=True))
     runner, browser, verifier = _build_runner(
@@ -616,10 +625,10 @@ async def test_runner_saves_video_when_recording_enabled(
 
 @pytest.mark.asyncio
 async def test_runner_saves_per_claim_videos_without_session_reuse(
+    module: Any,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    module = _import_runner_module()
     viewport = ViewportConfig()
     browser = FakeBrowserManager(viewport, config=BrowserConfig(record_video=True))
     runner, browser, verifier = _build_runner(
@@ -646,10 +655,10 @@ async def test_runner_saves_per_claim_videos_without_session_reuse(
 
 @pytest.mark.asyncio
 async def test_runner_saves_video_when_navigation_fails_after_recording_starts(
+    module: Any,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    module = _import_runner_module()
     viewport = ViewportConfig()
     browser = FakeBrowserManager(viewport, config=BrowserConfig(record_video=True))
     runner, browser, verifier = _build_runner(
@@ -690,10 +699,10 @@ def test_verify_visual_claims_input_requires_navigation_hint_alignment() -> None
 
 @pytest.mark.asyncio
 async def test_runner_ignores_callback_exceptions(
+    module: Any,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    module = _import_runner_module()
     viewport = ViewportConfig()
     runner, _, _ = _build_runner(
         module,
@@ -749,10 +758,10 @@ Some prose that should be ignored too.
 
 @pytest.mark.asyncio
 async def test_runner_writes_rerunnable_markdown_report_from_claims_file(
+    module: Any,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    module = _import_runner_module()
     viewport = ViewportConfig()
     claims_file = tmp_path / "claims.md"
     claims_file.write_text(
@@ -800,10 +809,10 @@ async def test_runner_writes_rerunnable_markdown_report_from_claims_file(
 
 @pytest.mark.asyncio
 async def test_runner_take_screenshot_saves_artifact(
+    module: Any,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    module = _import_runner_module()
     runner, _, _ = _build_runner(
         module,
         tmp_path,
@@ -828,10 +837,10 @@ async def test_runner_take_screenshot_saves_artifact(
 
 @pytest.mark.asyncio
 async def test_runner_manage_browser_proxies_status_restart_viewport_and_close(
+    module: Any,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    module = _import_runner_module()
     runner, browser, _ = _build_runner(
         module,
         tmp_path,
@@ -863,10 +872,10 @@ async def test_runner_manage_browser_proxies_status_restart_viewport_and_close(
 
 @pytest.mark.asyncio
 async def test_runner_manage_browser_request_uses_prevalidated_input(
+    module: Any,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    module = _import_runner_module()
     runner, browser, _ = _build_runner(
         module,
         tmp_path,
@@ -885,10 +894,10 @@ async def test_runner_manage_browser_request_uses_prevalidated_input(
 
 @pytest.mark.asyncio
 async def test_runner_manage_browser_login_reconfigures_to_persistent_headed_mode(
+    module: Any,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    module = _import_runner_module()
     initial_browser = FakeBrowserManager(ViewportConfig(), config=BrowserConfig())
     replacement_browsers: list[FakeBrowserManager] = []
 
@@ -929,10 +938,10 @@ async def test_runner_manage_browser_login_reconfigures_to_persistent_headed_mod
 
 @pytest.mark.asyncio
 async def test_runner_manage_browser_close_restores_base_config_after_login_override(
+    module: Any,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    module = _import_runner_module()
     initial_browser = FakeBrowserManager(ViewportConfig(), config=BrowserConfig())
     replacement_browsers: list[FakeBrowserManager] = []
 
@@ -967,10 +976,10 @@ async def test_runner_manage_browser_close_restores_base_config_after_login_over
 
 @pytest.mark.asyncio
 async def test_runner_manage_browser_login_rejects_missing_url_even_if_validation_was_bypassed(
+    module: Any,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    module = _import_runner_module()
     runner, _, _ = _build_runner(
         module,
         tmp_path,
@@ -986,11 +995,11 @@ async def test_runner_manage_browser_login_rejects_missing_url_even_if_validatio
 
 @pytest.mark.asyncio
 async def test_runner_manage_browser_login_skips_reconfiguration_when_already_persistent_headed(
+    module: Any,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Calling login when the browser is already persistent+headed should skip reconfiguration."""
-    module = _import_runner_module()
     persistent_config = BrowserConfig(mode=BrowserMode.persistent, headless=False)
     initial_browser = FakeBrowserManager(ViewportConfig(), config=persistent_config)
 
@@ -1017,11 +1026,11 @@ async def test_runner_manage_browser_login_skips_reconfiguration_when_already_pe
 
 @pytest.mark.asyncio
 async def test_runner_manage_browser_close_skips_restore_when_other_sessions_exist(
+    module: Any,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Close should not restore browser config when other sessions are still open."""
-    module = _import_runner_module()
     initial_browser = FakeBrowserManager(ViewportConfig(), config=BrowserConfig())
     replacement_browsers: list[FakeBrowserManager] = []
 
@@ -1074,11 +1083,11 @@ class GotoFailingBrowserManager(FakeBrowserManager):
 
 @pytest.mark.asyncio
 async def test_runner_manage_browser_login_returns_structured_error_when_navigation_fails(
+    module: Any,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """If get_session/goto fails after reconfiguration, return a summary instead of crashing."""
-    module = _import_runner_module()
     initial_browser = FakeBrowserManager(ViewportConfig(), config=BrowserConfig())
 
     def _browser_factory(*args: Any, **kwargs: Any) -> GotoFailingBrowserManager:
@@ -1107,11 +1116,11 @@ async def test_runner_manage_browser_login_returns_structured_error_when_navigat
 
 @pytest.mark.asyncio
 async def test_runner_manage_browser_login_rolls_back_when_browser_constructor_fails(
+    module: Any,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """If BrowserManager() constructor fails, the runner should roll back to the old config."""
-    module = _import_runner_module()
     initial_browser = FakeBrowserManager(ViewportConfig(), config=BrowserConfig())
     construction_attempts = []
 
@@ -1149,11 +1158,11 @@ async def test_runner_manage_browser_login_rolls_back_when_browser_constructor_f
 
 @pytest.mark.asyncio
 async def test_runner_login_then_take_screenshot_reuses_session(
+    module: Any,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """After login, take_screenshot on the same session_key should reuse the login browser."""
-    module = _import_runner_module()
     initial_browser = FakeBrowserManager(ViewportConfig(), config=BrowserConfig())
     replacement_browsers: list[FakeBrowserManager] = []
 
@@ -1251,10 +1260,10 @@ class NavigationFailingBrowserManager(FakeBrowserManager):
 
 @pytest.mark.asyncio
 async def test_runner_marks_claim_not_testable_when_reset_between_claims_fails(
+    module: Any,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    module = _import_runner_module()
     viewport = ViewportConfig()
     browser = ResetFailingBrowserManager(viewport)
     runner, _, verifier = _build_runner(
@@ -1292,10 +1301,10 @@ async def test_runner_marks_claim_not_testable_when_reset_between_claims_fails(
 
 @pytest.mark.asyncio
 async def test_runner_marks_claim_not_testable_when_verifier_raises(
+    module: Any,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    module = _import_runner_module()
     exploding_verifier = ExplodingClaimVerifier()
     runner, _, _ = _build_runner(
         module,
@@ -1331,10 +1340,10 @@ async def test_runner_marks_claim_not_testable_when_verifier_raises(
 
 @pytest.mark.asyncio
 async def test_runner_take_screenshot_returns_not_testable_result_on_navigation_failure(
+    module: Any,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    module = _import_runner_module()
     browser = NavigationFailingBrowserManager(ViewportConfig())
     runner, _, _ = _build_runner(
         module,
@@ -1358,10 +1367,10 @@ async def test_runner_take_screenshot_returns_not_testable_result_on_navigation_
 
 @pytest.mark.asyncio
 async def test_runner_marks_claim_inconclusive_when_claim_timeout_expires(
+    module: Any,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    module = _import_runner_module()
     viewport = ViewportConfig()
     slow_verifier = SlowClaimVerifier(delay_seconds=0.05, result=_result("Claim one", "passed", viewport))
     runner, _, _ = _build_runner(
@@ -1397,10 +1406,10 @@ async def test_runner_marks_claim_inconclusive_when_claim_timeout_expires(
 
 @pytest.mark.asyncio
 async def test_runner_handles_timeout_error_when_claim_timeout_is_disabled(
+    module: Any,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    module = _import_runner_module()
     viewport = ViewportConfig()
     verifier = TimeoutClaimVerifier()
     runner, _, _ = _build_runner(
@@ -1436,10 +1445,10 @@ async def test_runner_handles_timeout_error_when_claim_timeout_is_disabled(
 
 @pytest.mark.asyncio
 async def test_runner_uses_partial_claim_result_when_timeout_interrupts_verifier(
+    module: Any,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    module = _import_runner_module()
     viewport = ViewportConfig()
     partial_result = make_claim_result(
         claim="Claim one",
@@ -1493,10 +1502,10 @@ async def test_runner_uses_partial_claim_result_when_timeout_interrupts_verifier
 
 @pytest.mark.asyncio
 async def test_runner_uses_partial_claim_result_when_verifier_crashes(
+    module: Any,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    module = _import_runner_module()
     viewport = ViewportConfig()
     proof, trace = _goto_dashboard_partial_step()
     partial_result = make_claim_result(
@@ -1543,10 +1552,10 @@ async def test_runner_uses_partial_claim_result_when_verifier_crashes(
 
 @pytest.mark.asyncio
 async def test_runner_marks_remaining_claims_inconclusive_when_run_timeout_expires(
+    module: Any,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    module = _import_runner_module()
     viewport = ViewportConfig()
     slow_verifier = SlowClaimVerifier(delay_seconds=0.05, result=_result("Claim one", "passed", viewport))
     runner, _, _ = _build_runner(
@@ -1585,10 +1594,10 @@ async def test_runner_marks_remaining_claims_inconclusive_when_run_timeout_expir
 
 @pytest.mark.asyncio
 async def test_runner_preserves_partial_claim_result_when_run_timeout_interrupts_current_claim(
+    module: Any,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    module = _import_runner_module()
     viewport = ViewportConfig()
     proof, trace = _goto_dashboard_partial_step()
     partial_result = make_claim_result(
@@ -1638,8 +1647,7 @@ async def test_runner_preserves_partial_claim_result_when_run_timeout_interrupts
     ]
 
 
-def test_build_not_testable_run_uses_aggregate_summary() -> None:
-    module = _import_runner_module()
+def test_build_not_testable_run_uses_aggregate_summary(module: Any) -> None:
     viewport = ViewportConfig()
     request = VerifyVisualClaimsInput(
         url="http://fixture.local/page",
@@ -1663,8 +1671,9 @@ def test_build_not_testable_run_uses_aggregate_summary() -> None:
     assert all(item.finding == "Could not reach the page before opening the browser." for item in result.results)
 
 
-def test_runner_passes_browser_config_to_browser_manager(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    module = _import_runner_module()
+def test_runner_passes_browser_config_to_browser_manager(
+    module: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     captured: dict[str, Any] = {}
 
     class CapturingBrowserManager(FakeBrowserManager):
@@ -1691,10 +1700,10 @@ def test_runner_passes_browser_config_to_browser_manager(monkeypatch: pytest.Mon
 
 
 def test_runner_passes_browser_config_visualize_to_default_claim_verifier(
+    module: Any,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    module = _import_runner_module()
     captured: dict[str, Any] = {}
 
     class CapturingBrowserManager(FakeBrowserManager):
@@ -1739,10 +1748,10 @@ def test_runner_passes_browser_config_visualize_to_default_claim_verifier(
 
 @pytest.mark.asyncio
 async def test_runner_preserves_injected_claim_verifier_visualize_default(
+    module: Any,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    module = _import_runner_module()
     viewport = ViewportConfig()
     browser = FakeBrowserManager(viewport)
     verifier = FakeClaimVerifier([_result("Claim one", "passed", viewport)])
@@ -1766,11 +1775,11 @@ async def test_runner_preserves_injected_claim_verifier_visualize_default(
 
 @pytest.mark.asyncio
 async def test_per_call_visualize_override_does_not_leak_across_requests(
+    module: Any,
     tmp_path: Path,
 ) -> None:
     """Two sequential run_request calls with different visualize values must
     not leak the first call's override into the second call."""
-    module = _import_runner_module()
     viewport = ViewportConfig()
     browser = FakeBrowserManager(viewport)
     verifier = FakeClaimVerifier(
@@ -1820,10 +1829,10 @@ class SpyReporter:
 
 @pytest.mark.asyncio
 async def test_runner_invokes_reporters_after_run(
+    module: Any,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    module = _import_runner_module()
     viewport = ViewportConfig()
     runner, browser, verifier = _build_runner(
         module,
@@ -1852,10 +1861,10 @@ async def test_runner_invokes_reporters_after_run(
 
 @pytest.mark.asyncio
 async def test_runner_writes_both_native_and_ctrf_reports(
+    module: Any,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    module = _import_runner_module()
     viewport = ViewportConfig()
     reporters = get_reporters(["native", "ctrf"])
     runner, browser, verifier = _build_runner(
@@ -1909,11 +1918,11 @@ async def test_runner_writes_both_native_and_ctrf_reports(
 
 @pytest.mark.asyncio
 async def test_runner_ctrf_only_does_not_write_native_report(
+    module: Any,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """When only ctrf is selected, run_result.json must not be written."""
-    module = _import_runner_module()
     viewport = ViewportConfig()
     reporters = get_reporters(["ctrf"])
     runner, browser, verifier = _build_runner(
