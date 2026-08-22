@@ -37,6 +37,7 @@ _DEFAULT_VIEWPORT_HEIGHT: int = _pydantic_field_default(ViewportConfig, "height"
 _RUNTIME_GLOBAL = "__yutoriNavigatorOverlay"
 _RUNTIME_REGISTRY = "yutori.navigator-overlay.runtime.registry"
 _EMERGENCY_HIDE_STYLE_ID = "__yutoriNavigatorOverlayEmergencyHide"
+_EMERGENCY_HIDE_ATTR = "data-yutori-navigator-overlay-emergency-hide"
 
 if not verify_iife():
     raise RuntimeError("The installed Navigator overlay runtime failed its integrity check")
@@ -73,12 +74,12 @@ _FOCUSED_ELEMENT_CENTER_JS = """() => {
 
 _EMERGENCY_HIDE_JS = f"""() => {{
     let emergencyStyle = document.querySelector(
-        'style[data-yutori-navigator-overlay-emergency-hide]'
+        'style[{_EMERGENCY_HIDE_ATTR}]'
     );
     if (!emergencyStyle) {{
         emergencyStyle = document.createElement('style');
         emergencyStyle.id = '{_EMERGENCY_HIDE_STYLE_ID}';
-        emergencyStyle.setAttribute('data-yutori-navigator-overlay-emergency-hide', '');
+        emergencyStyle.setAttribute('{_EMERGENCY_HIDE_ATTR}', '');
         emergencyStyle.textContent = `
             [data-yutori-navigator-overlay-root][data-yutori-navigator-overlay-owned] {{
                 transition: none !important;
@@ -97,15 +98,15 @@ _EMERGENCY_HIDE_JS = f"""() => {{
     }});
 }}"""
 
-_EMERGENCY_RESTORE_JS = """() => {
+_EMERGENCY_RESTORE_JS = f"""() => {{
     const styles = Array.from(document.querySelectorAll(
-        'style[data-yutori-navigator-overlay-emergency-hide]'
+        'style[{_EMERGENCY_HIDE_ATTR}]'
     ));
     for (const style of styles) style.remove();
     return document.querySelector(
-        'style[data-yutori-navigator-overlay-emergency-hide]'
+        'style[{_EMERGENCY_HIDE_ATTR}]'
     ) === null;
-}"""
+}}"""
 
 
 def _point(x: int | float, y: int | float) -> dict[str, int | float]:
