@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Callable
-from typing import Any, get_args
+from typing import TYPE_CHECKING, Any, get_args
 
 from mcp.server.fastmcp import FastMCP
 
@@ -20,6 +20,8 @@ from frontend_visualqa.schemas import (
 )
 from frontend_visualqa.utils import resolve_optional_method
 
+if TYPE_CHECKING:
+    from frontend_visualqa.runner import VisualQARunner
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +39,7 @@ SERVER_INSTRUCTIONS = (
 
 mcp = FastMCP("frontend-visualqa", instructions=SERVER_INSTRUCTIONS, log_level="ERROR")
 
-_runners_by_loop: dict[int, Any] = {}
+_runners_by_loop: dict[int, VisualQARunner] = {}
 _runner_locks_by_loop: dict[int, asyncio.Lock] = {}
 _server_browser_config: BrowserConfig | None = None
 _config_frozen = False
@@ -74,7 +76,7 @@ def _ensure_lock() -> asyncio.Lock:
     return lock
 
 
-async def _get_runner() -> Any:
+async def _get_runner() -> VisualQARunner:
     global _config_frozen
 
     loop_key = _loop_key()
@@ -99,7 +101,7 @@ async def _get_runner() -> Any:
         return runner
 
 
-def _detach_runners_for_close() -> list[Any]:
+def _detach_runners_for_close() -> list[VisualQARunner]:
     global _server_browser_config, _config_frozen
     runners = list(_runners_by_loop.values())
     _runners_by_loop.clear()
@@ -109,7 +111,7 @@ def _detach_runners_for_close() -> list[Any]:
     return runners
 
 
-async def _close_detached_runners(runners: list[Any]) -> None:
+async def _close_detached_runners(runners: list[VisualQARunner]) -> None:
     """Close runners after server state has already been reset."""
 
     for runner in runners:
