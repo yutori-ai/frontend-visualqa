@@ -231,6 +231,11 @@ class VisualQARunner:
                     claims_file=claims_file,
                     video_paths=early_video_paths,
                 )
+            # finding is None here only when _open_session_for_request succeeded,
+            # which is the only way it returns (session, None) — so session is a
+            # live BrowserSession from this point through the rest of the claim
+            # loop and final video save below.
+            assert session is not None
 
             claim_results: list[ClaimResult] = []
             next_claim_index = 1
