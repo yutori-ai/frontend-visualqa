@@ -19,6 +19,7 @@ from frontend_visualqa.browser import (
 from frontend_visualqa.errors import BrowserActionError
 from frontend_visualqa.tool_arguments import parse_tool_arguments, tool_call_name
 from frontend_visualqa.utils import safe_async_method_call, safe_page_evaluate
+from playwright.async_api import Page
 from yutori.navigator import (
     denormalize_coordinates,
     map_key_to_playwright,
@@ -171,7 +172,7 @@ def _get_clear_before(arguments: dict[str, Any]) -> bool:
     return bool(_first_present_argument(arguments, "clear_before_typing", "clear_before", "clear_before_type"))
 
 
-async def _evaluate_password_check(page: Any, script: str, arg: object | None = None) -> bool | None:
+async def _evaluate_password_check(page: Page, script: str, arg: object | None = None) -> bool | None:
     """Run a password-detection ``page.evaluate`` script; ``None`` on failure.
 
     Shared by :func:`focused_element_is_password` and
@@ -183,7 +184,7 @@ async def _evaluate_password_check(page: Any, script: str, arg: object | None = 
     return None if result is None else bool(result)
 
 
-async def focused_element_is_password(page: Any) -> bool | None:
+async def focused_element_is_password(page: Page) -> bool | None:
     """Whether the currently focused element is a password input.
 
     Returns ``None`` when detection fails (page navigating, evaluate error).
@@ -194,7 +195,7 @@ async def focused_element_is_password(page: Any) -> bool | None:
     )
 
 
-async def referenced_element_is_password(page: Any, ref: str) -> bool | None:
+async def referenced_element_is_password(page: Page, ref: str) -> bool | None:
     """Whether a Navigator element ref points at a password input.
 
     Returns ``None`` when detection fails (page navigating, evaluate error).
@@ -692,7 +693,7 @@ class ActionExecutor:
             counts_as_interaction=tool_counts_as_interaction(action_name),
         )
 
-    async def _best_effort_wait_for_domcontentloaded(self, page: Any) -> None:
+    async def _best_effort_wait_for_domcontentloaded(self, page: Page) -> None:
         try:
             await page.wait_for_load_state("domcontentloaded", timeout=self.navigation_timeout_ms)
         except Exception:
@@ -705,7 +706,7 @@ class ActionExecutor:
 
     async def _resolve_coordinates(
         self,
-        page: Any,
+        page: Page,
         arguments: dict[str, Any],
         *,
         width: int,
@@ -745,7 +746,7 @@ class ActionExecutor:
 
     async def _hover_at_resolved_coordinates(
         self,
-        page: Any,
+        page: Page,
         raw_arguments: dict[str, Any],
         *,
         width: int,
@@ -771,7 +772,7 @@ class ActionExecutor:
         await page.mouse.move(x, y)
 
     @staticmethod
-    async def _press_keys_skipping_zoom_shortcuts(page: Any, key_sequence: list[str]) -> None:
+    async def _press_keys_skipping_zoom_shortcuts(page: Page, key_sequence: list[str]) -> None:
         """Press each key in *key_sequence* in order, skipping disallowed zoom shortcuts.
 
         Shared by the ``key_press`` action and ``hold_key``'s untimed
@@ -784,19 +785,19 @@ class ActionExecutor:
             await page.keyboard.press(key_name)
 
     @staticmethod
-    async def _press_modifier_keys(page: Any, modifier: Any) -> list[str]:
+    async def _press_modifier_keys(page: Page, modifier: Any) -> list[str]:
         modifier_keys = _map_modifier_keys(modifier)
         for key_name in modifier_keys:
             await page.keyboard.down(key_name)
         return modifier_keys
 
     @staticmethod
-    async def _release_modifier_keys(page: Any, modifier_keys: list[str]) -> None:
+    async def _release_modifier_keys(page: Page, modifier_keys: list[str]) -> None:
         for key_name in reversed(modifier_keys):
             await page.keyboard.up(key_name)
 
     @asynccontextmanager
-    async def _held_modifier_keys(self, page: Any, modifier: Any) -> AsyncIterator[None]:
+    async def _held_modifier_keys(self, page: Page, modifier: Any) -> AsyncIterator[None]:
         """Press *modifier* down for the duration of the block, then release it.
 
         Wraps :meth:`_press_modifier_keys`/:meth:`_release_modifier_keys` in a
