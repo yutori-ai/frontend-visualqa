@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any, Literal
 import httpx
 
 from frontend_visualqa.artifacts import ArtifactManager, RunArtifacts
-from frontend_visualqa.browser import BrowserManager
+from frontend_visualqa.browser import BrowserManager, BrowserSession
 from frontend_visualqa.claim_parser import ParsedClaimsFile
 from frontend_visualqa.reporters import get_reporters
 from frontend_visualqa.schemas import (
@@ -198,7 +198,7 @@ class VisualQARunner:
             run_started_at = time.time()
             run_artifacts = self.artifact_manager.create_run(prefix="run")
 
-            session: Any = None
+            session: BrowserSession | None = None
             finding = await self._preflight_url(request.url)
             # Plumb video recording into the Playwright context if the browser
             # config opts in. Videos go under <run_dir>/videos/ so recordings
@@ -367,12 +367,12 @@ class VisualQARunner:
     async def _prepare_session_for_claim(
         self,
         *,
-        session: Any,
+        session: BrowserSession,
         request: VerifyVisualClaimsInput,
         claim_index: int,
         run_artifacts: RunArtifacts,
         video_paths: list[str],
-    ) -> Any:
+    ) -> BrowserSession:
         """Return the session to use for ``claim_index``.
 
         For the first claim, or when ``reuse_session`` is set, the existing
@@ -636,7 +636,7 @@ class VisualQARunner:
         await self.browser_manager.close()
         await self.navigator_client.close()
 
-    async def _save_session_video(self, session: Any, *, target: Path) -> str | None:
+    async def _save_session_video(self, session: BrowserSession, *, target: Path) -> str | None:
         """Close the session's context and move its recording to ``target``.
 
         Playwright finalizes a video to disk only when its BrowserContext
@@ -688,7 +688,7 @@ class VisualQARunner:
             logger.debug("Failed to save session video to %s", target, exc_info=True)
             return None
 
-    async def _save_and_track_video(self, session: Any, video_paths: list[str], *, target: Path) -> None:
+    async def _save_and_track_video(self, session: BrowserSession, video_paths: list[str], *, target: Path) -> None:
         """Save ``session``'s video to ``target`` and append it to ``video_paths`` if produced."""
         saved = await self._save_session_video(session, target=target)
         if saved is not None:
@@ -820,7 +820,7 @@ class VisualQARunner:
         claim: str,
         status: ClaimStatus,
         finding: str,
-        session: Any,
+        session: BrowserSession,
         request: VerifyVisualClaimsInput,
     ) -> ClaimResult:
         """Build a claim result whose page context comes from a live session.
@@ -854,7 +854,7 @@ class VisualQARunner:
         *,
         claim: str,
         finding: str,
-        session: Any,
+        session: BrowserSession,
         request: VerifyVisualClaimsInput,
     ) -> ClaimResult:
         """Return an inconclusive ClaimResult, preferring a partial result from the verifier."""
@@ -903,7 +903,7 @@ class VisualQARunner:
         request: VerifyVisualClaimsInput,
         *,
         record_video_dir: str | None = None,
-    ) -> tuple[Any, str | None]:
+    ) -> tuple[BrowserSession | None, str | None]:
         """Open a browser session for ``request`` and navigate to its URL.
 
         Returns ``(session, None)`` on success. On failure it returns
@@ -957,10 +957,10 @@ class VisualQARunner:
     async def _verify_claim(
         self,
         *,
-        session: Any,
+        session: BrowserSession,
         claim: str,
         request: VerifyVisualClaimsInput,
-        run_artifacts: Any,
+        run_artifacts: RunArtifacts,
         claim_index: int,
         navigation_hint: str | None,
     ) -> ClaimResult:
