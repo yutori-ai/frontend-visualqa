@@ -38,6 +38,10 @@ _RUNTIME_GLOBAL = "__yutoriNavigatorOverlay"
 _RUNTIME_REGISTRY = "yutori.navigator-overlay.runtime.registry"
 _EMERGENCY_HIDE_STYLE_ID = "__yutoriNavigatorOverlayEmergencyHide"
 _EMERGENCY_HIDE_ATTR = "data-yutori-navigator-overlay-emergency-hide"
+# CSS attribute selector for runtime-owned overlay roots, shared by the emergency-hide
+# style rule and the querySelectorAll that verifies the hide actually took effect --
+# both must target the identical element set.
+_EMERGENCY_HIDE_TARGET_SELECTOR = "[data-yutori-navigator-overlay-root][data-yutori-navigator-overlay-owned]"
 
 if not verify_iife():
     raise RuntimeError("The installed Navigator overlay runtime failed its integrity check")
@@ -81,7 +85,7 @@ _EMERGENCY_HIDE_JS = f"""() => {{
         emergencyStyle.id = '{_EMERGENCY_HIDE_STYLE_ID}';
         emergencyStyle.setAttribute('{_EMERGENCY_HIDE_ATTR}', '');
         emergencyStyle.textContent = `
-            [data-yutori-navigator-overlay-root][data-yutori-navigator-overlay-owned] {{
+            {_EMERGENCY_HIDE_TARGET_SELECTOR} {{
                 transition: none !important;
                 visibility: hidden !important;
                 opacity: 0 !important;
@@ -90,7 +94,7 @@ _EMERGENCY_HIDE_JS = f"""() => {{
         (document.head || document.documentElement).appendChild(emergencyStyle);
     }}
     const roots = Array.from(document.querySelectorAll(
-        '[data-yutori-navigator-overlay-root][data-yutori-navigator-overlay-owned]'
+        '{_EMERGENCY_HIDE_TARGET_SELECTOR}'
     ));
     return roots.every((root) => {{
         const style = window.getComputedStyle(root);
