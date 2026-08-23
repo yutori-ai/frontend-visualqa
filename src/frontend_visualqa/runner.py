@@ -25,6 +25,7 @@ from frontend_visualqa.schemas import (
     ClaimResult,
     ClaimStatus,
     ClaimTrace,
+    MANAGE_BROWSER_LOGIN_REQUIRES_URL,
     ManageBrowserInput,
     RunResult,
     ScreenshotResult,
@@ -497,7 +498,7 @@ class VisualQARunner:
                 return self._status_with_summary("Reported shared browser status.")
             if request.action == "login":
                 if request.url is None:
-                    raise ValueError("url is required when action is 'login'")
+                    raise ValueError(MANAGE_BROWSER_LOGIN_REQUIRES_URL)
                 await self._ensure_login_browser()
                 try:
                     session = await self.browser_manager.get_session(
