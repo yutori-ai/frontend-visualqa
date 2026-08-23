@@ -9,6 +9,7 @@ import logging
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from types import TracebackType
 from typing import Any
 
 from PIL import Image
@@ -594,5 +595,10 @@ class BrowserManager:
             await self.ensure_browser()
         return self
 
-    async def __aexit__(self, exc_type: type | None, exc: BaseException | None, traceback: Any) -> None:
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
         await self.close()
