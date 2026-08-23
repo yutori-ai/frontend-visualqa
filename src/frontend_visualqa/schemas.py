@@ -23,6 +23,9 @@ VerdictSource = Literal["json_schema", "force_stop"]
 DEFAULT_PERSISTENT_USER_DATA_DIR = Path("~/.cache/frontend-visualqa/browser-profile").expanduser()
 DEFAULT_NAVIGATION_TIMEOUT_MS = 20_000
 DEFAULT_SETTLE_DELAY_SECONDS = 1.0
+# Shared with runner.py's manage_browser_request, which re-raises this same message as a
+# defense-in-depth check for callers that bypass pydantic validation via model_construct().
+MANAGE_BROWSER_LOGIN_REQUIRES_URL = "url is required when action is 'login'"
 
 
 def validate_url(url: str) -> str:
@@ -306,5 +309,5 @@ class ManageBrowserInput(FrontendVisualQABaseModel):
     @model_validator(mode="after")
     def validate_login_inputs(self) -> "ManageBrowserInput":
         if self.action == "login" and self.url is None:
-            raise ValueError("url is required when action is 'login'")
+            raise ValueError(MANAGE_BROWSER_LOGIN_REQUIRES_URL)
         return self
