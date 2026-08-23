@@ -7,7 +7,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass, replace
-from typing import Any, TYPE_CHECKING, get_args
+from typing import TYPE_CHECKING, Any, get_args
 
 from frontend_visualqa.actions import (
     REDACTED_TYPE_TEXT,
