@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from yutori_navigator_overlay_runtime import PROTOCOL_VERSION, get_iife, verify_iife
@@ -131,7 +132,7 @@ class OverlayController:
         self._emergency_hidden = False
         self._effect_sequence = 0
         self._operation_lock = asyncio.Lock()
-        self._navigation_handler: Any | None = None
+        self._navigation_handler: Callable[[Page], None] | None = None
         self._navigation_tasks: set[asyncio.Task[None]] = set()
 
     def _reset_state(self) -> None:
@@ -337,7 +338,7 @@ class OverlayController:
             )
         self._sync_snapshot(evaluation["result"])
 
-    def _on_navigation(self, _frame: Any = None) -> None:
+    def _on_navigation(self, _page: Page | None = None) -> None:
         task = asyncio.create_task(self._restore_after_navigation())
         self._navigation_tasks.add(task)
         task.add_done_callback(self._navigation_tasks.discard)
