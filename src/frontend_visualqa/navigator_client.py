@@ -9,7 +9,7 @@ import time
 from typing import Any, Protocol
 
 import httpx
-from tenacity import AsyncRetrying, retry_if_exception, stop_after_attempt, wait_exponential
+from tenacity import AsyncRetrying, RetryCallState, retry_if_exception, stop_after_attempt, wait_exponential
 from yutori import AsyncYutoriClient
 from yutori.navigator import N1_5_MODEL, TOOL_SET_EXPANDED, estimate_messages_size_bytes, trim_images_to_fit
 
@@ -353,7 +353,7 @@ class NavigatorClient:
         """
         enable_http2_on_yutori_client(yclient, timeout_seconds=self.timeout_seconds)
 
-    def _log_retry(self, retry_state: Any) -> None:
+    def _log_retry(self, retry_state: RetryCallState) -> None:
         """Log retry timing before the next transient-error retry attempt."""
 
         logger.warning(
