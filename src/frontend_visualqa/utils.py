@@ -5,7 +5,10 @@ from __future__ import annotations
 import logging
 import time
 from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from playwright.async_api import Page
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +92,7 @@ async def safe_async_method_call(
 
 
 async def safe_page_evaluate(
-    page: Any,
+    page: Page,
     script: str,
     arg: object | None = None,
     *,
