@@ -47,7 +47,10 @@ from frontend_visualqa.tool_arguments import (
 from frontend_visualqa.utils import resolve_optional_method, safe_async_method_call, safe_method_call
 
 if TYPE_CHECKING:
+    from playwright.async_api import Page
+
     from frontend_visualqa.navigator_client import NavigatorClient
+    from frontend_visualqa.overlay import OverlayController
 
 
 NEGATIVE_CLAIM_PATTERN = re.compile(
@@ -121,7 +124,7 @@ def _resolve_navigation_timeout_ms(browser_manager: BrowserManager) -> int:
     return getattr(browser_manager, "navigation_timeout_ms", DEFAULT_NAVIGATION_TIMEOUT_MS)
 
 
-def _create_overlay_controller(page: Any) -> Any | None:
+def _create_overlay_controller(page: Page) -> OverlayController | None:
     try:
         from frontend_visualqa.overlay import OverlayController
     except Exception:
@@ -153,7 +156,7 @@ class ClaimVerifier:
             navigation_timeout_ms=_resolve_navigation_timeout_ms(browser_manager)
         )
         self._visualize = visualize
-        self._overlay: Any | None = None
+        self._overlay: OverlayController | None = None
         self._hook: VisualQAHookAdapter | None = None
         self._partial_progress: _VerificationProgress | None = None
 

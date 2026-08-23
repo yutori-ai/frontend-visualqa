@@ -2,19 +2,22 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from yutori.navigator import RunHooksBase, extract_text_content
 
 from frontend_visualqa.schemas import ClaimStatus, TraceEvent
 from frontend_visualqa.tool_arguments import tool_calls_from_message
 
+if TYPE_CHECKING:
+    from frontend_visualqa.overlay import OverlayController
+
 
 class VisualQAHookAdapter(RunHooksBase):
     """Bridge generic SDK lifecycle hooks to frontend-visualqa overlays and trace events."""
 
-    def __init__(self, overlay: Any | None) -> None:
-        self._overlay = overlay
+    def __init__(self, overlay: OverlayController | None) -> None:
+        self._overlay: OverlayController | None = overlay
         self.events: list[TraceEvent] = []
         self._current_turn_reasoning: str | None = None
 
