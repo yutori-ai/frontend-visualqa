@@ -12,7 +12,7 @@ import threading
 from collections.abc import AsyncIterator, Callable, Coroutine
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from pydantic import ValidationError
 
@@ -32,6 +32,9 @@ from frontend_visualqa.schemas import (
     validate_url,
 )
 from frontend_visualqa.text_utils import clip_text
+
+if TYPE_CHECKING:
+    from frontend_visualqa.runner import VisualQARunner
 
 logger = logging.getLogger(__name__)
 
@@ -601,7 +604,7 @@ async def _run_status() -> dict[str, Any]:
         return serialize_result(result)
 
 
-def _new_runner(*, browser_config: BrowserConfig | None = None, reporters: list[str] | None = None) -> Any:
+def _new_runner(*, browser_config: BrowserConfig | None = None, reporters: list[str] | None = None) -> VisualQARunner:
     from frontend_visualqa.runner import VisualQARunner
 
     return VisualQARunner(browser_config=browser_config, reporters=reporters)
@@ -610,7 +613,7 @@ def _new_runner(*, browser_config: BrowserConfig | None = None, reporters: list[
 @asynccontextmanager
 async def _runner_scope(
     *, browser_config: BrowserConfig | None = None, reporters: list[str] | None = None
-) -> AsyncIterator[Any]:
+) -> AsyncIterator[VisualQARunner]:
     runner = _new_runner(browser_config=browser_config, reporters=reporters)
     try:
         yield runner

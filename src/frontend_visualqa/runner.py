@@ -87,7 +87,7 @@ def _load_class(name: str) -> Any:
     return loaded
 
 
-def _resolve_default_visualize(claim_verifier: Any, fallback: bool) -> bool:
+def _resolve_default_visualize(claim_verifier: ClaimVerifier, fallback: bool) -> bool:
     """Read *claim_verifier*'s ``_visualize`` flag, falling back to *fallback* if absent.
 
     Shared by construction and ``_rebind_claim_verifier`` so the two places that
