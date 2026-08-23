@@ -9,7 +9,7 @@ import math
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from frontend_visualqa.browser import (
     BrowserSession,
