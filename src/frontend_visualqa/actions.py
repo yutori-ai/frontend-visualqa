@@ -282,6 +282,26 @@ def _is_coordinate_pair(coordinates: Any) -> bool:
         return False
 
 
+def _ref_result_coordinates(ref_result: dict[str, Any]) -> tuple[int, int] | None:
+    """Rounded viewport coordinates from a ``GET_ELEMENT_BY_REF_SCRIPT`` result.
+
+    Returns ``None`` when the ref lookup did not succeed or the coordinates it
+    reported are missing/malformed, so callers can fall through to their own
+    fallback (raw coordinates, an error, or skipping an overlay preview).
+    Shared by :meth:`ActionExecutor._resolve_coordinates` and the
+    ``set_element_value`` paste-preview path in
+    :meth:`ActionExecutor._execute_expanded_tool`, which previously each
+    hand-rolled the identical success-check / pair-validation / round-to-int
+    sequence over the same script's result payload.
+    """
+    if not ref_result.get("success"):
+        return None
+    coordinates = ref_result.get("coordinates")
+    if not _is_coordinate_pair(coordinates):
+        return None
+    return round(float(coordinates[0])), round(float(coordinates[1]))
+
+
 def render_action_trace(
     action_name: str,
     arguments: dict[str, Any],
@@ -658,12 +678,12 @@ class ActionExecutor:
             if self._overlay is not None and ref:
                 try:
                     ref_info = await evaluate_tool_script(page, GET_ELEMENT_BY_REF_SCRIPT, ref)
-                    coords = ref_info.get("coordinates") if ref_info.get("success") else None
-                    if _is_coordinate_pair(coords):
+                    coords = _ref_result_coordinates(ref_info)
+                    if coords is not None:
                         await self._best_effort_overlay_preview_action(
                             action_type="set_element_value",
-                            x=round(float(coords[0])),
-                            y=round(float(coords[1])),
+                            x=coords[0],
+                            y=coords[1],
                         )
                 except Exception:
                     logger.debug("paste-effect preview failed for ref %s", ref, exc_info=True)
@@ -725,10 +745,9 @@ class ActionExecutor:
                 result = await evaluate_tool_script(page, GET_ELEMENT_BY_REF_SCRIPT, ref)
             except Exception as exc:  # pragma: no cover - defensive around browser evaluate failures
                 result = {"success": False, "message": str(exc)}
-            if result.get("success"):
-                resolved_coordinates = result.get("coordinates")
-                if _is_coordinate_pair(resolved_coordinates):
-                    return round(float(resolved_coordinates[0])), round(float(resolved_coordinates[1]))
+            resolved_coordinates = _ref_result_coordinates(result)
+            if resolved_coordinates is not None:
+                return resolved_coordinates
             if not has_coordinates:
                 message = result.get("message", "Unknown error")
                 raise BrowserActionError(f"{action_name} ref resolution failed for {ref}: {message}")
