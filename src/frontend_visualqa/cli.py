@@ -35,6 +35,7 @@ from frontend_visualqa.text_utils import clip_text
 
 if TYPE_CHECKING:
     from frontend_visualqa.runner import VisualQARunner
+    from frontend_visualqa.schemas import ClaimResult
 
 logger = logging.getLogger(__name__)
 
@@ -427,7 +428,7 @@ async def _run_verify(args: argparse.Namespace) -> dict[str, Any]:
         def _progress_start(index: int, claim: str) -> None:
             print(f"[{index}/{total_claims}] Verifying: {_truncate_for_progress(claim)}", file=sys.stderr, flush=True)
 
-        def _progress_complete(index: int, claim: str, result: Any) -> None:
+        def _progress_complete(index: int, claim: str, result: ClaimResult) -> None:
             del claim
             message = f"[{index}/{total_claims}] {result.status}"
             if result.status != "passed" and result.finding:
