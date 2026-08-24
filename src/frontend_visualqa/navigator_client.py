@@ -69,7 +69,7 @@ def _schedule_close(client: Any, *, attr: str = "close") -> None:
         logger.debug("No running loop available to close swapped-out client")
 
 
-def enable_http2_on_yutori_client(yclient: Any, *, timeout_seconds: float) -> None:
+def enable_http2_on_yutori_client(yclient: AsyncYutoriClient, *, timeout_seconds: float) -> None:
     """Swap both httpx clients inside an ``AsyncYutoriClient`` for HTTP/2.
 
     Two distinct httpx clients live inside ``AsyncYutoriClient``:
@@ -101,7 +101,7 @@ def _http2_swap_guard(*, success_msg: str, warning_msg: str):  # type: ignore[re
         logger.warning(warning_msg, exc_info=True)
 
 
-def _swap_chat_openai_to_http2(yclient: Any, *, timeout_seconds: float) -> None:
+def _swap_chat_openai_to_http2(yclient: AsyncYutoriClient, *, timeout_seconds: float) -> None:
     with _http2_swap_guard(
         success_msg="Navigator HTTP/2 transport enabled (chat completions)",
         warning_msg="Could not enable HTTP/2 on chat namespace; chat completions will use HTTP/1.1",
@@ -124,7 +124,7 @@ def _swap_chat_openai_to_http2(yclient: Any, *, timeout_seconds: float) -> None:
         _schedule_close(old_oai)
 
 
-def _swap_yutori_httpx_to_http2(yclient: Any, *, timeout_seconds: float) -> None:
+def _swap_yutori_httpx_to_http2(yclient: AsyncYutoriClient, *, timeout_seconds: float) -> None:
     with _http2_swap_guard(
         success_msg="Navigator HTTP/2 transport enabled (yutori SDK client)",
         warning_msg="Could not enable HTTP/2 on yutori SDK client; usage/auth preflight will use HTTP/1.1",
@@ -346,7 +346,7 @@ class NavigatorClient:
         self._enable_http2(self._client)
         return self._client
 
-    def _enable_http2(self, yclient: Any) -> None:
+    def _enable_http2(self, yclient: AsyncYutoriClient) -> None:
         """Swap both httpx clients inside this client's ``AsyncYutoriClient``
         for HTTP/2 equivalents. See ``enable_http2_on_yutori_client`` for
         details — kept as an instance method so subclasses can override.
