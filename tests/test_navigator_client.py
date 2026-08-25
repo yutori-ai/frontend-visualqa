@@ -295,6 +295,34 @@ async def test_schedule_close_schedules_task_for_aclose_attr() -> None:
     assert closed == [True]
 
 
+@pytest.mark.asyncio
+async def test_schedule_close_holds_strong_reference_until_task_completes() -> None:
+    """Regression guard: a bare ``loop.create_task(...)`` with no retained reference is
+    only weakly held by the loop and can be garbage-collected mid-close, silently
+    dropping the underlying socket cleanup. ``_schedule_close`` must keep the task
+    alive in ``_pending_close_tasks`` until it finishes, then release it.
+    """
+    release = asyncio.Event()
+    closed = []
+
+    class SlowClosableClient:
+        async def close(self) -> None:
+            await release.wait()
+            closed.append(True)
+
+    module._schedule_close(SlowClosableClient())
+    await asyncio.sleep(0)  # let the task start and reach `await release.wait()`
+
+    assert len(module._pending_close_tasks) == 1
+    pending_task = next(iter(module._pending_close_tasks))
+
+    release.set()
+    await pending_task  # wait for the retained task itself, not a GC-prone proxy
+
+    assert closed == [True]
+    assert module._pending_close_tasks == set()
+
+
 def test_schedule_close_is_noop_when_close_method_missing() -> None:
     """No `close`/`aclose` attribute at all — resolve_optional_method returns None."""
     # Does not raise even with no running event loop.
