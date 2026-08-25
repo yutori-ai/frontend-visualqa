@@ -213,14 +213,7 @@ class VerifyVisualClaimsInput(FrontendVisualQABaseModel):
     def normalize_claim_navigation_hints(cls, value: list[str | None] | None) -> list[str | None] | None:
         if value is None:
             return None
-        normalized: list[str | None] = []
-        for hint in value:
-            if hint is None:
-                normalized.append(None)
-                continue
-            stripped = hint.strip()
-            normalized.append(stripped or None)
-        return normalized
+        return [None if hint is None else (hint.strip() or None) for hint in value]
 
     @model_validator(mode="after")
     def validate_claim_navigation_hint_alignment(self) -> "VerifyVisualClaimsInput":
