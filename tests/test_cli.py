@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from fakes import assert_claim_result_payload_shape, make_claim_result, new_runner_recorder, noop_sleep, simple_proof
+from fakes import assert_claim_result_payload_shape, make_claim_result, new_runner_recorder, simple_proof
 import frontend_visualqa.cli as cli
 from frontend_visualqa import __version__
 from frontend_visualqa.errors import ConfigurationError
@@ -624,7 +624,6 @@ async def test_run_login_opens_headed_persistent_browser_and_saves_profile(
     fake_stdin = SimpleNamespace(readline=lambda: "\n", isatty=lambda: True)
     monkeypatch.setattr(cli, "BrowserManager", _fake_browser_manager)
     monkeypatch.setattr(cli.sys, "stdin", fake_stdin)
-    monkeypatch.setattr(cli.asyncio, "sleep", noop_sleep)
 
     exit_code = await cli._run_login(SimpleNamespace(url="http://localhost:3000/login", user_data_dir="/tmp/profile"))
 
@@ -658,7 +657,6 @@ async def test_run_login_exits_cleanly_when_browser_window_closes_first(
     fake_stdin = SimpleNamespace(readline=lambda: "", isatty=lambda: True)
     monkeypatch.setattr(cli, "BrowserManager", _fake_browser_manager)
     monkeypatch.setattr(cli.sys, "stdin", fake_stdin)
-    monkeypatch.setattr(cli.asyncio, "sleep", noop_sleep)
 
     exit_code = await cli._run_login(SimpleNamespace(url="http://localhost:3000/login", user_data_dir="/tmp/profile"))
 
