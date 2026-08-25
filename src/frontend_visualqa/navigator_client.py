@@ -52,6 +52,15 @@ def _build_http2_client(timeout_seconds: float) -> httpx.AsyncClient:
     )
 
 
+# asyncio only holds a *weak* reference to a scheduled Task once it starts
+# awaiting (e.g. inside close()/aclose()); with no other strong reference the
+# task can be garbage-collected mid-close, silently dropping the socket/
+# connection cleanup this function exists to guarantee. Holding a strong ref
+# here — cleared via a completion callback — is the pattern the asyncio docs
+# recommend for fire-and-forget background tasks.
+_pending_close_tasks: set[asyncio.Task[Any]] = set()
+
+
 def _schedule_close(client: Any, *, attr: str = "close") -> None:
     """Best-effort async close of a swapped-out HTTP client.
 
@@ -64,9 +73,12 @@ def _schedule_close(client: Any, *, attr: str = "close") -> None:
     if coro_factory is None:
         return
     try:
-        asyncio.get_running_loop().create_task(coro_factory())
+        task = asyncio.get_running_loop().create_task(coro_factory())
     except RuntimeError:
         logger.debug("No running loop available to close swapped-out client")
+        return
+    _pending_close_tasks.add(task)
+    task.add_done_callback(_pending_close_tasks.discard)
 
 
 def enable_http2_on_yutori_client(yclient: AsyncYutoriClient, *, timeout_seconds: float) -> None:
