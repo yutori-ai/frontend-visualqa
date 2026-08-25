@@ -44,6 +44,13 @@ _runner_locks_by_loop: dict[int, asyncio.Lock] = {}
 _server_browser_config: BrowserConfig | None = None
 _config_frozen = False
 
+# asyncio only holds a *weak* reference to a scheduled Task; with no other
+# strong reference, a fire-and-forget create_task() can be garbage-collected
+# before it finishes closing the runner's browser session. Holding a strong
+# ref here — cleared via a completion callback — is the same pattern used by
+# navigator_client.py's _schedule_close for the identical hazard.
+_pending_close_tasks: set[asyncio.Task[None]] = set()
+
 
 def get_mcp_server() -> FastMCP:
     """Return the configured FastMCP server instance."""
@@ -140,7 +147,9 @@ def close_runners_sync() -> None:
         return
 
     if runners:
-        loop.create_task(_close_detached_runners(runners))
+        task = loop.create_task(_close_detached_runners(runners))
+        _pending_close_tasks.add(task)
+        task.add_done_callback(_pending_close_tasks.discard)
 
 
 @mcp.tool(
