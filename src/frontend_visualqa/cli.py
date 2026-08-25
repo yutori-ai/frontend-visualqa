@@ -563,18 +563,19 @@ async def _run_login(args: argparse.Namespace) -> int:
     manager = BrowserManager(config=_build_browser_config(args, force_mode=BrowserMode.persistent, force_headed=True))
     browser_closed = False
     manager_closed = False
-    done = threading.Event()
+    loop = asyncio.get_running_loop()
+    done = asyncio.Event()
 
     def _mark_browser_closed(*_: object) -> None:
         nonlocal browser_closed
         browser_closed = True
-        done.set()
+        loop.call_soon_threadsafe(done.set)
 
     def _read_stdin() -> None:
         try:
             sys.stdin.readline()
         finally:
-            done.set()
+            loop.call_soon_threadsafe(done.set)
 
     session = None
     try:
@@ -584,10 +585,14 @@ async def _run_login(args: argparse.Namespace) -> int:
         print("Browser is open. Log in, then press Enter here to close and save the session.", file=sys.stderr)
         reader = threading.Thread(target=_read_stdin, daemon=True)
         reader.start()
-        # threading.Event.wait() blocks its worker thread until either
-        # _mark_browser_closed or _read_stdin calls done.set() — reacts
-        # immediately instead of polling on a fixed interval.
-        await asyncio.to_thread(done.wait)
+        # An asyncio.Event (set via call_soon_threadsafe from the background
+        # stdin-reader thread, or directly from the browser's own "close"
+        # callback) reacts immediately instead of polling on a fixed
+        # interval, and — unlike parking a thread in the default executor on
+        # a threading.Event.wait() — stays cleanly cancellable: no orphaned
+        # worker thread can block interpreter shutdown if this coroutine is
+        # ever cancelled before done is set.
+        await done.wait()
 
         await manager.close()  # stops Playwright subprocess, even if the window already closed itself
         manager_closed = True
