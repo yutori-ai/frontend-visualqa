@@ -71,7 +71,7 @@ _DEFERRED_IMPORTS: dict[str, str] = {
 }
 
 
-def _load_class(name: str) -> Any:
+def _load_class(name: str) -> type[NavigatorClient] | type[ClaimVerifier]:
     """Return ``frontend_visualqa.<module>.<name>``, importing on first use.
 
     Caches the resolved class as a module-level attribute so that
