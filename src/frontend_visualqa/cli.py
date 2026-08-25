@@ -584,8 +584,10 @@ async def _run_login(args: argparse.Namespace) -> int:
         print("Browser is open. Log in, then press Enter here to close and save the session.", file=sys.stderr)
         reader = threading.Thread(target=_read_stdin, daemon=True)
         reader.start()
-        while not done.is_set():
-            await asyncio.sleep(0.2)
+        # threading.Event.wait() blocks its worker thread until either
+        # _mark_browser_closed or _read_stdin calls done.set() — reacts
+        # immediately instead of polling on a fixed interval.
+        await asyncio.to_thread(done.wait)
 
         await manager.close()  # stops Playwright subprocess, even if the window already closed itself
         manager_closed = True
