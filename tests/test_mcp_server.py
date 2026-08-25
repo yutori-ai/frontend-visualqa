@@ -364,6 +364,43 @@ async def test_close_runners_sync_resets_state_immediately_inside_running_loop(
     assert fake_runner.close_calls == 1
 
 
+@pytest.mark.asyncio
+async def test_close_runners_sync_holds_strong_reference_until_task_completes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression guard: a bare ``loop.create_task(...)`` with no retained reference is
+    only weakly held by the loop and can be garbage-collected before the runner
+    finishes closing, silently dropping browser cleanup. ``close_runners_sync`` must
+    keep the task alive in ``_pending_close_tasks`` until it finishes, then release it
+    (mirroring ``navigator_client._schedule_close``'s fix for the identical hazard).
+    """
+    module = _import_mcp_server_module()
+    release = asyncio.Event()
+    closed: list[bool] = []
+
+    class SlowClosingRunner:
+        async def close(self) -> None:
+            await release.wait()
+            closed.append(True)
+
+    _reset_server_module_state(module)
+    monkeypatch.setitem(module._runners_by_loop, module._loop_key(), SlowClosingRunner())
+    module._server_browser_config = _persistent_browser_config()
+    module._config_frozen = True
+
+    module.close_runners_sync()
+    await asyncio.sleep(0)  # let the task start and reach `await release.wait()`
+
+    assert len(module._pending_close_tasks) == 1
+    pending_task = next(iter(module._pending_close_tasks))
+
+    release.set()
+    await pending_task  # wait for the retained task itself, not a GC-prone proxy
+
+    assert closed == [True]
+    assert module._pending_close_tasks == set()
+
+
 def test_run_stdio_server_runs_then_closes_runners() -> None:
     module = _import_mcp_server_module()
     calls: list[str] = []
