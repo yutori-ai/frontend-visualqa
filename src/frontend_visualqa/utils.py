@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from collections.abc import Callable
@@ -11,6 +12,26 @@ if TYPE_CHECKING:
     from playwright.async_api import Page
 
 logger = logging.getLogger(__name__)
+
+
+def retain_background_task(pending: set[asyncio.Task[Any]], task: asyncio.Task[Any]) -> asyncio.Task[Any]:
+    """Hold a strong reference to a fire-and-forget background *task* until it completes.
+
+    asyncio only holds a *weak* reference to a scheduled ``Task`` once it starts
+    awaiting; with no other strong reference the task can be garbage-collected
+    mid-execution, silently dropping whatever cleanup or work it was scheduled
+    to do. Adds *task* to *pending* and removes it via a completion callback,
+    so *pending* must be a set that outlives this call (module- or
+    instance-level). Returns *task* so callers can chain further callbacks
+    onto it. Centralizes the identical add-then-discard-on-completion pattern
+    independently duplicated in ``navigator_client.py``'s ``_schedule_close``
+    and ``mcp_server.py``'s ``close_runners_sync`` (both guarding the same
+    fire-and-forget-task GC hazard), and also used by ``overlay.py``'s
+    ``_on_navigation``.
+    """
+    pending.add(task)
+    task.add_done_callback(pending.discard)
+    return task
 
 
 def elapsed_ms(start: float) -> float:
