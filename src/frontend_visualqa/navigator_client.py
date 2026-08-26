@@ -14,7 +14,7 @@ from yutori import AsyncYutoriClient
 from yutori.navigator import N1_5_MODEL, TOOL_SET_EXPANDED, estimate_messages_size_bytes, trim_images_to_fit
 
 from frontend_visualqa.errors import NavigatorClientError, NavigatorRequestTimeout
-from frontend_visualqa.utils import elapsed_ms, resolve_optional_method
+from frontend_visualqa.utils import elapsed_ms, resolve_optional_method, retain_background_task
 
 
 logger = logging.getLogger(__name__)
@@ -52,12 +52,9 @@ def _build_http2_client(timeout_seconds: float) -> httpx.AsyncClient:
     )
 
 
-# asyncio only holds a *weak* reference to a scheduled Task once it starts
-# awaiting (e.g. inside close()/aclose()); with no other strong reference the
-# task can be garbage-collected mid-close, silently dropping the socket/
-# connection cleanup this function exists to guarantee. Holding a strong ref
-# here — cleared via a completion callback — is the pattern the asyncio docs
-# recommend for fire-and-forget background tasks.
+# Without a retained reference, asyncio can garbage-collect this fire-and-forget
+# task mid-close, silently dropping the socket/connection cleanup this function
+# exists to guarantee. See utils.retain_background_task for why this set exists.
 _pending_close_tasks: set[asyncio.Task[Any]] = set()
 
 
@@ -77,8 +74,7 @@ def _schedule_close(client: Any, *, attr: str = "close") -> None:
     except RuntimeError:
         logger.debug("No running loop available to close swapped-out client")
         return
-    _pending_close_tasks.add(task)
-    task.add_done_callback(_pending_close_tasks.discard)
+    retain_background_task(_pending_close_tasks, task)
 
 
 def enable_http2_on_yutori_client(yclient: AsyncYutoriClient, *, timeout_seconds: float) -> None:

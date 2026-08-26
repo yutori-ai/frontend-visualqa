@@ -18,7 +18,7 @@ from frontend_visualqa.schemas import (
     _pydantic_field_default,
     validate_url,
 )
-from frontend_visualqa.utils import resolve_optional_method
+from frontend_visualqa.utils import resolve_optional_method, retain_background_task
 
 if TYPE_CHECKING:
     from frontend_visualqa.runner import VisualQARunner
@@ -44,11 +44,9 @@ _runner_locks_by_loop: dict[int, asyncio.Lock] = {}
 _server_browser_config: BrowserConfig | None = None
 _config_frozen = False
 
-# asyncio only holds a *weak* reference to a scheduled Task; with no other
-# strong reference, a fire-and-forget create_task() can be garbage-collected
-# before it finishes closing the runner's browser session. Holding a strong
-# ref here — cleared via a completion callback — is the same pattern used by
-# navigator_client.py's _schedule_close for the identical hazard.
+# Without a retained reference, asyncio can garbage-collect this fire-and-forget
+# task before it finishes closing the runner's browser session. See
+# utils.retain_background_task for why this set exists.
 _pending_close_tasks: set[asyncio.Task[None]] = set()
 
 
@@ -148,8 +146,7 @@ def close_runners_sync() -> None:
 
     if runners:
         task = loop.create_task(_close_detached_runners(runners))
-        _pending_close_tasks.add(task)
-        task.add_done_callback(_pending_close_tasks.discard)
+        retain_background_task(_pending_close_tasks, task)
 
 
 @mcp.tool(

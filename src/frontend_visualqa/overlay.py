@@ -13,7 +13,7 @@ from yutori_navigator_overlay_runtime import PROTOCOL_VERSION, get_iife, verify_
 from frontend_visualqa.actions import CLICK_ACTIONS
 from frontend_visualqa.schemas import ViewportConfig, _pydantic_field_default
 from frontend_visualqa.text_utils import clip_text_preserving_lines
-from frontend_visualqa.utils import now_ms, safe_page_evaluate
+from frontend_visualqa.utils import now_ms, retain_background_task, safe_page_evaluate
 
 if TYPE_CHECKING:
     from playwright.async_api import Page
@@ -339,9 +339,7 @@ class OverlayController:
         self._sync_snapshot(evaluation["result"])
 
     def _on_navigation(self, _page: Page | None = None) -> None:
-        task = asyncio.create_task(self._restore_after_navigation())
-        self._navigation_tasks.add(task)
-        task.add_done_callback(self._navigation_tasks.discard)
+        task = retain_background_task(self._navigation_tasks, asyncio.create_task(self._restore_after_navigation()))
         task.add_done_callback(self._log_navigation_task_result)
 
     @staticmethod

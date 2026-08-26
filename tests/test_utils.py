@@ -1,5 +1,6 @@
 """Tests for the shared safe_method_call / safe_async_method_call / safe_callback_call utilities."""
 
+import asyncio
 import inspect
 import logging
 import time
@@ -10,6 +11,7 @@ from frontend_visualqa.text_utils import clip_text, clip_text_preserving_lines, 
 from frontend_visualqa.utils import (
     elapsed_ms,
     resolve_optional_method,
+    retain_background_task,
     safe_async_method_call,
     safe_callback_call,
     safe_method_call,
@@ -38,6 +40,39 @@ def test_elapsed_ms_reflects_time_already_passed_before_start_was_captured() -> 
     start = time.perf_counter() - 0.5
 
     assert elapsed_ms(start) == pytest.approx(500.0, abs=50.0)
+
+
+async def test_retain_background_task_holds_reference_until_completion() -> None:
+    pending: set[asyncio.Task] = set()
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def work() -> None:
+        started.set()
+        await release.wait()
+
+    task = retain_background_task(pending, asyncio.create_task(work()))
+
+    await started.wait()
+    assert pending == {task}
+
+    release.set()
+    await task
+
+    assert pending == set()
+
+
+async def test_retain_background_task_returns_the_same_task() -> None:
+    pending: set[asyncio.Task] = set()
+
+    async def noop() -> None:
+        return None
+
+    created = asyncio.create_task(noop())
+    returned = retain_background_task(pending, created)
+
+    assert returned is created
+    await created
 
 
 def test_resolve_optional_method_returns_none_for_none_target() -> None:
