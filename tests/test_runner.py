@@ -226,6 +226,12 @@ class FakeClaimVerifier(_CallRecordingVerifier):
         return self.results.pop(0)
 
 
+async def _skip_preflight(url: str) -> None:
+    """No-op ``_preflight_url`` replacement for tests that don't want the real HTTP HEAD probe."""
+    del url
+    return None
+
+
 def _build_runner(
     module: Any,
     tmp_path: Path,
@@ -262,10 +268,6 @@ def _build_runner(
     if hasattr(verifier, "browser_manager"):
         verifier.browser_manager = browser
 
-    async def _skip_preflight(url: str) -> None:
-        del url
-        return None
-
     setattr(runner, "_preflight_url", _skip_preflight)
 
     return runner, browser, verifier
@@ -292,10 +294,6 @@ def _build_visualize_override_runner(
         browser_config=BrowserConfig(visualize=False),
         navigator_client=FakeNavigatorClient([]),
     )
-
-    async def _skip_preflight(url: str) -> None:
-        del url
-        return None
 
     runner._preflight_url = _skip_preflight
     return runner
