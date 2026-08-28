@@ -170,7 +170,7 @@ def _parse_navigation_hint(stripped: str) -> str | None:
     if match is None:
         return None
     content = match.group(1).strip()
-    if not content.startswith("navigation_hint:"):
+    value = content.removeprefix("navigation_hint:")
+    if value == content:
         return None
-    value = content[len("navigation_hint:") :].strip()
-    return value or None
+    return value.strip() or None
