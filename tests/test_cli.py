@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 import pytest
 
@@ -139,6 +139,28 @@ class ClosingFakeBrowserManager(FakeBrowserManager):
         final_url = await super().goto(session, url)
         session.context.events["close"]()
         return final_url
+
+
+_BrowserManagerT = TypeVar("_BrowserManagerT", bound=FakeBrowserManager)
+
+
+def _install_fake_browser_manager(
+    monkeypatch: pytest.MonkeyPatch, manager_cls: type[_BrowserManagerT]
+) -> list[_BrowserManagerT]:
+    """Patch ``cli.BrowserManager`` to build *manager_cls* instances, recording each one.
+
+    Shared by the ``_run_login`` tests, which differ only in which
+    ``FakeBrowserManager`` subclass they exercise.
+    """
+    created_managers: list[_BrowserManagerT] = []
+
+    def _fake_browser_manager(*, config: BrowserConfig) -> _BrowserManagerT:
+        manager = manager_cls(config=config)
+        created_managers.append(manager)
+        return manager
+
+    monkeypatch.setattr(cli, "BrowserManager", _fake_browser_manager)
+    return created_managers
 
 
 async def _noop_preflight_verify_auth() -> None:
@@ -614,15 +636,9 @@ async def test_run_login_opens_headed_persistent_browser_and_saves_profile(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    created_managers: list[FakeBrowserManager] = []
-
-    def _fake_browser_manager(*, config: BrowserConfig) -> FakeBrowserManager:
-        manager = FakeBrowserManager(config=config)
-        created_managers.append(manager)
-        return manager
+    created_managers = _install_fake_browser_manager(monkeypatch, FakeBrowserManager)
 
     fake_stdin = SimpleNamespace(readline=lambda: "\n", isatty=lambda: True)
-    monkeypatch.setattr(cli, "BrowserManager", _fake_browser_manager)
     monkeypatch.setattr(cli.sys, "stdin", fake_stdin)
 
     exit_code = await cli._run_login(SimpleNamespace(url="http://localhost:3000/login", user_data_dir="/tmp/profile"))
@@ -647,15 +663,9 @@ async def test_run_login_exits_cleanly_when_browser_window_closes_first(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    created_managers: list[ClosingFakeBrowserManager] = []
-
-    def _fake_browser_manager(*, config: BrowserConfig) -> ClosingFakeBrowserManager:
-        manager = ClosingFakeBrowserManager(config=config)
-        created_managers.append(manager)
-        return manager
+    created_managers = _install_fake_browser_manager(monkeypatch, ClosingFakeBrowserManager)
 
     fake_stdin = SimpleNamespace(readline=lambda: "", isatty=lambda: True)
-    monkeypatch.setattr(cli, "BrowserManager", _fake_browser_manager)
     monkeypatch.setattr(cli.sys, "stdin", fake_stdin)
 
     exit_code = await cli._run_login(SimpleNamespace(url="http://localhost:3000/login", user_data_dir="/tmp/profile"))
