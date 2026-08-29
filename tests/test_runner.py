@@ -232,6 +232,22 @@ async def _skip_preflight(url: str) -> None:
     return None
 
 
+def _runner_aliased_attrs(browser: FakeBrowserManager, verifier: Any, artifacts: FakeArtifactManager) -> dict[str, Any]:
+    """Shared alias-attribute map for ``instantiate_with_aliased_attrs(VisualQARunner, ...)``.
+
+    Covers both the current attribute names and their legacy aliases, matching
+    whichever constructor signature the module under test still exposes.
+    """
+    return {
+        "browser_manager": browser,
+        "browser": browser,
+        "claim_verifier": verifier,
+        "verifier": verifier,
+        "artifact_manager": artifacts,
+        "artifacts": artifacts,
+    }
+
+
 def _build_runner(
     module: Any,
     tmp_path: Path,
@@ -254,14 +270,7 @@ def _build_runner(
 
     runner = instantiate_with_aliased_attrs(
         module.VisualQARunner,
-        {
-            "browser_manager": browser,
-            "browser": browser,
-            "claim_verifier": verifier,
-            "verifier": verifier,
-            "artifact_manager": artifacts,
-            "artifacts": artifacts,
-        },
+        _runner_aliased_attrs(browser, verifier, artifacts),
         reporters=reporters,
     )
 
@@ -283,14 +292,7 @@ def _build_visualize_override_runner(
     skipped preflight check, for tests exercising per-call visualize overrides."""
     runner = instantiate_with_aliased_attrs(
         module.VisualQARunner,
-        {
-            "browser_manager": browser,
-            "browser": browser,
-            "claim_verifier": verifier,
-            "verifier": verifier,
-            "artifact_manager": artifacts,
-            "artifacts": artifacts,
-        },
+        _runner_aliased_attrs(browser, verifier, artifacts),
         browser_config=BrowserConfig(visualize=False),
         navigator_client=FakeNavigatorClient([]),
     )
