@@ -292,8 +292,7 @@ def _normalize_label_for_match(value: str) -> str:
     for quote in ("'", '"', "‘", "’", "“", "”"):
         text = text.replace(quote, "")
     for suffix in (" dropdown", " menu", " icon", " button"):
-        if text.endswith(suffix):
-            text = text[: -len(suffix)]
+        text = text.removesuffix(suffix)
     text = "".join(ch for ch in text if unicodedata.category(ch)[0] not in ("S",) and ch not in "▼▶▾▸◀◂✕×›‹«»")
     return collapse_whitespace(text)
 
