@@ -9,7 +9,7 @@ import time
 from collections import Counter
 from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, get_args
 
 import httpx
 
@@ -60,6 +60,18 @@ _TIMEOUT_FINDING_TEMPLATES: dict[_TimeoutScope, tuple[str, str]] = {
         "Run timed out after {seconds} before this claim could finish.",
     ),
 }
+
+# Every non-``passed`` ClaimStatus, in Literal declaration order, paired with the
+# label it gets in a run summary ("not_testable" -> "not testable"). Derived from
+# the Literal via ``get_args`` — the same pattern already used by
+# ``prompts._verdict_json_schema``, ``mcp_server._BROWSER_ACTIONS``, and
+# ``claim_verifier``'s VERDICT_SOURCE_* unpacking — rather than hand-listing the
+# statuses in ``_summarize_results``, so a newly added status is counted in the
+# summary automatically instead of being silently dropped. ``passed`` is excluded
+# because it is already reported by the leading "N/M claims passed." fraction.
+_SUMMARY_STATUS_LABELS: tuple[tuple[ClaimStatus, str], ...] = tuple(
+    (status, status.replace("_", " ")) for status in get_args(ClaimStatus) if status != "passed"
+)
 
 
 # Map deferred class name -> source module. The imports are deferred to
@@ -740,12 +752,7 @@ class VisualQARunner:
     def _summarize_results(results: list[ClaimResult]) -> str:
         counts: Counter[ClaimStatus] = Counter(result.status for result in results)
         parts = [f"{counts['passed']}/{len(results)} claims passed."]
-        if counts["failed"]:
-            parts.append(f"{counts['failed']} failed.")
-        if counts["inconclusive"]:
-            parts.append(f"{counts['inconclusive']} inconclusive.")
-        if counts["not_testable"]:
-            parts.append(f"{counts['not_testable']} not testable.")
+        parts.extend(f"{counts[status]} {label}." for status, label in _SUMMARY_STATUS_LABELS if counts[status])
         return " ".join(parts)
 
     def _finalize_not_testable_run(
