@@ -6,7 +6,7 @@ import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, get_args
 
 import httpx
 import pytest
@@ -31,6 +31,7 @@ from frontend_visualqa.schemas import (
     BrowserMode,
     BrowserStatusResult,
     ClaimResult,
+    ClaimStatus,
     ManageBrowserInput,
     VerifyVisualClaimsInput,
     ViewportConfig,
@@ -1645,6 +1646,48 @@ async def test_runner_preserves_partial_claim_result_when_run_timeout_interrupts
         ("start", 2, "Claim two", None),
         ("complete", 2, "Claim two", "inconclusive"),
     ]
+
+
+def test_summarize_results_counts_every_non_passed_claim_status(module: Any) -> None:
+    """Every non-``passed`` ClaimStatus must get its own count in the run summary.
+
+    ``_summarize_results`` derives its status/label pairs from the ``ClaimStatus``
+    Literal instead of hand-listing them, so adding a status to the Literal without
+    teaching the summary about it can no longer silently drop it from the count line.
+    """
+    viewport = ViewportConfig()
+    non_passed_statuses = [status for status in get_args(ClaimStatus) if status != "passed"]
+    results = [
+        make_claim_result(
+            claim=f"Claim {status}",
+            status=status,
+            finding=f"Finding for {status}.",
+            url="http://fixture.local/page",
+            viewport=viewport,
+        )
+        for status in ["passed", *non_passed_statuses]
+    ]
+
+    summary = module.VisualQARunner._summarize_results(results)
+
+    assert summary.startswith(f"1/{len(results)} claims passed.")
+    for status in non_passed_statuses:
+        assert f"1 {status.replace('_', ' ')}." in summary
+
+
+def test_summarize_results_omits_statuses_with_no_claims(module: Any) -> None:
+    viewport = ViewportConfig()
+    results = [
+        make_claim_result(
+            claim="Claim one",
+            status="failed",
+            finding="Finding.",
+            url="http://fixture.local/page",
+            viewport=viewport,
+        )
+    ]
+
+    assert module.VisualQARunner._summarize_results(results) == "0/1 claims passed. 1 failed."
 
 
 def test_build_not_testable_run_uses_aggregate_summary(module: Any) -> None:
