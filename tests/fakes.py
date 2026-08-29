@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import importlib
 import inspect
 import json
@@ -71,6 +72,30 @@ async def noop_sleep(*_args: Any, **_kwargs: Any) -> None:
     delegate to now.
     """
     return None
+
+
+async def assert_pending_close_task_runs_to_completion(
+    module: ModuleType, release: asyncio.Event, closed: list[bool]
+) -> None:
+    """Shared regression-guard tail: a bare ``loop.create_task(...)`` with no retained
+    reference is only weakly held by the loop and can be garbage-collected before it
+    finishes, silently dropping cleanup. This asserts *module* retains the task in
+    ``_pending_close_tasks`` until it completes, then releases it and confirms cleanup ran.
+
+    ``test_mcp_server.py``'s ``close_runners_sync`` test and ``test_navigator_client.py``'s
+    ``_schedule_close`` test each ended with an identical block asserting this same
+    invariant against their own module. This is the shared version they delegate to now.
+    """
+    await asyncio.sleep(0)  # let the task start and reach `await release.wait()`
+
+    assert len(module._pending_close_tasks) == 1
+    pending_task = next(iter(module._pending_close_tasks))
+
+    release.set()
+    await pending_task  # wait for the retained task itself, not a GC-prone proxy
+
+    assert closed == [True]
+    assert module._pending_close_tasks == set()
 
 
 def import_or_skip(module_path: str) -> ModuleType:

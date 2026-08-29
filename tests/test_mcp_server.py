@@ -8,7 +8,12 @@ from typing import Any
 import pytest
 
 import frontend_visualqa.runner as runner_module
-from fakes import assert_claim_result_payload_shape, import_or_skip, make_claim_result
+from fakes import (
+    assert_claim_result_payload_shape,
+    assert_pending_close_task_runs_to_completion,
+    import_or_skip,
+    make_claim_result,
+)
 from frontend_visualqa import __version__
 from frontend_visualqa.schemas import (
     BrowserConfig,
@@ -389,16 +394,7 @@ async def test_close_runners_sync_holds_strong_reference_until_task_completes(
     module._config_frozen = True
 
     module.close_runners_sync()
-    await asyncio.sleep(0)  # let the task start and reach `await release.wait()`
-
-    assert len(module._pending_close_tasks) == 1
-    pending_task = next(iter(module._pending_close_tasks))
-
-    release.set()
-    await pending_task  # wait for the retained task itself, not a GC-prone proxy
-
-    assert closed == [True]
-    assert module._pending_close_tasks == set()
+    await assert_pending_close_task_runs_to_completion(module, release, closed)
 
 
 def test_run_stdio_server_runs_then_closes_runners() -> None:

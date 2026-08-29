@@ -7,6 +7,7 @@ from typing import Any
 import httpx
 import pytest
 
+from fakes import assert_pending_close_task_runs_to_completion
 from frontend_visualqa.errors import NavigatorClientError, NavigatorRequestTimeout
 
 try:
@@ -311,16 +312,7 @@ async def test_schedule_close_holds_strong_reference_until_task_completes() -> N
             closed.append(True)
 
     module._schedule_close(SlowClosableClient())
-    await asyncio.sleep(0)  # let the task start and reach `await release.wait()`
-
-    assert len(module._pending_close_tasks) == 1
-    pending_task = next(iter(module._pending_close_tasks))
-
-    release.set()
-    await pending_task  # wait for the retained task itself, not a GC-prone proxy
-
-    assert closed == [True]
-    assert module._pending_close_tasks == set()
+    await assert_pending_close_task_runs_to_completion(module, release, closed)
 
 
 def test_schedule_close_is_noop_when_close_method_missing() -> None:
