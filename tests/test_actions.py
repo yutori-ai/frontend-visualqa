@@ -230,6 +230,26 @@ def _make_overlay_enabled_page(call_order: list[tuple[Any, ...]]) -> FakePage:
     return page
 
 
+def _build_overlay_call_order_fixtures(
+    module: Any,
+) -> tuple[list[tuple[Any, ...]], FakePage, MagicMock, Any, ViewportConfig]:
+    """Build the shared overlay call-order arrange block.
+
+    6 overlay-preview tests each repeated this identical arrange block: a call-order list, an
+    overlay-enabled ``FakePage`` recording into it, a bare ``MagicMock`` overlay double, and
+    the overlay-wired executor/viewport pair from :func:`_build_overlay_action_fixtures`. They
+    differ only in which overlay coroutines (``preview_action`` / ``set_status``) and page mouse
+    methods they wire up afterwards, so this helper stops at the common part. Wiring those side
+    effects after the fact is equivalent to wiring them before: the executor holds a reference
+    to this same overlay object rather than a copy of it.
+    """
+    call_order: list[tuple[Any, ...]] = []
+    page = _make_overlay_enabled_page(call_order)
+    overlay = MagicMock()
+    executor, viewport = _build_overlay_action_fixtures(module, overlay)
+    return call_order, page, overlay, executor, viewport
+
+
 def _build_move_down_up_overlay_fixtures(
     module: Any,
 ) -> tuple[list[tuple[Any, ...]], FakePage, MagicMock, Any, ViewportConfig]:
@@ -240,8 +260,7 @@ def _build_move_down_up_overlay_fixtures(
     whose preview_action does the same, and the overlay-wired executor/viewport pair. This is
     the shared helper they delegate to now.
     """
-    call_order: list[tuple[Any, ...]] = []
-    page = _make_overlay_enabled_page(call_order)
+    call_order, page, overlay, executor, viewport = _build_overlay_call_order_fixtures(module)
 
     async def _move(x: int, y: int, *, steps: int | None = None) -> None:
         call_order.append(("move", x, y))
@@ -256,14 +275,10 @@ def _build_move_down_up_overlay_fixtures(
     page.mouse.down = AsyncMock(side_effect=_down)
     page.mouse.up = AsyncMock(side_effect=_up)
 
-    overlay = MagicMock()
-
     async def _preview_action(action_type: str, **kwargs: Any) -> None:
         call_order.append(("preview_action", action_type, kwargs))
 
     overlay.preview_action = AsyncMock(side_effect=_preview_action)
-
-    executor, viewport = _build_overlay_action_fixtures(module, overlay)
     return call_order, page, overlay, executor, viewport
 
 
@@ -392,9 +407,7 @@ async def test_execute_action_supports_hover_drag_and_multi_click_variants() -> 
 @pytest.mark.asyncio
 async def test_execute_action_left_click_previews_before_dispatch_and_waits_for_cursor_transition() -> None:
     module = _import_actions_module()
-    call_order: list[tuple[Any, ...]] = []
-    page = _make_overlay_enabled_page(call_order)
-    overlay = MagicMock()
+    call_order, page, overlay, executor, viewport = _build_overlay_call_order_fixtures(module)
 
     preview_started = asyncio.Event()
     release_preview = asyncio.Event()
@@ -407,7 +420,6 @@ async def test_execute_action_left_click_previews_before_dispatch_and_waits_for_
 
     overlay.preview_action = AsyncMock(side_effect=_preview_action)
 
-    executor, viewport = _build_overlay_action_fixtures(module, overlay)
     task = asyncio.create_task(
         _call_execute_action(executor, page, "left_click", {"coordinates": [500, 250]}, viewport)
     )
@@ -436,16 +448,13 @@ async def test_execute_action_left_click_previews_before_dispatch_and_waits_for_
 @pytest.mark.asyncio
 async def test_execute_action_navigation_shows_status_before_dispatch() -> None:
     module = _import_actions_module()
-    call_order: list[tuple[Any, ...]] = []
-    page = _make_overlay_enabled_page(call_order)
-    overlay = MagicMock()
+    call_order, page, overlay, executor, viewport = _build_overlay_call_order_fixtures(module)
 
     async def _set_status(label: str) -> None:
         call_order.append(("set_status", label))
 
     overlay.set_status = AsyncMock(side_effect=_set_status)
 
-    executor, viewport = _build_overlay_action_fixtures(module, overlay)
     trace = await _call_execute_action(
         executor,
         page,
@@ -463,9 +472,7 @@ async def test_execute_action_navigation_shows_status_before_dispatch() -> None:
 @pytest.mark.asyncio
 async def test_execute_action_semantic_key_shortcut_uses_single_overlay_footer() -> None:
     module = _import_actions_module()
-    call_order: list[tuple[Any, ...]] = []
-    page = _make_overlay_enabled_page(call_order)
-    overlay = MagicMock()
+    call_order, page, overlay, executor, viewport = _build_overlay_call_order_fixtures(module)
 
     status_calls: list[str] = []
 
@@ -475,7 +482,6 @@ async def test_execute_action_semantic_key_shortcut_uses_single_overlay_footer()
 
     overlay.set_status = AsyncMock(side_effect=_set_status)
 
-    executor, viewport = _build_overlay_action_fixtures(module, overlay)
     trace = await _call_execute_action(executor, page, "key_press", {"key_comb": "F5"}, viewport)
 
     assert trace == "key_press(F5)"
@@ -487,22 +493,18 @@ async def test_execute_action_semantic_key_shortcut_uses_single_overlay_footer()
 @pytest.mark.asyncio
 async def test_execute_action_hover_previews_before_mouse_move() -> None:
     module = _import_actions_module()
-    call_order: list[tuple[Any, ...]] = []
-    page = _make_overlay_enabled_page(call_order)
+    call_order, page, overlay, executor, viewport = _build_overlay_call_order_fixtures(module)
 
     async def _move(x: int, y: int, *, steps: int | None = None) -> None:
         call_order.append(("move", x, y))
 
     page.mouse.move = AsyncMock(side_effect=_move)
 
-    overlay = MagicMock()
-
     async def _preview_action(action_type: str, **kwargs: Any) -> None:
         call_order.append(("preview_action", action_type, kwargs))
 
     overlay.preview_action = AsyncMock(side_effect=_preview_action)
 
-    executor, viewport = _build_overlay_action_fixtures(module, overlay)
     trace = await _call_execute_action(executor, page, "hover", {"coordinates": [250, 500]}, viewport)
 
     assert trace == "hover([320, 400])"
@@ -538,21 +540,13 @@ async def test_execute_action_key_press_shows_copy_paste_glyph_only_for_bare_cho
     module = _import_actions_module()
 
     async def _preview_types(key_comb: str) -> list[str]:
-        call_order: list[tuple[Any, ...]] = []
-        page = _make_overlay_enabled_page(call_order)
-        overlay = MagicMock()
+        call_order, page, overlay, executor, viewport = _build_overlay_call_order_fixtures(module)
 
         async def _preview_action(action_type: str, **kwargs: Any) -> None:
             call_order.append(("preview_action", action_type))
 
         overlay.preview_action = AsyncMock(side_effect=_preview_action)
-        executor = instantiate_with_supported_kwargs(
-            module.ActionExecutor,
-            navigation_timeout_ms=1_000,
-            settle_delay_seconds=0,
-        )
-        executor.overlay = overlay
-        await _call_execute_action(executor, page, "key_press", {"key_comb": key_comb}, ViewportConfig())
+        await _call_execute_action(executor, page, "key_press", {"key_comb": key_comb}, viewport)
         return [entry[1] for entry in call_order if entry[0] == "preview_action"]
 
     # A bare Ctrl/Cmd+C or +V shows the clipboard glyph.
