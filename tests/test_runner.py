@@ -187,7 +187,7 @@ def _capturing_browser_manager(captured: dict[str, Any], *, key: str) -> type[Fa
     class _CapturingBrowserManager(FakeBrowserManager):
         def __init__(self, *, config: BrowserConfig | None = None, **kwargs: Any) -> None:
             del kwargs
-            super().__init__(ViewportConfig())
+            super().__init__(ViewportConfig(), config=config)
             captured[key] = config
 
     return _CapturingBrowserManager
