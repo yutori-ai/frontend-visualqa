@@ -175,6 +175,24 @@ class FakeBrowserManager:
         )
 
 
+def _capturing_browser_manager(captured: dict[str, Any], *, key: str) -> type[FakeBrowserManager]:
+    """Build a ``FakeBrowserManager`` subclass that records its ``config`` kwarg into ``captured[key]``.
+
+    Shared by tests that need to inspect the ``BrowserConfig`` a runner
+    constructs its ``BrowserManager`` with, which otherwise each hand-rolled
+    an identical local ``CapturingBrowserManager`` class differing only in
+    which key of ``captured`` the config was recorded under.
+    """
+
+    class _CapturingBrowserManager(FakeBrowserManager):
+        def __init__(self, *, config: BrowserConfig | None = None, **kwargs: Any) -> None:
+            del kwargs
+            super().__init__(ViewportConfig())
+            captured[key] = config
+
+    return _CapturingBrowserManager
+
+
 class _CallRecordingVerifier:
     """Base for fake ClaimVerifier doubles that record verify() call kwargs.
 
@@ -1719,14 +1737,8 @@ def test_runner_passes_browser_config_to_browser_manager(
 ) -> None:
     captured: dict[str, Any] = {}
 
-    class CapturingBrowserManager(FakeBrowserManager):
-        def __init__(self, *, config: BrowserConfig | None = None, **kwargs: Any) -> None:
-            del kwargs
-            super().__init__(ViewportConfig())
-            captured["config"] = config
-
     artifacts = FakeArtifactManager(tmp_path, run_id="run-001")
-    monkeypatch.setattr(module, "BrowserManager", CapturingBrowserManager, raising=False)
+    monkeypatch.setattr(module, "BrowserManager", _capturing_browser_manager(captured, key="config"), raising=False)
     monkeypatch.setattr(module, "ClaimVerifier", lambda *args, **kwargs: object(), raising=False)
     monkeypatch.setattr(module, "ArtifactManager", lambda *args, **kwargs: artifacts, raising=False)
     monkeypatch.setattr(module, "NavigatorClient", lambda *args, **kwargs: FakeNavigatorClient([]), raising=False)
@@ -1749,12 +1761,6 @@ def test_runner_passes_browser_config_visualize_to_default_claim_verifier(
 ) -> None:
     captured: dict[str, Any] = {}
 
-    class CapturingBrowserManager(FakeBrowserManager):
-        def __init__(self, *, config: BrowserConfig | None = None, **kwargs: Any) -> None:
-            del kwargs
-            super().__init__(ViewportConfig())
-            captured["browser_config"] = config
-
     class CapturingClaimVerifier:
         def __init__(
             self,
@@ -1772,7 +1778,9 @@ def test_runner_passes_browser_config_visualize_to_default_claim_verifier(
             raise AssertionError("not expected to be called")
 
     artifacts = FakeArtifactManager(tmp_path, run_id="run-001")
-    monkeypatch.setattr(module, "BrowserManager", CapturingBrowserManager, raising=False)
+    monkeypatch.setattr(
+        module, "BrowserManager", _capturing_browser_manager(captured, key="browser_config"), raising=False
+    )
     monkeypatch.setattr(module, "ClaimVerifier", CapturingClaimVerifier, raising=False)
     monkeypatch.setattr(module, "ArtifactManager", lambda *args, **kwargs: artifacts, raising=False)
     monkeypatch.setattr(module, "NavigatorClient", lambda *args, **kwargs: object(), raising=False)
