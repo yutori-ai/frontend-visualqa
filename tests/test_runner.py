@@ -328,6 +328,19 @@ async def _call_run(runner: Any, **kwargs: Any) -> Any:
     return await runner.run(**filtered)
 
 
+# The qa-session/reuse/reset/max-steps combination below is repeated verbatim across 15
+# `_call_run` sites in this file. Spread it in via `**_STANDARD_SESSION_KWARGS` rather than
+# defaulting these on `_call_run` itself -- a handful of other sites deliberately omit one or
+# more of these to exercise `runner.run`'s own production defaults, so baking them into the
+# helper's signature would silently change those tests' behavior.
+_STANDARD_SESSION_KWARGS: dict[str, Any] = {
+    "session_key": "qa-session",
+    "reuse_session": True,
+    "reset_between_claims": True,
+    "max_steps_per_claim": 5,
+}
+
+
 def _claim_event_recorder() -> tuple[
     list[tuple[str, int, str, str | None]],
     Callable[[int, str], None],
@@ -528,10 +541,7 @@ async def test_runner_run_uses_per_claim_navigation_hints_and_falls_back_to_glob
         claims=["Claim one", "Claim two"],
         claim_navigation_hints=["Open the modal first.", None],
         viewport=viewport,
-        session_key="qa-session",
-        reuse_session=True,
-        reset_between_claims=True,
-        max_steps_per_claim=5,
+        **_STANDARD_SESSION_KWARGS,
         navigation_hint="Open the login page if needed.",
     )
 
@@ -560,10 +570,7 @@ async def test_runner_run_uses_second_claim_navigation_hint_override(
         claims=["Claim one", "Claim two"],
         claim_navigation_hints=[None, "Scroll to the quota card before judging."],
         viewport=viewport,
-        session_key="qa-session",
-        reuse_session=True,
-        reset_between_claims=True,
-        max_steps_per_claim=5,
+        **_STANDARD_SESSION_KWARGS,
         navigation_hint="Open the login page if needed.",
     )
 
@@ -738,10 +745,7 @@ async def test_runner_ignores_callback_exceptions(
         url="http://fixture.local/page",
         claims=["Claim one"],
         viewport=viewport,
-        session_key="qa-session",
-        reuse_session=True,
-        reset_between_claims=True,
-        max_steps_per_claim=5,
+        **_STANDARD_SESSION_KWARGS,
         on_claim_start=_boom,
         on_claim_complete=_boom,
     )
@@ -809,10 +813,7 @@ async def test_runner_writes_rerunnable_markdown_report_from_claims_file(
         claims=parsed.claims,
         claims_file=parsed,
         viewport=viewport,
-        session_key="qa-session",
-        reuse_session=True,
-        reset_between_claims=True,
-        max_steps_per_claim=5,
+        **_STANDARD_SESSION_KWARGS,
     )
 
     report_path = Path(result.artifacts_dir) / "report.md"
@@ -1299,10 +1300,7 @@ async def test_runner_marks_claim_not_testable_when_reset_between_claims_fails(
         url="http://fixture.local/page",
         claims=["Claim one", "Claim two"],
         viewport=viewport,
-        session_key="qa-session",
-        reuse_session=True,
-        reset_between_claims=True,
-        max_steps_per_claim=5,
+        **_STANDARD_SESSION_KWARGS,
         on_claim_start=on_claim_start,
         on_claim_complete=on_claim_complete,
     )
@@ -1340,10 +1338,7 @@ async def test_runner_marks_claim_not_testable_when_verifier_raises(
         url="http://fixture.local/page",
         claims=["Claim one"],
         viewport=viewport,
-        session_key="qa-session",
-        reuse_session=True,
-        reset_between_claims=True,
-        max_steps_per_claim=5,
+        **_STANDARD_SESSION_KWARGS,
         on_claim_start=on_claim_start,
         on_claim_complete=on_claim_complete,
     )
@@ -1406,10 +1401,7 @@ async def test_runner_marks_claim_inconclusive_when_claim_timeout_expires(
         url="http://fixture.local/page",
         claims=["Claim one"],
         viewport=viewport,
-        session_key="qa-session",
-        reuse_session=True,
-        reset_between_claims=True,
-        max_steps_per_claim=5,
+        **_STANDARD_SESSION_KWARGS,
         claim_timeout_seconds=0.01,
         on_claim_start=on_claim_start,
         on_claim_complete=on_claim_complete,
@@ -1445,10 +1437,7 @@ async def test_runner_handles_timeout_error_when_claim_timeout_is_disabled(
         url="http://fixture.local/page",
         claims=["Claim one"],
         viewport=viewport,
-        session_key="qa-session",
-        reuse_session=True,
-        reset_between_claims=True,
-        max_steps_per_claim=5,
+        **_STANDARD_SESSION_KWARGS,
         claim_timeout_seconds=None,
         on_claim_start=on_claim_start,
         on_claim_complete=on_claim_complete,
@@ -1499,10 +1488,7 @@ async def test_runner_uses_partial_claim_result_when_timeout_interrupts_verifier
         url="http://fixture.local/page",
         claims=["Claim one"],
         viewport=viewport,
-        session_key="qa-session",
-        reuse_session=True,
-        reset_between_claims=True,
-        max_steps_per_claim=5,
+        **_STANDARD_SESSION_KWARGS,
         claim_timeout_seconds=1.0,
         on_claim_start=on_claim_start,
         on_claim_complete=on_claim_complete,
@@ -1551,10 +1537,7 @@ async def test_runner_uses_partial_claim_result_when_verifier_crashes(
         url="http://fixture.local/page",
         claims=["Claim one"],
         viewport=viewport,
-        session_key="qa-session",
-        reuse_session=True,
-        reset_between_claims=True,
-        max_steps_per_claim=5,
+        **_STANDARD_SESSION_KWARGS,
         on_claim_start=on_claim_start,
         on_claim_complete=on_claim_complete,
     )
@@ -1591,10 +1574,7 @@ async def test_runner_marks_remaining_claims_inconclusive_when_run_timeout_expir
         url="http://fixture.local/page",
         claims=["Claim one", "Claim two"],
         viewport=viewport,
-        session_key="qa-session",
-        reuse_session=True,
-        reset_between_claims=True,
-        max_steps_per_claim=5,
+        **_STANDARD_SESSION_KWARGS,
         claim_timeout_seconds=None,
         run_timeout_seconds=0.01,
         on_claim_start=on_claim_start,
@@ -1643,10 +1623,7 @@ async def test_runner_preserves_partial_claim_result_when_run_timeout_interrupts
         url="http://fixture.local/page",
         claims=["Claim one", "Claim two"],
         viewport=viewport,
-        session_key="qa-session",
-        reuse_session=True,
-        reset_between_claims=True,
-        max_steps_per_claim=5,
+        **_STANDARD_SESSION_KWARGS,
         run_timeout_seconds=0.01,
         on_claim_start=on_claim_start,
         on_claim_complete=on_claim_complete,
@@ -1898,10 +1875,7 @@ async def test_runner_invokes_reporters_after_run(
         url="http://fixture.local/page",
         claims=["Claim one"],
         viewport=viewport,
-        session_key="qa-session",
-        reuse_session=True,
-        reset_between_claims=True,
-        max_steps_per_claim=5,
+        **_STANDARD_SESSION_KWARGS,
     )
     assert len(spy.write_calls) == 1
     written_result, written_dir, written_claims_file = spy.write_calls[0]
@@ -1930,10 +1904,7 @@ async def test_runner_writes_both_native_and_ctrf_reports(
         url="http://fixture.local/page",
         claims=["Claim one", "Claim two"],
         viewport=viewport,
-        session_key="qa-session",
-        reuse_session=True,
-        reset_between_claims=True,
-        max_steps_per_claim=5,
+        **_STANDARD_SESSION_KWARGS,
     )
     run_dir = Path(result.artifacts_dir)
     # Native report
@@ -1988,10 +1959,7 @@ async def test_runner_ctrf_only_does_not_write_native_report(
         url="http://fixture.local/page",
         claims=["Claim one"],
         viewport=viewport,
-        session_key="qa-session",
-        reuse_session=True,
-        reset_between_claims=True,
-        max_steps_per_claim=5,
+        **_STANDARD_SESSION_KWARGS,
     )
     run_dir = Path(result.artifacts_dir)
     assert (run_dir / "ctrf-report.json").exists()
