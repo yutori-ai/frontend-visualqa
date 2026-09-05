@@ -213,14 +213,19 @@ async def referenced_element_is_password(page: Page, ref: str) -> bool | None:
     )
 
 
+def redact_argument(arguments: dict[str, Any], key: str) -> dict[str, Any]:
+    """Return a copy of ``arguments`` with ``key`` masked."""
+    return {**arguments, key: REDACTED_TYPE_TEXT}
+
+
 def redact_type_text(arguments: dict[str, Any]) -> dict[str, Any]:
     """Return a copy of type-action arguments with the typed text masked."""
-    return {**arguments, "text": REDACTED_TYPE_TEXT}
+    return redact_argument(arguments, "text")
 
 
 def redact_element_value(arguments: dict[str, Any]) -> dict[str, Any]:
     """Return a copy of set_element_value arguments with the value masked."""
-    return {**arguments, "value": REDACTED_TYPE_TEXT}
+    return redact_argument(arguments, "value")
 
 
 def _get_key_text(arguments: dict[str, Any]) -> str:
