@@ -14,6 +14,7 @@ from frontend_visualqa.actions import (
     ActionExecutor,
     ToolExecutionResult,
     focused_element_is_password,
+    redact_argument,
     referenced_element_is_password,
 )
 from frontend_visualqa.artifacts import ArtifactManager, RunArtifacts
@@ -778,7 +779,7 @@ class ClaimVerifier:
             tool_arguments = {sensitive_key: REDACTED_TYPE_TEXT}
         else:
             sensitive_text = str(tool_arguments[sensitive_key])
-            tool_arguments = {**tool_arguments, sensitive_key: REDACTED_TYPE_TEXT}
+            tool_arguments = redact_argument(tool_arguments, sensitive_key)
         self._redact_stored_tool_call_arguments(
             messages,
             tool_call_id=getattr(tool_call, "id", None),
