@@ -32,12 +32,11 @@ from frontend_visualqa.schemas import (
     validate_url,
 )
 from frontend_visualqa.text_utils import clip_text
+from frontend_visualqa.utils import safe_async_method_call
 
 if TYPE_CHECKING:
     from frontend_visualqa.runner import VisualQARunner
     from frontend_visualqa.schemas import ClaimResult
-
-logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
@@ -600,10 +599,7 @@ async def _run_login(args: argparse.Namespace) -> int:
         return 0
     finally:
         if not manager_closed:
-            try:
-                await manager.close()
-            except Exception:
-                logger.debug("Failed to close browser during login cleanup", exc_info=True)
+            await safe_async_method_call(manager, "close", log_label="Login browser manager")
 
 
 async def _run_status() -> dict[str, Any]:
