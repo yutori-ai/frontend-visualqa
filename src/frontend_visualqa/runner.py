@@ -35,6 +35,7 @@ from frontend_visualqa.schemas import (
     coerce_optional_viewport,
     coerce_viewport,
 )
+from frontend_visualqa.serialization import serialize_result
 from frontend_visualqa.utils import resolve_optional_method, safe_callback_call
 
 logger = logging.getLogger(__name__)
@@ -481,7 +482,7 @@ class VisualQARunner:
                     )
                 except Exception as exc:
                     result = _not_testable(f"Could not capture a screenshot for {url}: {exc}")
-            self.artifact_manager.save_json(run_artifacts, "screenshot_result.json", result.model_dump())
+            self.artifact_manager.save_json(run_artifacts, "screenshot_result.json", serialize_result(result))
             return result
 
     async def manage_browser(
