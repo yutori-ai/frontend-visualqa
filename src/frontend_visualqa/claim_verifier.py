@@ -776,10 +776,9 @@ class ClaimVerifier:
             # The raw (unparseable) argument string is what the executor's
             # [ERROR] result will echo; treat the whole string as sensitive.
             sensitive_text = tool_call_arguments_as_text(tool_call)
-            tool_arguments = {sensitive_key: REDACTED_TYPE_TEXT}
         else:
             sensitive_text = str(tool_arguments[sensitive_key])
-            tool_arguments = redact_argument(tool_arguments, sensitive_key)
+        tool_arguments = redact_argument(tool_arguments, sensitive_key)
         self._redact_stored_tool_call_arguments(
             messages,
             tool_call_id=getattr(tool_call, "id", None),
