@@ -43,6 +43,17 @@ def _import_claim_verifier_module():
     return import_or_skip("frontend_visualqa.claim_verifier")
 
 
+def _wire_recording_overlay(module: Any, monkeypatch: pytest.MonkeyPatch) -> list[Any]:
+    """Monkeypatch ``_create_overlay_controller`` to return a ``RecordingFakeOverlay``.
+
+    Returns the list that receives each overlay lifecycle call. Five tests each repeated
+    this identical three-line wiring block; they now share it.
+    """
+    overlay_events: list[Any] = []
+    monkeypatch.setattr(module, "_create_overlay_controller", lambda page: RecordingFakeOverlay(overlay_events))
+    return overlay_events
+
+
 def test_create_overlay_controller_degrades_when_overlay_import_fails(monkeypatch: pytest.MonkeyPatch) -> None:
     module = _import_claim_verifier_module()
     original_import = builtins.__import__
@@ -501,8 +512,7 @@ async def test_claim_verifier_records_reasoning_events_and_shows_thought_for_too
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     module = _import_claim_verifier_module()
-    overlay_events: list[Any] = []
-    monkeypatch.setattr(module, "_create_overlay_controller", lambda page: RecordingFakeOverlay(overlay_events))
+    overlay_events = _wire_recording_overlay(module, monkeypatch)
     reasoning = "Inspect the Save button before deciding."
     verifier, _, _ = _build_claim_verifier(
         module,
@@ -562,8 +572,7 @@ async def test_claim_verifier_shows_post_capture_analysis_ui_after_action_screen
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     module = _import_claim_verifier_module()
-    overlay_events: list[Any] = []
-    monkeypatch.setattr(module, "_create_overlay_controller", lambda page: RecordingFakeOverlay(overlay_events))
+    overlay_events = _wire_recording_overlay(module, monkeypatch)
     reasoning = "Click into the form before deciding."
     verifier, _, _ = _build_claim_verifier(
         module,
@@ -597,8 +606,7 @@ async def test_claim_verifier_shows_thought_before_a_passive_first_tool(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     module = _import_claim_verifier_module()
-    overlay_events: list[Any] = []
-    monkeypatch.setattr(module, "_create_overlay_controller", lambda page: RecordingFakeOverlay(overlay_events))
+    overlay_events = _wire_recording_overlay(module, monkeypatch)
     reasoning = "I need the form fields — let me extract the interactive elements."
     verifier, _, _ = _build_claim_verifier(
         module,
@@ -635,8 +643,7 @@ async def test_claim_verifier_does_not_show_thought_for_plain_text_turn_without_
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     module = _import_claim_verifier_module()
-    overlay_events: list[Any] = []
-    monkeypatch.setattr(module, "_create_overlay_controller", lambda page: RecordingFakeOverlay(overlay_events))
+    overlay_events = _wire_recording_overlay(module, monkeypatch)
     original_capture = module.ClaimVerifier._capture_evidence_screenshot
 
     async def instrumented_capture(self: Any, *args: Any, **kwargs: Any) -> Any:
@@ -773,8 +780,7 @@ async def test_claim_verifier_preserves_tool_call_order_when_action_and_verdict_
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     module = _import_claim_verifier_module()
-    overlay_events: list[Any] = []
-    monkeypatch.setattr(module, "_create_overlay_controller", lambda page: RecordingFakeOverlay(overlay_events))
+    overlay_events = _wire_recording_overlay(module, monkeypatch)
     reasoning = "Click the modal and then decide."
     verifier, _, action_executor = _build_claim_verifier(
         module,
