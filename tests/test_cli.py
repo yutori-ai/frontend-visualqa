@@ -179,6 +179,20 @@ def _capture_emitted_json(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any
     return emitted
 
 
+def _wire_new_runner(monkeypatch: pytest.MonkeyPatch) -> tuple[FakeRunner, list[dict[str, Any]]]:
+    """Build a ``FakeRunner`` and patch ``cli._new_runner`` to return it via ``new_runner_recorder``.
+
+    Four call sites each hand-rolled this identical three-line arrange block
+    (construct ``FakeRunner``, wrap it in ``new_runner_recorder``, patch
+    ``cli._new_runner``) before diverging into their own assertions on the
+    recorded ``browser_config``/``reporters`` kwargs.
+    """
+    fake_runner = FakeRunner()
+    fake_new_runner, runner_calls = new_runner_recorder(fake_runner)
+    monkeypatch.setattr(cli, "_new_runner", fake_new_runner)
+    return fake_runner, runner_calls
+
+
 def _verify_args(**overrides: Any) -> SimpleNamespace:
     """Build the ``SimpleNamespace`` argparse-args shape ``cli._handle_verify`` expects.
 
@@ -243,10 +257,7 @@ def test_build_parser_supports_version_flag_without_subcommand(capsys: pytest.Ca
 
 
 def test_handle_verify_closes_runner_and_forwards_browser_config(monkeypatch: Any) -> None:
-    fake_runner = FakeRunner()
-    fake_new_runner, runner_calls = new_runner_recorder(fake_runner)
-
-    monkeypatch.setattr(cli, "_new_runner", fake_new_runner)
+    fake_runner, runner_calls = _wire_new_runner(monkeypatch)
     emitted = _capture_emitted_json(monkeypatch)
     monkeypatch.setattr(cli, "_preflight_verify_auth", _noop_preflight_verify_auth)
 
@@ -285,10 +296,7 @@ def test_handle_verify_closes_runner_and_forwards_browser_config(monkeypatch: An
 
 
 def test_handle_screenshot_closes_runner_and_forwards_browser_config(monkeypatch: Any) -> None:
-    fake_runner = FakeRunner()
-    fake_new_runner, runner_calls = new_runner_recorder(fake_runner)
-
-    monkeypatch.setattr(cli, "_new_runner", fake_new_runner)
+    fake_runner, runner_calls = _wire_new_runner(monkeypatch)
     emitted = _capture_emitted_json(monkeypatch)
 
     exit_code = cli._handle_screenshot(
@@ -354,10 +362,7 @@ def test_handle_serve_configures_server_and_closes_cached_mcp_runners(monkeypatc
 
 
 def test_handle_verify_passes_reporters_to_runner(monkeypatch: Any) -> None:
-    fake_runner = FakeRunner()
-    fake_new_runner, runner_calls = new_runner_recorder(fake_runner)
-
-    monkeypatch.setattr(cli, "_new_runner", fake_new_runner)
+    fake_runner, runner_calls = _wire_new_runner(monkeypatch)
     _capture_emitted_json(monkeypatch)
     monkeypatch.setattr(cli, "_preflight_verify_auth", _noop_preflight_verify_auth)
 
@@ -400,10 +405,7 @@ def test_handle_verify_reads_claims_file_and_emits_progress(
         encoding="utf-8",
     )
 
-    fake_runner = FakeRunner()
-    fake_new_runner, runner_calls = new_runner_recorder(fake_runner)
-
-    monkeypatch.setattr(cli, "_new_runner", fake_new_runner)
+    fake_runner, runner_calls = _wire_new_runner(monkeypatch)
     _capture_emitted_json(monkeypatch)
     monkeypatch.setattr(cli, "_preflight_verify_auth", _noop_preflight_verify_auth)
 
