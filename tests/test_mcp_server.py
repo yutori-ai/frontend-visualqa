@@ -180,6 +180,26 @@ def _reset_server_module_state(module: Any) -> None:
         module._config_frozen = False
 
 
+def _seed_frozen_runner(module: Any, monkeypatch: pytest.MonkeyPatch, key: Any, runner: Any) -> None:
+    """Reset module state, register `runner` under `key`, and freeze the server config.
+
+    Shared arrange block for the `test_close_runners_sync_*` tests below that each need a
+    cached runner present under a frozen config before calling `close_runners_sync()`.
+    """
+    _reset_server_module_state(module)
+    monkeypatch.setitem(module._runners_by_loop, key, runner)
+    module._server_browser_config = _persistent_browser_config()
+    module._config_frozen = True
+
+
+def _assert_runner_state_reset(module: Any) -> None:
+    """Assert `close_runners_sync()` cleared all cached-runner and frozen-config state."""
+    assert module._runners_by_loop == {}
+    assert module._runner_locks_by_loop == {}
+    assert module._server_browser_config is None
+    assert module._config_frozen is False
+
+
 @pytest.mark.asyncio
 async def test_mcp_server_registers_expected_tools() -> None:
     module = _import_mcp_server_module()
@@ -284,18 +304,12 @@ async def test_mcp_server_manage_browser_login_passes_url_to_runner(monkeypatch:
 def test_close_runners_sync_closes_cached_runners(monkeypatch: pytest.MonkeyPatch) -> None:
     module = _import_mcp_server_module()
     fake_runner = FakeRunner()
-    _reset_server_module_state(module)
-    monkeypatch.setitem(module._runners_by_loop, 123, fake_runner)
-    module._server_browser_config = _persistent_browser_config()
-    module._config_frozen = True
+    _seed_frozen_runner(module, monkeypatch, 123, fake_runner)
 
     module.close_runners_sync()
 
     assert fake_runner.close_calls == 1
-    assert module._runners_by_loop == {}
-    assert module._runner_locks_by_loop == {}
-    assert module._server_browser_config is None
-    assert module._config_frozen is False
+    _assert_runner_state_reset(module)
 
 
 @pytest.mark.asyncio
@@ -352,17 +366,11 @@ async def test_close_runners_sync_resets_state_immediately_inside_running_loop(
 ) -> None:
     module = _import_mcp_server_module()
     fake_runner = FakeRunner()
-    _reset_server_module_state(module)
-    monkeypatch.setitem(module._runners_by_loop, module._loop_key(), fake_runner)
-    module._server_browser_config = _persistent_browser_config()
-    module._config_frozen = True
+    _seed_frozen_runner(module, monkeypatch, module._loop_key(), fake_runner)
 
     module.close_runners_sync()
 
-    assert module._runners_by_loop == {}
-    assert module._runner_locks_by_loop == {}
-    assert module._server_browser_config is None
-    assert module._config_frozen is False
+    _assert_runner_state_reset(module)
 
     await asyncio.sleep(0)
 
@@ -388,10 +396,7 @@ async def test_close_runners_sync_holds_strong_reference_until_task_completes(
             await release.wait()
             closed.append(True)
 
-    _reset_server_module_state(module)
-    monkeypatch.setitem(module._runners_by_loop, module._loop_key(), SlowClosingRunner())
-    module._server_browser_config = _persistent_browser_config()
-    module._config_frozen = True
+    _seed_frozen_runner(module, monkeypatch, module._loop_key(), SlowClosingRunner())
 
     module.close_runners_sync()
     await assert_pending_close_task_runs_to_completion(module, release, closed)
