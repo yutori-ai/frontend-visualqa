@@ -172,6 +172,24 @@ async def instrumented_overlay_lifecycle(runner, OverlayController, run_kwargs):
         await runner.close()
 
 
+def _partition_lifecycle_samples(
+    lifecycle_samples: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    """Split ``instrumented_overlay_lifecycle`` samples by phase.
+
+    Both headed-overlay tests below need this identical four-way split, then
+    assert the claim-boundary phases fired: every real run announces
+    claim_started/claim_ended regardless of how many actions ran in between.
+    """
+    before_samples = [sample for sample in lifecycle_samples if sample["phase"] == "before_screenshot"]
+    after_samples = [sample for sample in lifecycle_samples if sample["phase"] == "after_screenshot"]
+    started_samples = [sample for sample in lifecycle_samples if sample["phase"] == "after_claim_started"]
+    ended_samples = [sample for sample in lifecycle_samples if sample["phase"] == "after_claim_ended"]
+    assert started_samples, "overlay claim_started should initialize the lifecycle"
+    assert ended_samples, "overlay claim_ended should clean up overlay roots"
+    return before_samples, after_samples, started_samples, ended_samples
+
+
 @pytest.mark.asyncio
 async def test_live_runner_executes_real_browser_flow_and_passes_modal_claim(
     example_server: str,
@@ -264,13 +282,7 @@ async def test_live_runner_headed_overlay_hides_restores_and_cleans_up(
         assert result.results[0].trace.steps_taken == 1
         assert all(Path(path).exists() for path in result.results[0].trace.screenshot_paths)
 
-        before_samples = [sample for sample in lifecycle_samples if sample["phase"] == "before_screenshot"]
-        after_samples = [sample for sample in lifecycle_samples if sample["phase"] == "after_screenshot"]
-        started_samples = [sample for sample in lifecycle_samples if sample["phase"] == "after_claim_started"]
-        ended_samples = [sample for sample in lifecycle_samples if sample["phase"] == "after_claim_ended"]
-
-        assert started_samples, "overlay claim_started should initialize the lifecycle"
-        assert ended_samples, "overlay claim_ended should clean up overlay roots"
+        before_samples, after_samples, started_samples, ended_samples = _partition_lifecycle_samples(lifecycle_samples)
         # Initial screenshot is taken before overlay injection (no flash),
         # so this one-action flow should produce exactly one post-action pair.
         assert len(before_samples) == 1, "expected exactly one screenshot hide step after the action"
@@ -370,13 +382,7 @@ async def test_live_runner_headed_overlay_zero_action_path_skips_hide_restore(
         assert result.results[0].proof.step == 0
         assert result.results[0].proof.after_action is None
 
-        before_samples = [sample for sample in lifecycle_samples if sample["phase"] == "before_screenshot"]
-        after_samples = [sample for sample in lifecycle_samples if sample["phase"] == "after_screenshot"]
-        started_samples = [sample for sample in lifecycle_samples if sample["phase"] == "after_claim_started"]
-        ended_samples = [sample for sample in lifecycle_samples if sample["phase"] == "after_claim_ended"]
-
-        assert started_samples, "overlay claim_started should initialize the lifecycle"
-        assert ended_samples, "overlay claim_ended should clean up overlay roots"
+        before_samples, after_samples, started_samples, ended_samples = _partition_lifecycle_samples(lifecycle_samples)
         assert before_samples == []
         assert after_samples == []
 
