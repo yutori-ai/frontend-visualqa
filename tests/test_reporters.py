@@ -136,6 +136,20 @@ def _duplicate_claim_run_result(artifacts_dir: str) -> RunResult:
     )
 
 
+def _markdown_reporter_fixture() -> tuple[Any, ViewportConfig]:
+    """Return a fresh ``MarkdownReporter`` paired with a ``ViewportConfig``.
+
+    Four ``MarkdownReporter`` tests below each repeated the identical
+    ``module -> reporter -> viewport`` arrange block, differing only in what
+    they built with the viewport afterward. This is the shared helper they
+    delegate to now, matching the ``_sample_ctrf_report`` fixture convention above.
+    """
+    module = _import_reporters_module()
+    reporter = module.MarkdownReporter()
+    viewport = ViewportConfig()
+    return reporter, viewport
+
+
 def test_native_reporter_writes_run_result_json(tmp_path: Path) -> None:
     module = _import_reporters_module()
     reporter = module.NativeReporter()
@@ -327,9 +341,7 @@ def test_markdown_reporter_name() -> None:
 
 
 def test_markdown_reporter_annotates_source_markdown_and_preserves_non_claim_lines(tmp_path: Path) -> None:
-    module = _import_reporters_module()
-    reporter = module.MarkdownReporter()
-    viewport = ViewportConfig()
+    reporter, viewport = _markdown_reporter_fixture()
     run_result = _duplicate_claim_run_result(str(tmp_path))
     source = ParsedClaimsFile(
         source_path=tmp_path / "claims.md",
@@ -369,9 +381,7 @@ def test_markdown_reporter_annotates_source_markdown_and_preserves_non_claim_lin
 
 
 def test_markdown_reporter_preserves_navigation_hint_metadata_when_reannotated(tmp_path: Path) -> None:
-    module = _import_reporters_module()
-    reporter = module.MarkdownReporter()
-    viewport = ViewportConfig()
+    reporter, viewport = _markdown_reporter_fixture()
     run_result = RunResult(
         overall_status="completed",
         session_key="default",
@@ -450,9 +460,7 @@ def test_markdown_reporter_output_is_rerunnable_as_claim_input(tmp_path: Path) -
 
 def test_markdown_reporter_re_annotation_strips_stale_details_and_summary(tmp_path: Path) -> None:
     """Re-annotating an already-annotated file should not accumulate stale detail lines or duplicate summaries."""
-    module = _import_reporters_module()
-    reporter = module.MarkdownReporter()
-    viewport = ViewportConfig()
+    reporter, viewport = _markdown_reporter_fixture()
 
     # First run: one claim fails
     run1_result = RunResult(
@@ -522,9 +530,7 @@ def test_markdown_reporter_re_annotation_strips_stale_details_and_summary(tmp_pa
 
 
 def test_markdown_reporter_strips_legacy_unmarked_annotations_on_rerun(tmp_path: Path) -> None:
-    module = _import_reporters_module()
-    reporter = module.MarkdownReporter()
-    viewport = ViewportConfig()
+    reporter, viewport = _markdown_reporter_fixture()
     legacy_report = tmp_path / "legacy-report.md"
     legacy_report.write_text(
         (
