@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-import frontend_visualqa.browser as browser_module
+import frontend_visualqa.screenshot_capture as screenshot_capture_module
 from frontend_visualqa.browser import (
     BrowserManager,
     BrowserSession,
@@ -232,7 +232,7 @@ async def test_browser_manager_capture_screenshot_falls_back_to_playwright_in_he
 async def test_browser_manager_capture_screenshot_times_out_stuck_cdp_and_falls_back(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(browser_module, "DEFAULT_CDP_SCREENSHOT_TIMEOUT_SECONDS", 0.01)
+    monkeypatch.setattr(screenshot_capture_module, "DEFAULT_CDP_SCREENSHOT_TIMEOUT_SECONDS", 0.01)
 
     class FakeCDPSession(_FakeCdpSessionBase):
         async def send(self, method: str, params: dict[str, object] | None = None) -> dict[str, str]:
@@ -252,7 +252,7 @@ async def test_browser_manager_capture_screenshot_times_out_stuck_cdp_and_falls_
 
 
 def test_browser_manager_build_cdp_capture_request_defaults_when_metrics_are_missing() -> None:
-    params, target_size = BrowserManager._build_cdp_capture_request({})
+    params, target_size = screenshot_capture_module.build_cdp_capture_request({})
 
     assert params == {
         "format": "png",
@@ -263,7 +263,7 @@ def test_browser_manager_build_cdp_capture_request_defaults_when_metrics_are_mis
 
 
 def test_browser_manager_build_cdp_capture_request_uses_css_viewport() -> None:
-    params, target_size = BrowserManager._build_cdp_capture_request(
+    params, target_size = screenshot_capture_module.build_cdp_capture_request(
         {
             "visualViewport": {"clientWidth": 2560, "clientHeight": 1600},
             "cssVisualViewport": {"pageX": 0, "pageY": 0, "clientWidth": 1280, "clientHeight": 800},
@@ -286,8 +286,8 @@ def test_browser_manager_build_cdp_capture_request_uses_css_viewport() -> None:
 
 
 def test_browser_manager_normalize_cdp_capture_image_resizes_to_target_size() -> None:
-    normalized = BrowserManager._normalize_cdp_capture_image(
-        BrowserManager._image_from_bytes(_png_bytes(size=(640, 400))),
+    normalized = screenshot_capture_module.normalize_cdp_capture_image(
+        screenshot_capture_module.image_from_bytes(_png_bytes(size=(640, 400))),
         (320, 200),
     )
 
@@ -572,7 +572,7 @@ async def test_browser_manager_persistent_mode_recovers_after_external_context_c
 async def test_browser_manager_capture_screenshot_times_out_stuck_layout_metrics_and_falls_back(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(browser_module, "DEFAULT_CDP_SCREENSHOT_TIMEOUT_SECONDS", 0.01)
+    monkeypatch.setattr(screenshot_capture_module, "DEFAULT_CDP_SCREENSHOT_TIMEOUT_SECONDS", 0.01)
 
     class FakeCDPSession(_FakeCdpSessionBase):
         async def send(self, method: str, params: dict[str, object] | None = None) -> dict[str, str]:
