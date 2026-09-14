@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import base64
-import io
 import logging
 import time
 from dataclasses import dataclass
@@ -150,10 +149,7 @@ class BrowserManager:
     def _warm_webp_encoder() -> None:
         """Trigger libwebp lazy-load with a throwaway 1x1 encode."""
         try:
-            with io.BytesIO() as buf:
-                Image.new("RGB", (1, 1), (0, 0, 0)).save(
-                    buf, format="WEBP", quality=screenshot_capture.DEFAULT_SCREENSHOT_WEBP_QUALITY
-                )
+            screenshot_capture.image_to_webp_bytes(Image.new("RGB", (1, 1), (0, 0, 0)))
         except Exception:  # pragma: no cover - warmup is best-effort
             logger.debug("WebP encoder warmup failed (non-fatal)", exc_info=True)
 
