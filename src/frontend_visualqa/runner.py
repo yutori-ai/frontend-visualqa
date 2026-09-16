@@ -330,29 +330,13 @@ class VisualQARunner:
                         _append_result(index, claim, result)
                         next_claim_index = index + 1
             except TimeoutError:
-                timed_out_claims = request.claims[next_claim_index - 1 :]
-                timeout_finding = self._format_timeout_finding("run", request.run_timeout_seconds)
-                if timed_out_claims:
-                    interrupted_index = next_claim_index
-                    interrupted_claim = timed_out_claims[0]
-                    interrupted_result = self._inconclusive_claim_result(
-                        claim=interrupted_claim,
-                        finding=timeout_finding,
-                        session=session,
-                        request=request,
-                    )
-                    _append_result(interrupted_index, interrupted_claim, interrupted_result)
-
-                    for claim_index, claim in enumerate(timed_out_claims[1:], start=next_claim_index + 1):
-                        _safe_on_claim_start(claim_index, claim)
-                        fallback_result = self._build_session_claim(
-                            claim=claim,
-                            status="inconclusive",
-                            finding=timeout_finding,
-                            session=session,
-                            request=request,
-                        )
-                        _append_result(claim_index, claim, fallback_result)
+                self._apply_run_timeout_fallback(
+                    request=request,
+                    next_claim_index=next_claim_index,
+                    session=session,
+                    on_claim_start=_safe_on_claim_start,
+                    append_result=_append_result,
+                )
 
             summary = self._summarize_results(claim_results)
             overall_status = (
@@ -382,6 +366,41 @@ class VisualQARunner:
             )
             self._write_reports(run_result, str(run_artifacts.run_dir), claims_file=claims_file)
             return run_result
+
+    def _apply_run_timeout_fallback(
+        self,
+        *,
+        request: VerifyVisualClaimsInput,
+        next_claim_index: int,
+        session: BrowserSession,
+        on_claim_start: Callable[[int, str], None],
+        append_result: Callable[[int, str, ClaimResult], None],
+    ) -> None:
+        """Mark the in-flight claim, plus every claim after it, inconclusive after a run timeout."""
+        timed_out_claims = request.claims[next_claim_index - 1 :]
+        if not timed_out_claims:
+            return
+        timeout_finding = self._format_timeout_finding("run", request.run_timeout_seconds)
+        interrupted_index = next_claim_index
+        interrupted_claim = timed_out_claims[0]
+        interrupted_result = self._inconclusive_claim_result(
+            claim=interrupted_claim,
+            finding=timeout_finding,
+            session=session,
+            request=request,
+        )
+        append_result(interrupted_index, interrupted_claim, interrupted_result)
+
+        for claim_index, claim in enumerate(timed_out_claims[1:], start=next_claim_index + 1):
+            on_claim_start(claim_index, claim)
+            fallback_result = self._build_session_claim(
+                claim=claim,
+                status="inconclusive",
+                finding=timeout_finding,
+                session=session,
+                request=request,
+            )
+            append_result(claim_index, claim, fallback_result)
 
     async def _prepare_session_for_claim(
         self,
