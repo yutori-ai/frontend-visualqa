@@ -59,24 +59,24 @@ async def capture_screenshot_image(session: "BrowserSession", *, headless: bool)
     return resize_to(image, css_size)
 
 
+async def _cdp_send_with_timeout(cdp_session: Any, method: str, params: dict[str, Any] | None = None) -> Any:
+    """Send a CDP command bounded by ``DEFAULT_CDP_SCREENSHOT_TIMEOUT_SECONDS``.
+
+    Both CDP sends in :func:`capture_screenshot_image_via_cdp` share the
+    concurrent-hang risk that motivated the captureScreenshot timeout (#93);
+    centralizing the identical ``asyncio.wait_for(...)`` wrapping here keeps
+    the two call sites' timeouts from drifting apart.
+    """
+    return await asyncio.wait_for(cdp_session.send(method, params), timeout=DEFAULT_CDP_SCREENSHOT_TIMEOUT_SECONDS)
+
+
 async def capture_screenshot_image_via_cdp(session: "BrowserSession") -> Image.Image | None:
     cdp_session = None
     try:
         cdp_session = await session.context.new_cdp_session(session.page)
-        # Both CDP sends share the concurrent-hang risk that motivated the
-        # captureScreenshot timeout (#93); bound this one the same way.
-        layout_metrics = await asyncio.wait_for(
-            cdp_session.send("Page.getLayoutMetrics"),
-            timeout=DEFAULT_CDP_SCREENSHOT_TIMEOUT_SECONDS,
-        )
+        layout_metrics = await _cdp_send_with_timeout(cdp_session, "Page.getLayoutMetrics")
         capture_params, target_size = build_cdp_capture_request(layout_metrics)
-        result = await asyncio.wait_for(
-            cdp_session.send(
-                "Page.captureScreenshot",
-                capture_params,
-            ),
-            timeout=DEFAULT_CDP_SCREENSHOT_TIMEOUT_SECONDS,
-        )
+        result = await _cdp_send_with_timeout(cdp_session, "Page.captureScreenshot", capture_params)
         data = result.get("data")
         if not data:
             raise ValueError("Chromium did not return screenshot data")
