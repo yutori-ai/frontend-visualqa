@@ -228,20 +228,13 @@ async def test_browser_manager_capture_screenshot_falls_back_to_playwright_in_he
     assert page.screenshot_calls == [{"type": "png"}]  # Playwright still captures PNG; conversion to WebP happens after
 
 
-@pytest.mark.asyncio
-async def test_browser_manager_capture_screenshot_times_out_stuck_cdp_and_falls_back(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def _assert_cdp_timeout_falls_back_to_playwright(monkeypatch: pytest.MonkeyPatch, cdp_session: object) -> None:
+    """Run capture_screenshot against a stalled CDP session and assert the Playwright fallback fires.
+
+    Shared by the two "stuck CDP call" timeout tests below, which differ only in
+    which CDP method the fake session's send() stalls on.
+    """
     monkeypatch.setattr(screenshot_capture_module, "DEFAULT_CDP_SCREENSHOT_TIMEOUT_SECONDS", 0.01)
-
-    class FakeCDPSession(_FakeCdpSessionBase):
-        async def send(self, method: str, params: dict[str, object] | None = None) -> dict[str, str]:
-            if method == "Page.getLayoutMetrics":
-                return _LAYOUT_METRICS_RESPONSE
-            await asyncio.sleep(1)
-            return {"data": ""}
-
-    cdp_session = FakeCDPSession()
     _, page, session, manager = _build_cdp_capture_fixture(cdp_session, headless=True)
 
     screenshot = await manager.capture_screenshot(session)
@@ -249,6 +242,20 @@ async def test_browser_manager_capture_screenshot_times_out_stuck_cdp_and_falls_
     _assert_webp_bytes(screenshot, expected_size=(1280, 800))
     assert cdp_session.detach_calls == 1
     assert page.screenshot_calls == [{"type": "png", "animations": "disabled"}]
+
+
+@pytest.mark.asyncio
+async def test_browser_manager_capture_screenshot_times_out_stuck_cdp_and_falls_back(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeCDPSession(_FakeCdpSessionBase):
+        async def send(self, method: str, params: dict[str, object] | None = None) -> dict[str, str]:
+            if method == "Page.getLayoutMetrics":
+                return _LAYOUT_METRICS_RESPONSE
+            await asyncio.sleep(1)
+            return {"data": ""}
+
+    await _assert_cdp_timeout_falls_back_to_playwright(monkeypatch, FakeCDPSession())
 
 
 def test_browser_manager_build_cdp_capture_request_defaults_when_metrics_are_missing() -> None:
@@ -572,8 +579,6 @@ async def test_browser_manager_persistent_mode_recovers_after_external_context_c
 async def test_browser_manager_capture_screenshot_times_out_stuck_layout_metrics_and_falls_back(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(screenshot_capture_module, "DEFAULT_CDP_SCREENSHOT_TIMEOUT_SECONDS", 0.01)
-
     class FakeCDPSession(_FakeCdpSessionBase):
         async def send(self, method: str, params: dict[str, object] | None = None) -> dict[str, str]:
             del params
@@ -581,11 +586,4 @@ async def test_browser_manager_capture_screenshot_times_out_stuck_layout_metrics
                 await asyncio.sleep(1)
             return {"data": ""}
 
-    cdp_session = FakeCDPSession()
-    _, page, session, manager = _build_cdp_capture_fixture(cdp_session, headless=True)
-
-    screenshot = await manager.capture_screenshot(session)
-
-    _assert_webp_bytes(screenshot, expected_size=(1280, 800))
-    assert cdp_session.detach_calls == 1
-    assert page.screenshot_calls == [{"type": "png", "animations": "disabled"}]
+    await _assert_cdp_timeout_falls_back_to_playwright(monkeypatch, FakeCDPSession())
