@@ -191,13 +191,15 @@ async def _call_verify(
     verifier: Any,
     *,
     page: FakePage,
-    viewport: ViewportConfig,
+    viewport: ViewportConfig | None = None,
     claim: str,
     url: str,
     navigation_hint: str | None = None,
     visualize: bool | None = None,
     max_steps: int = 2,
 ) -> Any:
+    if viewport is None:
+        viewport = ViewportConfig()
     signature = inspect.signature(verifier.verify)
     kwargs: dict[str, Any] = {}
     run_dir = Path("/tmp/frontend-visualqa-test")
@@ -244,7 +246,6 @@ async def test_claim_verifier_returns_structured_verdict_from_json_schema(tmp_pa
     result = await _call_verify(
         verifier,
         page=FakePage(url="http://fixture.local/page"),
-        viewport=ViewportConfig(),
         claim="The page has a red button",
         url="http://fixture.local/page",
     )
@@ -279,7 +280,6 @@ async def test_claim_verifier_executes_actions_before_final_verdict(tmp_path: Pa
     result = await _call_verify(
         verifier,
         page=page,
-        viewport=ViewportConfig(),
         claim="The modal opens on click",
         url="http://fixture.local/modal",
         navigation_hint="Open the modal before deciding.",
@@ -316,7 +316,6 @@ async def test_claim_verifier_requires_an_action_before_accepting_a_verdict_with
     result = await _call_verify(
         verifier,
         page=FakePage(url="http://fixture.local/products"),
-        viewport=ViewportConfig(),
         claim="The cart badge shows 3 items",
         url="http://fixture.local/products",
         navigation_hint="Click Add to Cart before deciding.",
@@ -355,7 +354,6 @@ async def test_claim_verifier_does_not_treat_read_only_tools_as_navigation_inter
     result = await _call_verify(
         verifier,
         page=FakePage(url="http://fixture.local/products"),
-        viewport=ViewportConfig(),
         claim="The cart badge shows 3 items",
         url="http://fixture.local/products",
         navigation_hint="Click Add to Cart before deciding.",
@@ -402,7 +400,6 @@ async def test_claim_verifier_reprompts_when_model_says_action_is_needed_but_rec
     result = await _call_verify(
         verifier,
         page=FakePage(url="http://fixture.local/products"),
-        viewport=ViewportConfig(),
         claim="The product detail page shows Wireless Headphones Pro priced at $149.99",
         url="http://fixture.local/products",
     )
@@ -450,7 +447,6 @@ async def test_claim_verifier_uses_overlay_lifecycle_when_visualize_enabled(
     result = await _call_verify(
         verifier,
         page=FakePage(url="http://fixture.local/start"),
-        viewport=ViewportConfig(),
         claim="The modal opens on click",
         url="http://fixture.local/modal",
         navigation_hint="Open the modal before deciding.",
@@ -489,7 +485,6 @@ async def test_claim_verifier_reprompts_after_plain_text_thought_and_continues(t
     result = await _call_verify(
         verifier,
         page=FakePage(url="http://fixture.local/tasks"),
-        viewport=ViewportConfig(),
         claim="The page title reads 'Task Details'",
         url="http://fixture.local/tasks",
         navigation_hint="Open the task detail page before deciding.",
@@ -529,7 +524,6 @@ async def test_claim_verifier_records_reasoning_events_and_shows_thought_for_too
     result = await _call_verify(
         verifier,
         page=FakePage(url="http://fixture.local/page"),
-        viewport=ViewportConfig(),
         claim="The Save button is visible",
         url="http://fixture.local/page",
         visualize=True,
@@ -589,7 +583,6 @@ async def test_claim_verifier_shows_post_capture_analysis_ui_after_action_screen
     result = await _call_verify(
         verifier,
         page=FakePage(url="http://fixture.local/form"),
-        viewport=ViewportConfig(),
         claim="The first field is focused",
         url="http://fixture.local/form",
         visualize=True,
@@ -623,7 +616,6 @@ async def test_claim_verifier_shows_thought_before_a_passive_first_tool(
     await _call_verify(
         verifier,
         page=FakePage(url="http://fixture.local/page"),
-        viewport=ViewportConfig(),
         claim="The form is present",
         url="http://fixture.local/page",
         visualize=True,
@@ -664,7 +656,6 @@ async def test_claim_verifier_does_not_show_thought_for_plain_text_turn_without_
     result = await _call_verify(
         verifier,
         page=FakePage(url="http://fixture.local/page"),
-        viewport=ViewportConfig(),
         claim="The page title reads 'Dashboard'",
         url="http://fixture.local/page",
         visualize=True,
@@ -699,7 +690,6 @@ async def test_claim_verifier_seeds_first_model_turn_with_current_url_and_screen
     result = await _call_verify(
         verifier,
         page=FakePage(url="http://fixture.local/page"),
-        viewport=ViewportConfig(),
         claim="The page title reads 'Dashboard'",
         url="http://fixture.local/page",
     )
@@ -737,7 +727,6 @@ async def test_claim_verifier_records_json_schema_verdict_source(tmp_path: Path)
     result = await _call_verify(
         verifier,
         page=FakePage(url="http://fixture.local/page"),
-        viewport=ViewportConfig(),
         claim="The page title reads 'Dashboard'",
         url="http://fixture.local/page",
     )
@@ -765,7 +754,6 @@ async def test_claim_verifier_recovers_from_plain_text_with_json_verdict(tmp_pat
     result = await _call_verify(
         verifier,
         page=FakePage(url="http://fixture.local/page"),
-        viewport=ViewportConfig(),
         claim="The page title reads 'Dashboard'",
         url="http://fixture.local/page",
     )
@@ -797,7 +785,6 @@ async def test_claim_verifier_preserves_tool_call_order_when_action_and_verdict_
     result = await _call_verify(
         verifier,
         page=FakePage(url="http://fixture.local/start"),
-        viewport=ViewportConfig(),
         claim="The modal opens on click",
         url="http://fixture.local/modal",
         visualize=True,
@@ -839,7 +826,6 @@ async def test_claim_verifier_downgrades_pass_when_button_grounding_disagrees(tm
                 ],
             ),
         ),
-        viewport=ViewportConfig(),
         claim="The Save button is visible without scrolling",
         url="http://fixture.local/page",
     )
@@ -867,7 +853,6 @@ async def test_claim_verifier_downgrades_pass_when_finding_contradicts_verdict(t
         page=EvaluatingPage(
             url="http://fixture.local/cart",
         ),
-        viewport=ViewportConfig(),
         claim="The cart subtotal is correct",
         url="http://fixture.local/cart",
     )
@@ -895,7 +880,6 @@ async def test_claim_verifier_downgrades_pass_to_inconclusive_when_finding_is_un
         page=EvaluatingPage(
             url="http://fixture.local/page",
         ),
-        viewport=ViewportConfig(),
         claim="The chart is visible",
         url="http://fixture.local/page",
     )
@@ -920,7 +904,6 @@ async def test_claim_verifier_preserves_pass_for_negative_claims_with_negative_f
         page=EvaluatingPage(
             url="http://fixture.local/page",
         ),
-        viewport=ViewportConfig(),
         claim="The Save button is not visible",
         url="http://fixture.local/page",
     )
@@ -948,7 +931,6 @@ async def test_claim_verifier_preserves_pass_for_incorrect_claims_with_confirmin
         page=EvaluatingPage(
             url="http://fixture.local/cart",
         ),
-        viewport=ViewportConfig(),
         claim="The price is incorrect",
         url="http://fixture.local/cart",
     )
@@ -975,7 +957,6 @@ async def test_claim_verifier_still_downgrades_positive_error_state_claims_when_
         page=EvaluatingPage(
             url="http://fixture.local/login",
         ),
-        viewport=ViewportConfig(),
         claim="The error message is visible",
         url="http://fixture.local/login",
     )
@@ -1003,7 +984,6 @@ async def test_claim_verifier_does_not_treat_ambiguous_ui_copy_as_inconclusive_e
         page=EvaluatingPage(
             url="http://fixture.local/checkout",
         ),
-        viewport=ViewportConfig(),
         claim='The label reads "Total"',
         url="http://fixture.local/checkout",
     )
@@ -1034,7 +1014,6 @@ async def test_claim_verifier_downgrades_partially_filled_progress_bar_claim(tmp
                 progressBars=[{"label": "Monthly Quota", "fillRatio": 0.65}],
             ),
         ),
-        viewport=ViewportConfig(),
         claim="The Monthly Quota progress bar is completely filled",
         url="http://fixture.local/dashboard",
     )
@@ -1073,7 +1052,6 @@ async def test_claim_verifier_converts_inconclusive_full_visibility_button_claim
                 buttonStates=[{"text": "Save", "fullyVisible": False}],
             ),
         ),
-        viewport=ViewportConfig(),
         claim="The Save button is fully visible within its container",
         url="http://fixture.local/settings",
     )
@@ -1104,7 +1082,6 @@ async def test_claim_verifier_fuzzy_matches_button_with_decorative_chars_and_quo
                 buttonStates=[{"text": "Select Priority \u25bc", "fullyVisible": True}],
             ),
         ),
-        viewport=ViewportConfig(),
         claim="The 'Select Priority' dropdown button is visible",
         url="http://fixture.local/page",
     )
@@ -1167,7 +1144,6 @@ async def test_claim_verifier_reuses_trimmed_history_across_requests(
     result = await _call_verify(
         verifier,
         page=FakePage(url="http://fixture.local/start"),
-        viewport=ViewportConfig(),
         claim="The modal opens on click",
         url="http://fixture.local/modal",
         navigation_hint="Open the modal before deciding.",
@@ -1198,7 +1174,6 @@ async def test_claim_verifier_returns_inconclusive_json_verdict(tmp_path: Path) 
     result = await _call_verify(
         verifier,
         page=FakePage(url="http://fixture.local/page"),
-        viewport=ViewportConfig(),
         claim="The promotion banner feels too crowded",
         url="http://fixture.local/page",
     )
@@ -1231,7 +1206,6 @@ async def test_claim_verifier_writes_trace_json_with_action_and_verdict_events(t
     result = await _call_verify(
         verifier,
         page=FakePage(url="http://fixture.local/page"),
-        viewport=ViewportConfig(),
         claim="The Save button is visible",
         url="http://fixture.local/page",
     )
@@ -1261,7 +1235,6 @@ async def test_claim_verifier_accepts_json_inconclusive_with_finding(tmp_path: P
     result = await _call_verify(
         verifier,
         page=FakePage(url="http://fixture.local/page"),
-        viewport=ViewportConfig(),
         claim="The promotion banner feels too crowded",
         url="http://fixture.local/page",
     )
@@ -1400,7 +1373,6 @@ async def test_claim_verifier_normalizes_initial_screenshot_failures_to_not_test
     result = await _call_verify(
         verifier,
         page=FakePage(url="http://fixture.local/page"),
-        viewport=ViewportConfig(),
         claim="The page has a red button",
         url="http://fixture.local/page",
     )
@@ -1423,7 +1395,6 @@ async def test_claim_verifier_normalizes_post_action_screenshot_failures_to_not_
     result = await _call_verify(
         verifier,
         page=FakePage(url="http://fixture.local/start"),
-        viewport=ViewportConfig(),
         claim="The modal opens on click",
         url="http://fixture.local/modal",
     )
@@ -1450,7 +1421,6 @@ async def test_claim_verifier_preserves_partial_result_on_cancellation(tmp_path:
             await _call_verify(
                 verifier,
                 page=FakePage(url="http://fixture.local/page"),
-                viewport=ViewportConfig(),
                 claim="The page has a red button",
                 url="http://fixture.local/page",
             )
@@ -1487,7 +1457,6 @@ async def test_claim_verifier_uses_json_verdict_in_force_stop_path(tmp_path: Pat
     result = await _call_verify(
         verifier,
         page=FakePage(url="http://fixture.local/start"),
-        viewport=ViewportConfig(),
         claim="The modal opens on click",
         url="http://fixture.local/modal",
     )
@@ -1523,7 +1492,6 @@ async def test_claim_verifier_answers_every_tool_call_when_step_limit_hits_mid_t
     result = await _call_verify(
         verifier,
         page=FakePage(url="http://fixture.local/start"),
-        viewport=ViewportConfig(),
         claim="The cart badge shows 3 items",
         url="http://fixture.local/start",
         max_steps=1,
@@ -1570,7 +1538,6 @@ async def test_claim_verifier_feeds_action_error_back_to_model_and_recovers(tmp_
     result = await _call_verify(
         verifier,
         page=FakePage(url="http://fixture.local/start"),
-        viewport=ViewportConfig(),
         claim="The cart badge shows 3 items",
         url="http://fixture.local/start",
         max_steps=5,
@@ -1615,7 +1582,6 @@ async def test_claim_verifier_gives_up_inconclusive_after_repeated_action_failur
     result = await _call_verify(
         verifier,
         page=FakePage(url="http://fixture.local/start"),
-        viewport=ViewportConfig(),
         claim="The cart badge shows 3 items",
         url="http://fixture.local/start",
         max_steps=5,
@@ -1643,7 +1609,6 @@ async def test_claim_verifier_redacts_password_typing_in_trace_events(tmp_path: 
     result = await _call_verify(
         verifier,
         page=PasswordFocusedPage(url="http://fixture.local/login"),
-        viewport=ViewportConfig(),
         claim="The password field accepts input",
         url="http://fixture.local/login",
         max_steps=3,
@@ -1678,7 +1643,6 @@ async def test_claim_verifier_redacts_malformed_password_type_arguments(tmp_path
     result = await _call_verify(
         verifier,
         page=PasswordFocusedPage(url="http://fixture.local/login"),
-        viewport=ViewportConfig(),
         claim="The password field accepts input",
         url="http://fixture.local/login",
         max_steps=3,
@@ -1730,7 +1694,6 @@ async def test_claim_verifier_redacts_password_set_element_value_transcript(
     result = await _call_verify(
         verifier,
         page=FakePage(url="http://fixture.local/login"),
-        viewport=ViewportConfig(),
         claim="The password field accepts input",
         url="http://fixture.local/login",
         max_steps=3,
@@ -1770,7 +1733,6 @@ async def test_claim_verifier_grounding_never_upgrades_failed_verdict_to_passed(
                 buttonStates=[{"text": "Save", "fullyVisible": True}],
             ),
         ),
-        viewport=ViewportConfig(),
         claim="The Save button is visible",
         url="http://fixture.local/page",
     )
@@ -1801,7 +1763,6 @@ async def test_claim_verifier_visible_claim_passes_for_partially_clipped_button(
                 buttonStates=[{"text": "Save", "fullyVisible": False}],
             ),
         ),
-        viewport=ViewportConfig(),
         claim="The Save button is visible",
         url="http://fixture.local/page",
     )
@@ -1840,7 +1801,6 @@ async def test_claim_verifier_redacts_every_password_tool_call_in_multi_tool_tur
     await _call_verify(
         verifier,
         page=PasswordFocusedPage(url="http://fixture.local/login"),
-        viewport=ViewportConfig(),
         claim="The password fields accept input",
         url="http://fixture.local/login",
         max_steps=4,
@@ -1872,7 +1832,6 @@ async def test_claim_verifier_redacts_malformed_password_set_element_value_argum
     result = await _call_verify(
         verifier,
         page=FakePage(url="http://fixture.local/login"),
-        viewport=ViewportConfig(),
         claim="The password field accepts input",
         url="http://fixture.local/login",
         max_steps=3,
@@ -1901,7 +1860,6 @@ async def test_claim_verifier_redacts_type_when_password_detection_fails(tmp_pat
     result = await _call_verify(
         verifier,
         page=FakePage(url="http://fixture.local/form"),
-        viewport=ViewportConfig(),
         claim="The field accepts input",
         url="http://fixture.local/form",
         max_steps=3,
