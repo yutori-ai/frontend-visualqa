@@ -150,6 +150,20 @@ def _markdown_reporter_fixture() -> tuple[Any, ViewportConfig]:
     return reporter, viewport
 
 
+def _markdown_reporter_with_sample_result(tmp_path: Path) -> tuple[Any, RunResult]:
+    """Return a fresh ``MarkdownReporter`` paired with the sample ``RunResult``.
+
+    Three ``MarkdownReporter`` tests below each repeated the identical
+    ``module -> reporter -> run_result`` arrange block, differing only in what
+    they did with ``run_result`` afterward. This is the shared helper they
+    delegate to now, matching the ``_markdown_reporter_fixture`` convention above.
+    """
+    module = _import_reporters_module()
+    reporter = module.MarkdownReporter()
+    run_result = _sample_run_result(str(tmp_path))
+    return reporter, run_result
+
+
 def test_native_reporter_writes_run_result_json(tmp_path: Path) -> None:
     module = _import_reporters_module()
     reporter = module.NativeReporter()
@@ -573,9 +587,7 @@ def test_markdown_reporter_strips_legacy_unmarked_annotations_on_rerun(tmp_path:
 
 
 def test_markdown_reporter_formats_additional_results_like_normal_claim_blocks(tmp_path: Path) -> None:
-    module = _import_reporters_module()
-    reporter = module.MarkdownReporter()
-    run_result = _sample_run_result(str(tmp_path))
+    reporter, run_result = _markdown_reporter_with_sample_result(tmp_path)
     source = ParsedClaimsFile(
         source_path=tmp_path / "claims.md",
         source_content="- The heading reads 'Dashboard'\n",
@@ -594,9 +606,7 @@ def test_markdown_reporter_formats_additional_results_like_normal_claim_blocks(t
 
 
 def test_markdown_reporter_synthesizes_markdown_without_source(tmp_path: Path) -> None:
-    module = _import_reporters_module()
-    reporter = module.MarkdownReporter()
-    run_result = _sample_run_result(str(tmp_path))
+    reporter, run_result = _markdown_reporter_with_sample_result(tmp_path)
 
     reporter.write(run_result, tmp_path)
 
@@ -614,9 +624,7 @@ def test_markdown_reporter_synthesizes_markdown_without_source(tmp_path: Path) -
 
 
 def test_markdown_reporter_synthesized_output_is_rerunnable(tmp_path: Path) -> None:
-    module = _import_reporters_module()
-    reporter = module.MarkdownReporter()
-    run_result = _sample_run_result(str(tmp_path))
+    reporter, run_result = _markdown_reporter_with_sample_result(tmp_path)
 
     reporter.write(run_result, tmp_path)
 
