@@ -448,6 +448,33 @@ def _tracking_browser_factory(
     return _factory
 
 
+def _build_runner_with_tracked_replacement_browsers(
+    module: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[Any, FakeBrowserManager, FakeClaimVerifier, list[FakeBrowserManager]]:
+    """Build a runner via `_build_runner`, then arm `module.BrowserManager` with
+    `_tracking_browser_factory` so any BrowserManager it rebuilds afterward (e.g. on
+    login/close reconfiguration) is recorded into the returned list.
+
+    Shared by the login/close-reconfiguration tests, which each need to verify the
+    runner rebuilds BrowserManager with a new config after the initial construction.
+    """
+    initial_browser = FakeBrowserManager(ViewportConfig(), config=BrowserConfig())
+    replacement_browsers: list[FakeBrowserManager] = []
+
+    runner, browser, verifier = _build_runner(
+        module,
+        tmp_path,
+        verifier_results=[],
+        monkeypatch=monkeypatch,
+        browser_manager=initial_browser,
+    )
+    monkeypatch.setattr(module, "BrowserManager", _tracking_browser_factory(replacement_browsers))
+
+    return runner, browser, verifier, replacement_browsers
+
+
 def _result(name: str, status: str, viewport: ViewportConfig) -> ClaimResult:
     return make_claim_result(
         claim=name,
@@ -918,17 +945,9 @@ async def test_runner_manage_browser_login_reconfigures_to_persistent_headed_mod
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    initial_browser = FakeBrowserManager(ViewportConfig(), config=BrowserConfig())
-    replacement_browsers: list[FakeBrowserManager] = []
-
-    runner, browser, verifier = _build_runner(
-        module,
-        tmp_path,
-        verifier_results=[],
-        monkeypatch=monkeypatch,
-        browser_manager=initial_browser,
+    runner, browser, verifier, replacement_browsers = _build_runner_with_tracked_replacement_browsers(
+        module, tmp_path, monkeypatch
     )
-    monkeypatch.setattr(module, "BrowserManager", _tracking_browser_factory(replacement_browsers))
 
     status = await _call_manage_browser(
         runner,
@@ -962,17 +981,9 @@ async def test_runner_manage_browser_close_restores_base_config_after_login_over
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    initial_browser = FakeBrowserManager(ViewportConfig(), config=BrowserConfig())
-    replacement_browsers: list[FakeBrowserManager] = []
-
-    runner, _, verifier = _build_runner(
-        module,
-        tmp_path,
-        verifier_results=[],
-        monkeypatch=monkeypatch,
-        browser_manager=initial_browser,
+    runner, _, verifier, replacement_browsers = _build_runner_with_tracked_replacement_browsers(
+        module, tmp_path, monkeypatch
     )
-    monkeypatch.setattr(module, "BrowserManager", _tracking_browser_factory(replacement_browsers))
 
     await _call_manage_browser(
         runner,
@@ -1051,17 +1062,7 @@ async def test_runner_manage_browser_close_skips_restore_when_other_sessions_exi
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Close should not restore browser config when other sessions are still open."""
-    initial_browser = FakeBrowserManager(ViewportConfig(), config=BrowserConfig())
-    replacement_browsers: list[FakeBrowserManager] = []
-
-    runner, _, _ = _build_runner(
-        module,
-        tmp_path,
-        verifier_results=[],
-        monkeypatch=monkeypatch,
-        browser_manager=initial_browser,
-    )
-    monkeypatch.setattr(module, "BrowserManager", _tracking_browser_factory(replacement_browsers))
+    runner, _, _, replacement_browsers = _build_runner_with_tracked_replacement_browsers(module, tmp_path, monkeypatch)
 
     await _call_manage_browser(
         runner,
@@ -1183,17 +1184,7 @@ async def test_runner_login_then_take_screenshot_reuses_session(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """After login, take_screenshot on the same session_key should reuse the login browser."""
-    initial_browser = FakeBrowserManager(ViewportConfig(), config=BrowserConfig())
-    replacement_browsers: list[FakeBrowserManager] = []
-
-    runner, _, _ = _build_runner(
-        module,
-        tmp_path,
-        verifier_results=[],
-        monkeypatch=monkeypatch,
-        browser_manager=initial_browser,
-    )
-    monkeypatch.setattr(module, "BrowserManager", _tracking_browser_factory(replacement_browsers))
+    runner, _, _, replacement_browsers = _build_runner_with_tracked_replacement_browsers(module, tmp_path, monkeypatch)
 
     await _call_manage_browser(
         runner,
