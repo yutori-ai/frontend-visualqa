@@ -160,7 +160,7 @@ class BrowserConfig(FrontendVisualQABaseModel):
         return str(Path(value).expanduser())
 
     @model_validator(mode="after")
-    def apply_persistent_defaults(self) -> "BrowserConfig":
+    def apply_persistent_defaults(self) -> BrowserConfig:
         if self.is_persistent and self.user_data_dir is None:
             self.user_data_dir = str(DEFAULT_PERSISTENT_USER_DATA_DIR)
         return self
@@ -216,7 +216,7 @@ class VerifyVisualClaimsInput(FrontendVisualQABaseModel):
         return [None if hint is None else (hint.strip() or None) for hint in value]
 
     @model_validator(mode="after")
-    def validate_claim_navigation_hint_alignment(self) -> "VerifyVisualClaimsInput":
+    def validate_claim_navigation_hint_alignment(self) -> VerifyVisualClaimsInput:
         if self.claim_navigation_hints is not None and len(self.claim_navigation_hints) != len(self.claims):
             raise ValueError("claim_navigation_hints must match claims length")
         return self
@@ -300,7 +300,7 @@ class ManageBrowserInput(FrontendVisualQABaseModel):
         return validate_url(value)
 
     @model_validator(mode="after")
-    def validate_login_inputs(self) -> "ManageBrowserInput":
+    def validate_login_inputs(self) -> ManageBrowserInput:
         if self.action == "login" and self.url is None:
             raise ValueError(MANAGE_BROWSER_LOGIN_REQUIRES_URL)
         return self

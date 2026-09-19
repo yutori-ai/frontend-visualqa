@@ -8,7 +8,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from types import TracebackType
-from typing import Any
+from typing import Any, Self
 
 from PIL import Image
 from playwright.async_api import Browser, BrowserContext, Error as PlaywrightError, Page, Playwright, async_playwright
@@ -468,7 +468,7 @@ class BrowserManager:
         except PlaywrightError:
             return None
 
-    async def __aenter__(self) -> "BrowserManager":
+    async def __aenter__(self) -> Self:
         if self.config.mode == BrowserMode.ephemeral:
             await self.ensure_browser()
         return self
