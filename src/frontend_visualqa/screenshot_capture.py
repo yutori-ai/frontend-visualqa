@@ -18,6 +18,8 @@ from PIL import Image
 from playwright.async_api import Error as PlaywrightError
 
 if TYPE_CHECKING:
+    from playwright.async_api import CDPSession
+
     from frontend_visualqa.browser import BrowserSession
 
 logger = logging.getLogger(__name__)
@@ -59,7 +61,7 @@ async def capture_screenshot_image(session: "BrowserSession", *, headless: bool)
     return resize_to(image, css_size)
 
 
-async def _cdp_send_with_timeout(cdp_session: Any, method: str, params: dict[str, Any] | None = None) -> Any:
+async def _cdp_send_with_timeout(cdp_session: CDPSession, method: str, params: dict[str, Any] | None = None) -> Any:
     """Send a CDP command bounded by ``DEFAULT_CDP_SCREENSHOT_TIMEOUT_SECONDS``.
 
     Both CDP sends in :func:`capture_screenshot_image_via_cdp` share the
@@ -71,7 +73,7 @@ async def _cdp_send_with_timeout(cdp_session: Any, method: str, params: dict[str
 
 
 async def capture_screenshot_image_via_cdp(session: "BrowserSession") -> Image.Image | None:
-    cdp_session = None
+    cdp_session: CDPSession | None = None
     try:
         cdp_session = await session.context.new_cdp_session(session.page)
         layout_metrics = await _cdp_send_with_timeout(cdp_session, "Page.getLayoutMetrics")
