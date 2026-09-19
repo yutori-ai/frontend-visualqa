@@ -468,7 +468,7 @@ class BrowserManager:
         except PlaywrightError:
             return None
 
-    async def __aenter__(self) -> "BrowserManager":
+    async def __aenter__(self) -> BrowserManager:
         if self.config.mode == BrowserMode.ephemeral:
             await self.ensure_browser()
         return self

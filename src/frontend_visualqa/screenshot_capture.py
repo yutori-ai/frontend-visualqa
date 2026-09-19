@@ -28,7 +28,7 @@ DEFAULT_SCREENSHOT_WEBP_QUALITY = 75
 DEFAULT_CDP_SCREENSHOT_TIMEOUT_SECONDS = 5.0
 
 
-async def capture_screenshot_image(session: "BrowserSession", *, headless: bool) -> Image.Image:
+async def capture_screenshot_image(session: BrowserSession, *, headless: bool) -> Image.Image:
     # CDP Page.captureScreenshot avoids re-rendering through Playwright's
     # protocol bridge and reuses the existing compositor frame — typically
     # 30–60% faster than page.screenshot() on a 1280×800 viewport. We use
@@ -72,7 +72,7 @@ async def _cdp_send_with_timeout(cdp_session: CDPSession, method: str, params: d
     return await asyncio.wait_for(cdp_session.send(method, params), timeout=DEFAULT_CDP_SCREENSHOT_TIMEOUT_SECONDS)
 
 
-async def capture_screenshot_image_via_cdp(session: "BrowserSession") -> Image.Image | None:
+async def capture_screenshot_image_via_cdp(session: BrowserSession) -> Image.Image | None:
     cdp_session: CDPSession | None = None
     try:
         cdp_session = await session.context.new_cdp_session(session.page)
