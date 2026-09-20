@@ -13,9 +13,8 @@ from frontend_visualqa.actions import (
     REDACTED_TYPE_TEXT,
     ActionExecutor,
     ToolExecutionResult,
-    focused_element_is_password,
     redact_argument,
-    referenced_element_is_password,
+    tool_call_targets_password,
 )
 from frontend_visualqa.artifacts import ArtifactManager, RunArtifacts
 from frontend_visualqa.browser import (
@@ -769,7 +768,7 @@ class ClaimVerifier:
             return tool_arguments, None
         if not parse_failed and not tool_arguments.get(sensitive_key):
             return tool_arguments, None
-        if not await self._tool_call_targets_password(session, tool_name, tool_arguments, parse_failed=parse_failed):
+        if not await tool_call_targets_password(session.page, tool_name, tool_arguments, parse_failed=parse_failed):
             return tool_arguments, None
 
         if parse_failed:
@@ -785,29 +784,6 @@ class ClaimVerifier:
             redacted_arguments=tool_arguments,
         )
         return tool_arguments, sensitive_text or None
-
-    @staticmethod
-    async def _tool_call_targets_password(
-        session: BrowserSession,
-        tool_name: str,
-        tool_arguments: dict[str, Any],
-        *,
-        parse_failed: bool,
-    ) -> bool:
-        """Whether a type / set_element_value call may target a password input.
-
-        Fails closed: detection errors, unparseable set_element_value arguments,
-        and missing refs all count as sensitive — a masked trace on a healthy
-        field is recoverable noise; a leaked credential is not.
-        """
-        if tool_name == "type":
-            return await focused_element_is_password(session.page) is not False
-        if parse_failed:
-            return True
-        ref = tool_arguments.get("ref")
-        if not ref:
-            return True
-        return await referenced_element_is_password(session.page, str(ref)) is not False
 
     @staticmethod
     def _redact_stored_tool_call_arguments(

@@ -1662,6 +1662,7 @@ async def test_claim_verifier_redacts_password_set_element_value_transcript(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     module = _import_claim_verifier_module()
+    actions_module = import_or_skip("frontend_visualqa.actions")
 
     class SetPasswordActionExecutor(FakeActionExecutor):
         async def execute_tool_call(self, session: FakeSession, tool_call: Any) -> Any:
@@ -1677,7 +1678,7 @@ async def test_claim_verifier_redacts_password_set_element_value_transcript(
     async def _password_ref(_page: Any, ref: str) -> bool:
         return ref == "password-input"
 
-    monkeypatch.setattr(module, "referenced_element_is_password", _password_ref)
+    monkeypatch.setattr(actions_module, "referenced_element_is_password", _password_ref)
 
     verifier, navigator_client, action_executor = _build_claim_verifier(
         module,

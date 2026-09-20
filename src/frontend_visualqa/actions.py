@@ -213,6 +213,29 @@ async def referenced_element_is_password(page: Page, ref: str) -> bool | None:
     )
 
 
+async def tool_call_targets_password(
+    page: Page,
+    tool_name: str,
+    tool_arguments: dict[str, Any],
+    *,
+    parse_failed: bool,
+) -> bool:
+    """Whether a type / set_element_value call may target a password input.
+
+    Fails closed: detection errors, unparseable set_element_value arguments,
+    and missing refs all count as sensitive — a masked trace on a healthy
+    field is recoverable noise; a leaked credential is not.
+    """
+    if tool_name == "type":
+        return await focused_element_is_password(page) is not False
+    if parse_failed:
+        return True
+    ref = tool_arguments.get("ref")
+    if not ref:
+        return True
+    return await referenced_element_is_password(page, str(ref)) is not False
+
+
 def redact_argument(arguments: dict[str, Any], key: str) -> dict[str, Any]:
     """Return a copy of ``arguments`` with ``key`` masked."""
     return {**arguments, key: REDACTED_TYPE_TEXT}
@@ -540,7 +563,7 @@ class ActionExecutor:
                 text = str(raw_arguments.get("text", ""))
                 clear_before = _get_clear_before(raw_arguments)
                 press_enter = bool(raw_arguments.get("press_enter_after"))
-                if text and await focused_element_is_password(page) is not False:
+                if text and await tool_call_targets_password(page, canonical_name, raw_arguments, parse_failed=False):
                     # Credentials must not reach traces, reports, or the model
                     # transcript; re-render the trace with the text masked.
                     # Fail closed: a detection failure masks a healthy field's
@@ -674,8 +697,8 @@ class ActionExecutor:
             # Fail closed: redact unless the target is known NOT to be a
             # password input — detection failures and missing refs count as
             # sensitive.
-            value_is_sensitive = bool(value) and (
-                not ref or await referenced_element_is_password(page, ref) is not False
+            value_is_sensitive = bool(value) and await tool_call_targets_password(
+                page, action_name, {"ref": ref}, parse_failed=False
             )
             # DOM value-set pastes the value in rather than keystroking it, and
             # the expanded-tool path shows no cursor/effect. Preview a clipboard-
