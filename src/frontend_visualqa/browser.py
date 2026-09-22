@@ -108,6 +108,26 @@ def build_page_ready_checker(navigation_timeout_ms: int, *, wait_after_ready: fl
     )
 
 
+async def best_effort_wait_until_ready(
+    checker: PageReadyChecker,
+    page: Page,
+    *,
+    settle_delay_seconds: float | None,
+    log_label: str,
+) -> None:
+    """Await ``checker.wait_until_ready``, swallowing any failure.
+
+    Shared by ``BrowserManager`` (post-navigation) and ``ActionExecutor``
+    (post-action), which both need the identical readiness check to be
+    best-effort: a failure here must never break navigation or an action.
+    ``log_label`` distinguishes the two call sites in the log line.
+    """
+    try:
+        await checker.wait_until_ready(page, fast_mode=settle_delay_seconds == 0)
+    except Exception:  # noqa: BLE001 - best-effort readiness check must not fail navigation/actions
+        logger.debug("Page ready check failed %s", log_label, exc_info=True)
+
+
 class BrowserManager:
     """Own the shared Chromium process and session-scoped browser contexts."""
 
@@ -418,10 +438,12 @@ class BrowserManager:
         context.set_default_timeout(self.navigation_timeout_ms)
 
     async def _best_effort_wait_for_page_ready(self, page: Page) -> None:
-        try:
-            await self._page_ready_checker.wait_until_ready(page, fast_mode=self.settle_delay_seconds == 0)
-        except Exception:  # noqa: BLE001 - best-effort readiness check must not fail navigation
-            logger.debug("Page ready check failed during navigation", exc_info=True)
+        await best_effort_wait_until_ready(
+            self._page_ready_checker,
+            page,
+            settle_delay_seconds=self.settle_delay_seconds,
+            log_label="during navigation",
+        )
 
     async def _stop_playwright_if_idle(self) -> None:
         if self._browser is not None or self._persistent_context is not None:

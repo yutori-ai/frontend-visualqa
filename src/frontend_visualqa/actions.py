@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any
 from frontend_visualqa.browser import (
     BrowserSession,
     DEFAULT_NAVIGATION_TIMEOUT_MS as BROWSER_NAVIGATION_TIMEOUT_MS,
+    best_effort_wait_until_ready,
     build_page_ready_checker,
 )
 from frontend_visualqa.errors import BrowserActionError
@@ -747,10 +748,12 @@ class ActionExecutor:
         except Exception:
             logger.debug("Wait for domcontentloaded failed; continuing with action", exc_info=True)
             return
-        try:
-            await self.page_ready_checker.wait_until_ready(page, fast_mode=self.settle_delay_seconds == 0)
-        except Exception:
-            logger.warning("Page ready check failed; continuing with action", exc_info=True)
+        await best_effort_wait_until_ready(
+            self.page_ready_checker,
+            page,
+            settle_delay_seconds=self.settle_delay_seconds,
+            log_label="continuing with action",
+        )
 
     async def _resolve_coordinates(
         self,
