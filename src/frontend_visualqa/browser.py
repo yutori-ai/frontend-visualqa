@@ -5,10 +5,11 @@ from __future__ import annotations
 import base64
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from types import TracebackType
-from typing import Any, Self
+from typing import Any, Self, TypeVar
 
 from PIL import Image
 from playwright.async_api import Browser, BrowserContext, Error as PlaywrightError, Page, Playwright, async_playwright
@@ -35,6 +36,7 @@ from frontend_visualqa.utils import elapsed_ms
 # after the initial wait while staying well under DEFAULT_NAVIGATION_TIMEOUT_MS.
 DEFAULT_PAGE_READY_TIMEOUT_SECONDS = 8
 logger = logging.getLogger(__name__)
+_T = TypeVar("_T")
 PERSISTENT_SESSION_KEY_ERROR = (
     "Persistent browser mode supports exactly one named session at a time. "
     "Use the existing session key, close the current persistent session before switching names, "
@@ -477,18 +479,20 @@ class BrowserManager:
         self._sessions.clear()
 
     @staticmethod
-    def _session_is_open(session: BrowserSession) -> bool:
+    def _safe_page_read(session: BrowserSession, read: Callable[[Page], _T], default: _T) -> _T:
+        """Best-effort read of one `session.page` attribute; `default` if the page/context is gone."""
         try:
-            return not session.page.is_closed()
+            return read(session.page)
         except PlaywrightError:
-            return False
+            return default
 
-    @staticmethod
-    def _safe_page_url(session: BrowserSession) -> str | None:
-        try:
-            return session.page.url or None
-        except PlaywrightError:
-            return None
+    @classmethod
+    def _session_is_open(cls, session: BrowserSession) -> bool:
+        return cls._safe_page_read(session, lambda page: not page.is_closed(), False)
+
+    @classmethod
+    def _safe_page_url(cls, session: BrowserSession) -> str | None:
+        return cls._safe_page_read(session, lambda page: page.url or None, None)
 
     async def __aenter__(self) -> Self:
         if self.config.mode == BrowserMode.ephemeral:
