@@ -152,11 +152,11 @@ class OverlayController:
         self._reset_state()
         self._detach_navigation_listener()
         self._navigation_handler = self._on_navigation
-        try:
-            self._page.on("domcontentloaded", self._navigation_handler)
-        except Exception:
-            logger.debug("Failed to attach overlay navigation listener", exc_info=True)
-            self._navigation_handler = None
+        self._safe_navigation_listener_op(
+            lambda: self._page.on("domcontentloaded", self._navigation_handler),
+            "Failed to attach overlay navigation listener",
+            clear_handler_on_success=False,
+        )
 
     async def claim_ended(self) -> None:
         try:
@@ -364,11 +364,35 @@ class OverlayController:
     def _detach_navigation_listener(self) -> None:
         if self._navigation_handler is None:
             return
+        handler = self._navigation_handler
+        self._safe_navigation_listener_op(
+            lambda: self._page.remove_listener("domcontentloaded", handler),
+            "Failed to detach overlay navigation listener",
+            clear_handler_on_success=True,
+        )
+
+    def _safe_navigation_listener_op(
+        self,
+        operation: Callable[[], None],
+        error_message: str,
+        *,
+        clear_handler_on_success: bool,
+    ) -> None:
+        """Best-effort page-listener attach/detach, logging failures at debug.
+
+        The handler reference is always cleared on failure. On success it is only
+        cleared when ``clear_handler_on_success`` is set, since detach no longer
+        needs the reference afterward but attach must keep it for a later detach.
+        """
+
         try:
-            self._page.remove_listener("domcontentloaded", self._navigation_handler)
+            operation()
         except Exception:
-            logger.debug("Failed to detach overlay navigation listener", exc_info=True)
-        self._navigation_handler = None
+            logger.debug(error_message, exc_info=True)
+            self._navigation_handler = None
+        else:
+            if clear_handler_on_success:
+                self._navigation_handler = None
 
     async def _apply_operation(
         self,
