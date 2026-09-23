@@ -6,7 +6,7 @@ import asyncio
 import logging
 import math
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from yutori_navigator_overlay_runtime import PROTOCOL_VERSION, get_iife, verify_iife
 
@@ -152,11 +152,11 @@ class OverlayController:
         self._reset_state()
         self._detach_navigation_listener()
         self._navigation_handler = self._on_navigation
-        try:
-            self._page.on("domcontentloaded", self._navigation_handler)
-        except Exception:
-            logger.debug("Failed to attach overlay navigation listener", exc_info=True)
-            self._navigation_handler = None
+        self._run_navigation_listener_op(
+            lambda: self._page.on("domcontentloaded", self._navigation_handler),
+            failure_message="Failed to attach overlay navigation listener",
+            clear_on="failure",
+        )
 
     async def claim_ended(self) -> None:
         try:
@@ -364,11 +364,34 @@ class OverlayController:
     def _detach_navigation_listener(self) -> None:
         if self._navigation_handler is None:
             return
+        self._run_navigation_listener_op(
+            lambda: self._page.remove_listener("domcontentloaded", self._navigation_handler),
+            failure_message="Failed to detach overlay navigation listener",
+            clear_on="always",
+        )
+
+    def _run_navigation_listener_op(
+        self,
+        op: Callable[[], None],
+        *,
+        failure_message: str,
+        clear_on: Literal["always", "failure"],
+    ) -> None:
+        """Run a best-effort page-listener attach/detach op, logging failures at debug.
+
+        Shared by ``claim_started`` (attach) and ``_detach_navigation_listener`` (detach),
+        whose post-conditions for ``self._navigation_handler`` differ: attach only clears it
+        when ``op`` raises (``clear_on="failure"``), while detach always clears it afterward
+        regardless of outcome (``clear_on="always"``).
+        """
         try:
-            self._page.remove_listener("domcontentloaded", self._navigation_handler)
+            op()
         except Exception:
-            logger.debug("Failed to detach overlay navigation listener", exc_info=True)
-        self._navigation_handler = None
+            logger.debug(failure_message, exc_info=True)
+            self._navigation_handler = None
+            return
+        if clear_on == "always":
+            self._navigation_handler = None
 
     async def _apply_operation(
         self,
