@@ -190,6 +190,32 @@ def _partition_lifecycle_samples(
     return before_samples, after_samples, started_samples, ended_samples
 
 
+def _assert_claim_boundaries_idle(
+    started_samples: list[dict[str, Any]],
+    ended_samples: list[dict[str, Any]],
+) -> None:
+    """Assert claim_started/claim_ended fire with no overlay chrome mounted.
+
+    The adapter binds navigation at claim start but does not mount idle
+    chrome, and claim_ended tears everything back down — so both boundary
+    samples should show every overlay element absent (including the status
+    chip, retired in the overlay redesign in favor of the thought capsule).
+    Both headed-overlay tests below assert this identical shape at their own
+    claim boundaries.
+    """
+    started_state = started_samples[0]["state"]
+    assert started_samples[0]["error"] is None
+    assert started_state["persistent"]["present"] is False
+    assert started_state["transient"]["present"] is False
+    assert started_state["chip"]["present"] is False
+
+    ended_state = ended_samples[0]["state"]
+    assert ended_samples[0]["error"] is None
+    assert ended_state["persistent"]["present"] is False
+    assert ended_state["transient"]["present"] is False
+    assert ended_state["chip"]["present"] is False
+
+
 @pytest.mark.asyncio
 async def test_live_runner_executes_real_browser_flow_and_passes_modal_claim(
     example_server: str,
@@ -330,19 +356,7 @@ async def test_live_runner_headed_overlay_hides_restores_and_cleans_up(
         # the thought capsule conveys status instead) — present should stay False.
         assert post_capture_status_sample["state"]["chip"]["present"] is False
 
-        started_state = started_samples[0]["state"]
-        assert started_samples[0]["error"] is None
-        # The adapter binds navigation at claim start but does not mount idle
-        # chrome. The first thought/action activates the shared runtime.
-        assert started_state["persistent"]["present"] is False
-        assert started_state["transient"]["present"] is False
-        assert started_state["chip"]["present"] is False
-
-        ended_state = ended_samples[0]["state"]
-        assert ended_samples[0]["error"] is None
-        assert ended_state["persistent"]["present"] is False
-        assert ended_state["transient"]["present"] is False
-        assert ended_state["chip"]["present"] is False
+        _assert_claim_boundaries_idle(started_samples, ended_samples)
 
 
 @pytest.mark.asyncio
@@ -386,16 +400,4 @@ async def test_live_runner_headed_overlay_zero_action_path_skips_hide_restore(
         assert before_samples == []
         assert after_samples == []
 
-        started_state = started_samples[0]["state"]
-        assert started_samples[0]["error"] is None
-        assert started_state["persistent"]["present"] is False
-        assert started_state["transient"]["present"] is False
-        # No status chip element is rendered (retired in the overlay redesign;
-        # the thought capsule conveys status instead).
-        assert started_state["chip"]["present"] is False
-
-        ended_state = ended_samples[0]["state"]
-        assert ended_samples[0]["error"] is None
-        assert ended_state["persistent"]["present"] is False
-        assert ended_state["transient"]["present"] is False
-        assert ended_state["chip"]["present"] is False
+        _assert_claim_boundaries_idle(started_samples, ended_samples)
