@@ -114,7 +114,7 @@ _EMERGENCY_RESTORE_JS = f"""() => {{
 }}"""
 
 
-def _point(x: int | float, y: int | float) -> dict[str, int | float]:
+def _point(x: float, y: float) -> dict[str, int | float]:
     return {"x": x, "y": y}
 
 
