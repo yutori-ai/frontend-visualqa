@@ -170,10 +170,14 @@ def _render_claim_lines(*, bullet: str, claim: str, claim_result: ClaimResult) -
     marker = "x" if claim_result.status == "passed" else " "
     lines = [f"{bullet} [{marker}] {claim}"]
     if claim_result.status != "passed":
-        lines.append(_CLAIM_DETAILS_START_MARKER)
-        lines.append(_render_detail_line("  ", "Status", claim_result.status))
-        lines.append(_render_detail_line("  ", "Finding", _collapse_whitespace(claim_result.finding)))
-        lines.append(_CLAIM_DETAILS_END_MARKER)
+        lines.extend(
+            [
+                _CLAIM_DETAILS_START_MARKER,
+                _render_detail_line("  ", "Status", claim_result.status),
+                _render_detail_line("  ", "Finding", _collapse_whitespace(claim_result.finding)),
+                _CLAIM_DETAILS_END_MARKER,
+            ]
+        )
     return lines
 
 
@@ -201,10 +205,7 @@ def _render_synthesized_markdown(run_result: RunResult) -> str:
     lines = ["# frontend-visualqa report", ""]
     if run_result.run_name is not None:
         lines.append(f"Run: {run_result.run_name}")
-    lines.append(f"Artifacts: {run_result.artifacts_dir}")
-    lines.append("")
-    lines.append("## Claims")
-    lines.append("")
+    lines.extend([f"Artifacts: {run_result.artifacts_dir}", "", "## Claims", ""])
     for claim_result in run_result.results:
         lines.extend(_render_claim_lines(bullet="-", claim=claim_result.claim, claim_result=claim_result))
     lines.append("")
