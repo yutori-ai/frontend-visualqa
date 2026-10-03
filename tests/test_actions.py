@@ -187,12 +187,10 @@ class FakePage:
     async def go_back(self, **kwargs: Any) -> None:
         self.go_back_calls.append(kwargs)
         self.url = "http://fixture.local/previous"
-        return None
 
     async def go_forward(self, **kwargs: Any) -> None:
         self.go_forward_calls.append(kwargs)
         self.url = "http://fixture.local/next"
-        return None
 
     async def wait_for_load_state(self, state: str, **kwargs: Any) -> None:
         self.wait_states.append((state, kwargs))

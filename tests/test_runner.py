@@ -248,7 +248,6 @@ class FakeClaimVerifier(_CallRecordingVerifier):
 async def _skip_preflight(url: str) -> None:
     """No-op ``_preflight_url`` replacement for tests that don't want the real HTTP HEAD probe."""
     del url
-    return None
 
 
 def _runner_aliased_attrs(browser: FakeBrowserManager, verifier: Any, artifacts: FakeArtifactManager) -> dict[str, Any]:
